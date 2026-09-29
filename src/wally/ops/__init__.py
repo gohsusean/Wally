@@ -1,4 +1,4 @@
-"""Chief of Staff operational understanding (Phase 1: observe and brief)."""
+"""Chief of Staff operational understanding (observe, brief, and propose)."""
 
 from wally.ops.service import ObserveBriefService
 

@@ -1,16 +1,16 @@
-# Chief of Staff — Observe & Brief (v1.0 Phase 1)
+# Chief of Staff — Observe, Brief & Propose
 
-**Version:** 0.12.1  
+**Version:** 0.13.0  
 **Status:** Current milestone (not production v1.0)
 
-Wally is building persistent operational understanding: what is happening, what changed, what is still open, and what can wait. Phase 1 is **read / assess / brief only**.
+Wally is building persistent operational understanding: what is happening, what changed, what is still open, what can wait, and what the user might do next. Phases 1 and 2 are **read / assess / brief / propose only**.
 
 ## Loop
 
 | Phase | Status | Behaviour |
 |-------|--------|-----------|
-| 1 Observe → Assess → Brief | **Current (v0.12)** | Ingest signals, reconcile Matters, print a brief |
-| 2 Assess & Propose | **Designed, not started (planned v0.13.0)** | Propose actions; do not execute |
+| 1 Observe → Assess → Brief | **Complete (v0.12)** | Ingest signals, reconcile Matters, print a brief |
+| 2 Assess & Propose | **Current (v0.13.0)** | Durable suggestions in the brief; do not execute |
 | 3 Approval Inbox | Future | Human authorization of proposals |
 | 4 Act & Verify | Future | Execute after approval; verify outcomes |
 | 5 Daily-driver hardening | Future | Scheduling, noise, notification UX |
@@ -60,9 +60,9 @@ Live Gmail/Calendar/Notion is optional. CI uses fake providers. Do not treat a l
 
 Rule-based scores with explicit reasons (overdue, due soon, open finance, waiting too long). The brief quotes those reasons. There is no opaque model score.
 
-## Phase 2 — Assess & Propose (design accepted, planned v0.13.0)
+## Phase 2 — Assess & Propose (v0.13.0)
 
-Design only. No code, schema, configuration, prompt, or version change has been made for this phase; package and CLI remain 0.12.1. Full rationale in ADR-035.
+Implemented. Full rationale in ADR-035. This phase adds no execution path.
 
 Phase 2 turns Matters into **ProposedActions**: durable, explainable advice addressed to the user. A proposal is never an authorization. `ProposedAction` belongs to the operational domain and is defined in `src/wally/models/ops.py` beside `Observation` and `Matter`, deliberately separate from the executable types in `models/actions.py`, so no proposal can reach the tool registry by accident. Generation, persistence, and lifecycle logic live in `wally/ops/`.
 
@@ -104,7 +104,7 @@ Phase 2 performs no tool call, no provider write, no secret resolution, no capab
 
 Six steps: (1) domain model, (2) additive persistence, (3) deterministic generation of the two intents, (4) lifecycle reconciliation, (5) brief and JSON presentation, (6) documentation and the 0.13.0 version bump.
 
-Phase 2 is done when a repeated pass produces no duplicates; resolution invalidates and material change supersedes; event proposals expire at start while bill proposals do not; injection-flagged matters yield nothing; tests prove no execution path is reachable; and the brief shows inline suggestions with the no-action footer. Live `REVIEW_BILL` acceptance waits on a real bill email, since no `invoice` observation has been classified yet.
+Those exit criteria are covered by the proposal test suite: a repeated pass produces no duplicates; resolution invalidates and material change supersedes; event proposals expire at start while bill proposals do not; injection-flagged matters yield nothing; tests prove no execution path is reachable; and the brief shows inline suggestions with the no-action footer. Live `REVIEW_BILL` acceptance still waits on a real bill email, since no `invoice` observation has been classified yet. That is an operational check, not missing Phase 2 code.
 
 ## Privacy
 

@@ -1077,7 +1077,7 @@ Revisit when Phase 2 proposals need a durable Proposed Action model.
 
 ## ADR-035: Durable proposed actions (Chief of Staff Phase 2)
 
-**Status:** Accepted  
+**Status:** Accepted — implemented in v0.13.0  
 **Date:** 2026-08-16  
 **Deciders:** Founding engineer + project owner
 

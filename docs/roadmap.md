@@ -1,7 +1,7 @@
 # Wally — Roadmap
 
-**Version:** 0.12.1  
-**Last updated:** 2026-08-16
+**Version:** 0.13.0  
+**Last updated:** 2026-09-30
 
 Wally is a **personal Chief of Staff** and **personal AI operating system** — not a home automation platform.
 
@@ -75,7 +75,7 @@ Wally's primary responsibilities:
 | v0.11 | Secrets | 1Password `SecretsProvider`; optional credential injection |
 | v0.11.1 | Secrets hardening | Authorization flag, leak scrubbing, VERIFY_AUTH |
 | v0.12 | v1.0 Phase 1 Observe & Brief | Observations, Matters, on-demand brief (no autonomous writes) |
-| v0.13 *(planned)* | v1.0 Phase 2 Assess & Propose | Durable proposed actions surfaced in the brief (still no execution) |
+| v0.13 | v1.0 Phase 2 Assess & Propose | Durable proposed actions surfaced in the brief (still no execution) |
 | v1.0 later | Phases 3–5 | Approval inbox, act & verify, daily-driver hardening |
 | v1.0+ | Retrieval Router | Runtime-owned retrieval policy (see below) |
 | v1.x+ | Optional providers | Travel, property depth; HA read-only context |
@@ -319,11 +319,11 @@ See [chief-of-staff.md](chief-of-staff.md), [ops-privacy.md](ops-privacy.md), AD
 
 ---
 
-## v0.13.0 — v1.0 Phase 2 Assess & Propose (planned, not started)
+## v0.13.0 — v1.0 Phase 2 Assess & Propose ✓
 
 **Goal:** Turn Matters into durable, explainable proposed actions. Wally still executes nothing and writes to no external system.
 
-Version numbers stay at 0.12.1 until Step 6 of the sequence below. This entry records the plan only.
+Implemented in the recovered tree and recorded here after the repository baseline. Live `REVIEW_BILL` acceptance is still outstanding: it waits on a real bill email.
 
 **Initial intents (two):**
 - `PREPARE_FOR_EVENT` — an upcoming calendar Matter needs preparation before it starts.
@@ -342,21 +342,21 @@ Version numbers stay at 0.12.1 until Step 6 of the sequence below. This entry re
 **Deferred to later phases:** `FOLLOW_UP` intent (needs sent-mail observations that the live database does not yet produce), dismissal UI, approval, execution, scheduling, and notifications.
 
 **Implementation sequence (six steps):**
-1. Domain model — `ProposedAction`, `ProposalIntent`, `ProposalStatus`, `ProposalProvenance`, `ProposalRisk` in `src/wally/models/ops.py`.
-2. Persistence — additive `proposals` table via `CREATE TABLE IF NOT EXISTS`; existing v0.12.1 rows left unmodified (generation reads Matters, writes nothing back), no reset.
-3. Deterministic generation — the two intents, with injection-flagged matters suppressed.
-4. Lifecycle reconciliation — supersede, invalidate, expire; idempotent across repeated observe passes.
-5. Brief presentation — inline rendering, no-action footer, JSON output.
-6. Documentation and version bump to 0.13.0.
+1. [x] Domain model — `ProposedAction`, `ProposalIntent`, `ProposalStatus`, `ProposalProvenance`, `ProposalRisk` in `src/wally/models/ops.py`.
+2. [x] Persistence — additive `proposals` table via `CREATE TABLE IF NOT EXISTS`; existing v0.12.1 rows left unmodified (generation reads Matters, writes nothing back), no reset.
+3. [x] Deterministic generation — the two intents, with injection-flagged matters suppressed.
+4. [x] Lifecycle reconciliation — supersede, invalidate, expire; idempotent across repeated observe passes.
+5. [x] Brief presentation — inline rendering, no-action footer, JSON output.
+6. [x] Documentation and version bump to 0.13.0.
 
 **Exit criteria:**
-- A repeated observe/brief pass produces no duplicate proposals.
-- A resolved Matter invalidates its proposals; a materially changed one supersedes them.
-- An event proposal expires at event start; a bill proposal does not expire on a timer.
-- Injection-flagged matters yield no proposals.
-- Tests assert no tool registry, secrets, or approval path is reachable from proposal generation.
-- The brief shows suggestions inline with the no-action footer, and `--json` stays schema-stable for existing consumers.
-- Live acceptance for `REVIEW_BILL` waits on a real bill email, since no `invoice` observation has been classified yet.
+- [x] A repeated observe/brief pass produces no duplicate proposals.
+- [x] A resolved Matter invalidates its proposals; a materially changed one supersedes them.
+- [x] An event proposal expires at event start; a bill proposal does not expire on a timer.
+- [x] Injection-flagged matters yield no proposals.
+- [x] Tests assert no tool registry, secrets, or approval path is reachable from proposal generation.
+- [x] The brief shows suggestions inline with the no-action footer, and `--json` stays schema-stable for existing consumers.
+- [ ] Live acceptance for `REVIEW_BILL` waits on a real bill email, since no `invoice` observation has been classified yet.
 
 See ADR-035 and [chief-of-staff.md](chief-of-staff.md).
 

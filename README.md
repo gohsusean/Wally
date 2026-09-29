@@ -6,7 +6,7 @@ Wally is not a chatbot. It is not a home automation platform.
 
 ## Status
 
-**Status:** **v0.12.1 — Observe & Brief quality.** Calendar boilerplate stripped; unmatched receipts are FYI; human-readable brief dates. No autonomous writes. Later Chief-of-Staff phases are not started.
+**Status:** **v0.13.0 — Assess & Propose.** The brief includes durable suggestions for upcoming events and open bills. Suggestions are advice only. Wally still does not send, pay, submit, or write on its own. Approval and execution are not started.
 
 ## Getting started
 
@@ -36,7 +36,7 @@ uv run wally
 | `/knowledge pending` | Show databases awaiting classification |
 | `/knowledge review <id>` | Show classification recommendation |
 | `/knowledge approve <id> operational\|governance` | Approve database classification |
-| `/brief` | Generate an operational Observe & Brief summary |
+| `/brief` | Generate an operational brief, including suggestions |
 | `/exit` | Quit |
 
 One-shot brief (no REPL):

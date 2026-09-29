@@ -4,7 +4,7 @@ import wally
 
 
 def test_version() -> None:
-    assert wally.__version__ == "0.12.1"
+    assert wally.__version__ == "0.13.0"
 
 
 def test_docs_exist() -> None:

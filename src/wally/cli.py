@@ -16,7 +16,7 @@ from wally.config.loader import find_project_root
 from wally.exceptions import ConfigurationError, ProviderUnavailableError, WallyError
 from wally.models.messages import Session
 
-BANNER = """Wally v0.12.1 — personal AI operating system
+BANNER = """Wally v0.13.0 — personal AI operating system
 Type a message to talk to Wally. Commands: /help /new /health /sessions /knowledge /brief /exit
 """
 
@@ -150,7 +150,7 @@ def _print_help() -> None:
         "  /sessions   List recent session IDs\n"
         "  /health     Check provider status\n"
         "  /knowledge  Manage knowledge database classifications\n"
-        "  /brief      Generate an operational Observe & Brief summary\n"
+        "  /brief      Generate an operational brief, including suggestions\n"
         "  /exit       Quit\n"
     )
 
