@@ -1,8 +1,10 @@
 # Wally — Architecture
 
-**Version:** 0.1 (design only)  
-**Status:** Proposed  
-**Last updated:** 2026-06-27
+**Version:** 0.1 design baseline; implementation shipped through v0.13.0  
+**Status:** Living architecture. Current milestone is v0.14 Approval Inbox. Act & Verify is future work.  
+**Last updated:** 2026-09-30
+
+Shipped: v0.10 browser automation, v0.11.1 secrets hardening, v0.12 Observe & Brief, v0.13 Assess & Propose. Historical sections below keep the design as it was written. They are not rewritten to look like the current milestone.
 
 ---
 

@@ -1,17 +1,17 @@
 # Chief of Staff — Observe, Brief & Propose
 
-**Version:** 0.13.0  
-**Status:** Current milestone (not production v1.0)
+**Version:** 0.13.0 (latest shipped)  
+**Status:** Current milestone is v0.14 Approval Inbox (not production v1.0)
 
-Wally is building persistent operational understanding: what is happening, what changed, what is still open, what can wait, and what the user might do next. Phases 1 and 2 are **read / assess / brief / propose only**.
+Wally is building persistent operational understanding: what is happening, what changed, what is still open, what can wait, and what the user might do next. Phases 1 and 2 are **read / assess / brief / propose only**. Phase 3 will record explicit approval without executing.
 
 ## Loop
 
 | Phase | Status | Behaviour |
 |-------|--------|-----------|
 | 1 Observe → Assess → Brief | **Complete (v0.12)** | Ingest signals, reconcile Matters, print a brief |
-| 2 Assess & Propose | **Current (v0.13.0)** | Durable suggestions in the brief; do not execute |
-| 3 Approval Inbox | Future | Human authorization of proposals |
+| 2 Assess & Propose | **Complete (v0.13.0)** | Durable suggestions in the brief; do not execute |
+| 3 Approval Inbox | **Current (v0.14)** | Human authorization of proposals; approval is not execution |
 | 4 Act & Verify | Future | Execute after approval; verify outcomes |
 | 5 Daily-driver hardening | Future | Scheduling, noise, notification UX |
 

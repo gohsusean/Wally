@@ -1,6 +1,7 @@
 # Wally — Roadmap
 
-**Version:** 0.13.0  
+**Version:** 0.13.0 (latest shipped)  
+**Current milestone:** v0.14 — Approval Inbox  
 **Last updated:** 2026-09-30
 
 Wally is a **personal Chief of Staff** and **personal AI operating system** — not a home automation platform.
@@ -76,7 +77,8 @@ Wally's primary responsibilities:
 | v0.11.1 | Secrets hardening | Authorization flag, leak scrubbing, VERIFY_AUTH |
 | v0.12 | v1.0 Phase 1 Observe & Brief | Observations, Matters, on-demand brief (no autonomous writes) |
 | v0.13 | v1.0 Phase 2 Assess & Propose | Durable proposed actions surfaced in the brief (still no execution) |
-| v1.0 later | Phases 3–5 | Approval inbox, act & verify, daily-driver hardening |
+| v0.14 | v1.0 Phase 3 Approval Inbox | **Current.** Durable review: approve, reject, or defer. Approval is not execution |
+| v1.0 later | Phases 4–5 | Act & Verify, then daily-driver hardening |
 | v1.0+ | Retrieval Router | Runtime-owned retrieval policy (see below) |
 | v1.x+ | Optional providers | Travel, property depth; HA read-only context |
 
@@ -151,7 +153,7 @@ Wally's primary responsibilities:
 
 ---
 
-## v0.7 — Conversation intelligence ✦ current
+## v0.7 — Conversation intelligence ✓
 
 **Goal:** Wally remembers across sessions and reasons over accumulated context.
 
@@ -187,7 +189,9 @@ Multi-provider `ToolRegistry` shipped as part of v0.5 workflow work. Further run
 
 ---
 
-## v0.7 — Conversation intelligence
+## v0.7 — Conversation intelligence (original plan)
+
+The implemented milestone is the checked v0.7 section above. This is the original wording. It is not the current milestone.
 
 **Goal:** Wally remembers across sessions and reasons over accumulated context.
 
@@ -362,10 +366,17 @@ See ADR-035 and [chief-of-staff.md](chief-of-staff.md).
 
 ---
 
-## v1.0 later — Phases 3–5 (not started)
+## v0.14 — v1.0 Phase 3 Approval Inbox ✦ current
 
-**Phase 3 — Approval Inbox:** human authorization of proposals.  
-**Phase 4 — Act & Verify:** execute after approval; verify outcomes.  
+**Goal:** Make a ProposedAction durable, reviewable, and explicitly approvable, rejectable, or deferrable. Approval records authorization intent only. It does not send, pay, submit, or write.
+
+Not started in the shipped v0.13.0 tree. Act & Verify stays out of this milestone.
+
+---
+
+## v1.0 later — Phases 4–5 (future)
+
+**Phase 4 — Act & Verify:** execute after approval; verify outcomes. Not implemented.  
 **Phase 5 — Daily-driver hardening:** scheduling, notification UX, noise control.
 
 Do not treat n8n as the Chief-of-Staff state machine. Live mailbox tests remain operator-initiated, not CI.

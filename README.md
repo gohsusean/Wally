@@ -6,7 +6,7 @@ Wally is not a chatbot. It is not a home automation platform.
 
 ## Status
 
-**Status:** **v0.13.0 — Assess & Propose.** The brief includes durable suggestions for upcoming events and open bills. Suggestions are advice only. Wally still does not send, pay, submit, or write on its own. Approval and execution are not started.
+**Status:** Shipped through **v0.13.0 — Assess & Propose.** The current milestone is **v0.14 — Approval Inbox** (not yet shipped). v0.10 browser automation, v0.11.1 secrets hardening, v0.12 Observe & Brief, and v0.13 Assess & Propose are complete. Suggestions are advice only. Wally still does not send, pay, submit, or write on its own. Act & Verify and daily-driver hardening are future work.
 
 ## Getting started
 
