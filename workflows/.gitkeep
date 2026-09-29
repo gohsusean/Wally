@@ -1,0 +1,6 @@
+# n8n workflow definitions owned by Wally.
+#
+# Each subdirectory is one workflow. Deploy to n8n via:
+#   scripts/deploy_workflows.py  (v0.5)
+#
+# Wally triggers workflows by stable name (directory name).

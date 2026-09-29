@@ -1,0 +1,12 @@
+# Home Assistant entity aliases
+# Maps human-friendly names to HA entity IDs or groups.
+# Used by HomeAutomationProvider adapter (v0.4+).
+#
+study_lights:
+  entities:
+    - light.study_desk_lamp
+    # - light.study_ceiling   # add your HA entity IDs
+
+# kitchen_lights:
+#   entities:
+#     - light.kitchen_pendant

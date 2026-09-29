@@ -1,0 +1,237 @@
+"""Incremental observe pass over existing read-only providers."""
+
+from __future__ import annotations
+
+from datetime import UTC, datetime, timedelta
+from uuid import uuid4
+
+from wally.models.knowledge import KnowledgeAsset
+from wally.models.ops import Observation, ObservationCategory
+from wally.ops.classify import classify_email, looks_like_injection
+from wally.ops.store import OperationsStore
+from wally.ops.text import (
+    clean_calendar_description,
+    clean_email_snippet,
+    clean_title,
+)
+from wally.providers.communications import CommunicationsProvider
+from wally.providers.knowledge import KnowledgeProvider
+from wally.runtime.authority import InformationAuthority
+
+EXTERNAL = InformationAuthority.EXTERNAL_COMMUNICATIONS.value
+KNOWLEDGE = InformationAuthority.KNOWLEDGE_ASSET.value
+
+
+def _now(now: datetime | None) -> datetime:
+    current = now or datetime.now(UTC)
+    if current.tzinfo is None:
+        return current.replace(tzinfo=UTC)
+    return current
+
+
+def _iso(value: datetime) -> str:
+    return value.astimezone(UTC).isoformat()
+
+
+class SourceObserver:
+    def __init__(self, store: OperationsStore) -> None:
+        self._store = store
+        self.skipped_fingerprints: list[str] = []
+
+    def observe_email(
+        self,
+        communications: CommunicationsProvider,
+        *,
+        now: datetime | None = None,
+        lookback_days: int = 14,
+        limit: int = 50,
+    ) -> list[Observation]:
+        current = _now(now)
+        after = (current - timedelta(days=lookback_days)).strftime("%Y/%m/%d")
+        summaries = communications.search_email(query=f"after:{after}", limit=limit)
+        ingested: list[Observation] = []
+        checkpoint = self._store.get_checkpoint("gmail")
+        seen = set(checkpoint.get("seen_ids", []))
+        for summary in summaries:
+            fingerprint = f"gmail:{summary.message_id}"
+            if self._store.get_observation_by_fingerprint(fingerprint) is not None:
+                self.skipped_fingerprints.append(fingerprint)
+                continue
+            if summary.message_id in seen:
+                continue
+            text = f"{summary.subject}\n{summary.snippet}"
+            category = classify_email(
+                subject=summary.subject,
+                snippet=summary.snippet,
+                labels=summary.labels,
+            )
+            extra = {}
+            if looks_like_injection(text):
+                extra["injection_suspected"] = "true"
+            observation = Observation(
+                id=str(uuid4()),
+                fingerprint=fingerprint,
+                source="gmail",
+                source_id=summary.message_id,
+                observed_at=_iso(current),
+                source_timestamp=summary.date,
+                category=category,
+                title=clean_title(summary.subject),
+                summary=clean_email_snippet(
+                    summary.snippet,
+                    receipt=category == ObservationCategory.RECEIPT,
+                ),
+                trusted=False,
+                authority=EXTERNAL,
+                confidence=0.9 if category in {
+                    ObservationCategory.INVOICE,
+                    ObservationCategory.RECEIPT,
+                } else 0.7,
+                thread_id=summary.thread_id,
+                extra=extra,
+            )
+            self._store.save_observation(observation)
+            ingested.append(observation)
+            seen.add(summary.message_id)
+        self._store.set_checkpoint("gmail", {"seen_ids": list(seen)[-500:]})
+        return ingested
+
+    def observe_calendar(
+        self,
+        communications: CommunicationsProvider,
+        *,
+        now: datetime | None = None,
+        horizon_days: int = 14,
+    ) -> list[Observation]:
+        current = _now(now)
+        start = current.isoformat()
+        end = (current + timedelta(days=horizon_days)).isoformat()
+        events = communications.list_calendar_events(start=start, end=end)
+        ingested: list[Observation] = []
+        checkpoint = self._store.get_checkpoint("calendar")
+        snapshots: dict[str, str] = dict(checkpoint.get("snapshots", {}))
+        current_ids = set()
+        for event in events:
+            current_ids.add(event.event_id)
+            snapshot = f"{event.start}|{event.summary}"
+            fingerprint = f"calendar:{event.event_id}:{snapshot}"
+            previous = snapshots.get(event.event_id)
+            if previous == snapshot and self._store.get_observation_by_fingerprint(
+                f"calendar:{event.event_id}:{previous}"
+            ):
+                continue
+            if self._store.get_observation_by_fingerprint(fingerprint) is not None:
+                snapshots[event.event_id] = snapshot
+                continue
+            category = (
+                ObservationCategory.CALENDAR_CHANGED
+                if previous and previous != snapshot
+                else ObservationCategory.CALENDAR_UPCOMING
+            )
+            description = clean_calendar_description(event.description)
+            extra = {"start": event.start, "end": event.end}
+            if looks_like_injection(event.description or event.summary):
+                extra["injection_suspected"] = "true"
+            observation = Observation(
+                id=str(uuid4()),
+                fingerprint=fingerprint,
+                source="calendar",
+                source_id=event.event_id,
+                observed_at=_iso(current),
+                source_timestamp=event.start,
+                category=category,
+                title=clean_title(event.summary),
+                summary=description or clean_title(event.summary),
+                trusted=False,
+                authority=EXTERNAL,
+                confidence=1.0,
+                extra=extra,
+            )
+            self._store.save_observation(observation)
+            ingested.append(observation)
+            snapshots[event.event_id] = snapshot
+        for event_id, snapshot in list(snapshots.items()):
+            if event_id in current_ids:
+                continue
+            fingerprint = f"calendar-cancelled:{event_id}:{snapshot}"
+            if self._store.get_observation_by_fingerprint(fingerprint) is None:
+                observation = Observation(
+                    id=str(uuid4()),
+                    fingerprint=fingerprint,
+                    source="calendar",
+                    source_id=event_id,
+                    observed_at=_iso(current),
+                    source_timestamp=_iso(current),
+                    category=ObservationCategory.CALENDAR_CANCELLED,
+                    title="Calendar event no longer in horizon",
+                    summary="Previously observed event is missing from the upcoming window.",
+                    trusted=False,
+                    authority=EXTERNAL,
+                    confidence=0.8,
+                )
+                self._store.save_observation(observation)
+                ingested.append(observation)
+            snapshots.pop(event_id, None)
+        self._store.set_checkpoint("calendar", {"snapshots": snapshots})
+        return ingested
+
+    def observe_knowledge(
+        self,
+        knowledge: KnowledgeProvider,
+        *,
+        now: datetime | None = None,
+        bills_role: str = "finance",
+    ) -> list[Observation]:
+        current = _now(now)
+        ingested: list[Observation] = []
+        seen: set[str] = set()
+        assets: list[KnowledgeAsset] = []
+        for query in ("obligation", "recurring", "due"):
+            try:
+                result = knowledge.retrieve(query, role=bills_role, limit=20)
+            except Exception:
+                continue
+            for asset in result.assets:
+                if asset.id in seen:
+                    continue
+                seen.add(asset.id)
+                assets.append(asset)
+        for asset in assets:
+            ingested.extend(self._obligation_from_asset(asset, current))
+        return ingested
+
+    def _obligation_from_asset(
+        self, asset: KnowledgeAsset, current: datetime
+    ) -> list[Observation]:
+        meta = {key.lower(): value for key, value in asset.metadata.items()}
+        cadence = (meta.get("cadence") or meta.get("recurrence") or "").lower()
+        if cadence not in {"monthly", "recurring", "annual"} and not meta.get("due_date"):
+            return []
+        period = current.strftime("%Y-%m")
+        if cadence == "annual":
+            period = current.strftime("%Y")
+        fingerprint = f"knowledge-obligation:{asset.id}:{period}"
+        if self._store.get_observation_by_fingerprint(fingerprint) is not None:
+            return []
+        due = meta.get("due_date") or meta.get("due_at") or ""
+        extra = {"period": period, "cadence": cadence or "unspecified"}
+        if looks_like_injection(asset.content):
+            extra["injection_suspected"] = "true"
+        observation = Observation(
+            id=str(uuid4()),
+            fingerprint=fingerprint,
+            source="knowledge",
+            source_id=asset.id,
+            observed_at=_iso(current),
+            source_timestamp=due or _iso(current),
+            category=ObservationCategory.KNOWLEDGE_OBLIGATION,
+            title=clean_title(asset.title),
+            summary=clean_email_snippet(asset.content),
+            trusted=True,
+            authority=KNOWLEDGE,
+            confidence=1.0,
+            related_knowledge_id=asset.id,
+            extra=extra,
+        )
+        self._store.save_observation(observation)
+        return [observation]

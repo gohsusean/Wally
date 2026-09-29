@@ -1,0 +1,41 @@
+# Execution capability registry — maps capability names to n8n webhook paths.
+#
+# Workflows describe *how* something is executed (bank transfer, card portal),
+# not *what* is being paid. Provider metadata from Knowledge determines routing.
+#
+# Workflow JSON exports live in workflows/<name>/ for version control.
+# Deploy to n8n manually or via scripts/deploy_workflows.py (future).
+#
+# N8N_WEBHOOK_BASE_URL in .env should be your n8n base URL, e.g.:
+#   https://n8n.example.com/webhook/
+
+workflows:
+  weekly-backup:
+    description: Run weekly data backup
+    webhook_path: weekly-backup
+    action_class: reversible
+
+  pay-bill-bank-transfer:
+    description: Pay a bill via bank transfer (generic execution capability)
+    webhook_path: pay-bill-bank-transfer
+    action_class: financial
+    capability:
+      domain: payment
+      method: bank_transfer
+    parameters:
+      amount:
+        type: number
+        description: Payment amount
+        required: true
+      account:
+        type: string
+        description: Bill account reference
+        required: false
+
+  pay-bill-card-portal:
+    description: Pay a bill via card portal (browser automation)
+    execution: browser
+    action_class: financial
+    capability:
+      domain: payment
+      method: card_portal

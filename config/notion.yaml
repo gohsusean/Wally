@@ -1,0 +1,9 @@
+# Notion adapter platform configuration
+#
+# Database classifications live in the knowledge registry (SQLite).
+# Approve classifications at startup or via /knowledge commands.
+
+defaults:
+  type_property: "Type of Knowledge Asset"
+
+exclude: []

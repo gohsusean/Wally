@@ -1,0 +1,6 @@
+"""Operational and development scripts.
+
+Planned scripts:
+  health_check.py  — Validate all provider connections (v0.2)
+  migrate.py       — MacBook → Mac Mini migration helper (v1.0)
+"""

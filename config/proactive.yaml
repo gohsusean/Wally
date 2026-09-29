@@ -1,0 +1,28 @@
+# Proactive intelligence settings (v0.8+)
+
+enabled: false  # Enable in v0.8
+
+aggressiveness: conservative  # conservative | moderate | off
+
+quiet_hours:
+  enabled: true
+  start: "22:00"
+  end: "07:00"
+  timezone: Australia/Sydney  # Adjust to your timezone
+  # Security-class events bypass quiet hours
+
+triggers:
+  cron:
+    enabled: true
+    # Checks run on Mac Mini; intervals defined per task type
+  homeassistant:
+    enabled: true
+    # Subscribe to HA events for device state changes
+
+categories:
+  # Per-category opt-in. All default to false until v0.8 setup.
+  bills_due: true
+  security_anomaly: true
+  calendar_reminder: false
+  weather_suggestion: false
+  packing_reminder: false

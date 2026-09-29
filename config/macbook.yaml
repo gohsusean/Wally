@@ -1,0 +1,104 @@
+# Development configuration — MacBook
+# Secrets are loaded from environment variables, not this file.
+
+environment: development
+
+session:
+  database: data/sessions.db
+  conversation:
+    enabled: true
+    max_context_messages: 50
+    consolidate_after: 40
+    keep_recent: 20
+    search_limit: 10
+
+audit:
+  directory: data/audit
+  rotation: daily
+
+safety:
+  dry_run: false
+  require_approval:
+    - financial
+    - destructive
+    - irreversible
+
+providers:
+  llm:
+    adapter: openai
+    default_profile: balanced
+    profiles:
+      fast:
+        provider: openai
+        model: gpt-5-mini
+      balanced:
+        provider: openai
+        model: gpt-5
+      deep:
+        provider: openai
+        model: gpt-5-thinking
+    routing:
+      fast_tools:
+        - conversation_search
+        - conversation_recent
+        - knowledge_retrieve
+        - knowledge_get
+        - workflow_list
+        - workflow_trigger
+        - communications_email_search
+        - communications_email_get
+        - communications_calendar_list
+        - communications_calendar_availability
+      fast_tasks:
+        - consolidation
+      # web_search and web_fetch use loader defaults when omitted
+  web:
+    adapter: openai
+    enabled: true
+    search_model: gpt-5-mini
+    search_context_size: low
+    fetch_max_bytes: 524288
+  finance:
+    adapter: local
+    enabled: true
+    bills_role: finance
+  secrets:
+    adapter: op_cli
+    enabled: false  # set true after `op signin`; never store credentials in Notion
+  browser:
+    adapter: playwright
+    enabled: true
+    headless: false
+    session_timeout_seconds: 3600
+  knowledge:
+    adapter: notion
+    enabled: true
+    registry: data/knowledge_registry.db
+  home_automation:
+    adapter: homeassistant
+    enabled: false  # out of scope — see ADR-022
+  workflow:
+    adapter: n8n
+    enabled: true
+  communications:
+    adapter: google
+    enabled: true
+    calendar_id: primary
+
+ops:
+  enabled: true
+  database: data/operations.db
+  calendar_horizon_days: 14
+  preparation_hours: 48
+  email_lookback_days: 14
+  # timezone:   # optional IANA name (e.g. UTC). Default: system local timezone.
+
+prompts:
+  system: prompts/system/v1.md
+  safety: prompts/safety/v1.md
+  knowledge: prompts/capabilities/knowledge_v1.md
+  workflow: prompts/capabilities/workflow_v1.md
+  communications: prompts/capabilities/communications_v1.md
+  conversation: prompts/capabilities/conversation_v1.md
+  web: prompts/capabilities/web_v1.md
+  finance: prompts/capabilities/finance_v1.md
