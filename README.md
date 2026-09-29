@@ -6,7 +6,11 @@ Wally is not a chatbot. It is not a home automation platform.
 
 ## Status
 
-**Status:** Shipped through **v0.13.0 — Assess & Propose.** The current milestone is **v0.14 — Approval Inbox** (not yet shipped). v0.10 browser automation, v0.11.1 secrets hardening, v0.12 Observe & Brief, and v0.13 Assess & Propose are complete. Suggestions are advice only. Wally still does not send, pay, submit, or write on its own. Act & Verify and daily-driver hardening are future work.
+**Status:** **v0.14.0 — Approval Inbox.** Proposals can be approved, rejected, or deferred. Approval is authorization state only. Wally still does not send, pay, submit, or write on its own.
+
+Complete: v0.10 browser automation, v0.11.1 secrets hardening, v0.12 Observe & Brief, v0.13 Assess & Propose, v0.14 Approval Inbox.
+
+Future: Act & Verify, scheduling and notifications, daily-driver hardening.
 
 ## Getting started
 
@@ -36,7 +40,11 @@ uv run wally
 | `/knowledge pending` | Show databases awaiting classification |
 | `/knowledge review <id>` | Show classification recommendation |
 | `/knowledge approve <id> operational\|governance` | Approve database classification |
-| `/brief` | Generate an operational brief, including suggestions |
+| `/brief` | Generate an operational brief, including decisions waiting for you |
+| `/approvals` | Show the Approval Inbox |
+| `/approve <id>` | Approve a pending proposal. Does not execute it |
+| `/reject <id>` | Reject a pending proposal |
+| `/defer <id> --until <date>` | Hide a proposal until a date |
 | `/exit` | Quit |
 
 One-shot brief (no REPL):
@@ -44,6 +52,11 @@ One-shot brief (no REPL):
 ```bash
 uv run wally brief
 uv run wally brief --json --no-refresh
+uv run wally approvals
+uv run wally approvals --json
+uv run wally approve <proposal-id>
+uv run wally reject <proposal-id>
+uv run wally defer <proposal-id> --until 2026-10-03
 ```
 
 See [docs/chief-of-staff.md](docs/chief-of-staff.md).

@@ -24,3 +24,11 @@ class ProposalTransitionError(WallyError):
     Raised instead of erasing history or leaving two active proposals for one
     matter and intent.
     """
+
+
+class ProposalDecisionError(WallyError):
+    """An explicit user decision could not be recorded.
+
+    Raised for unknown proposals, decisions that are not currently allowed, and
+    any attempt to decide a proposal from an untrusted origin.
+    """

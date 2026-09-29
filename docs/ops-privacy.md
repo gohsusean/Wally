@@ -14,6 +14,10 @@ Phase 1 persistence lives in `data/operations.db` (SQLite). The audit directory 
 - Knowledge asset IDs when an obligation is tied to a designated asset
 - Provenance flags (`trusted`, `authority`, `injection_suspected`)
 
+## Approval records (v0.14)
+
+A decision stores the proposal id, the decision, timestamps, a trusted origin (`user_cli` or `user_repl`), an optional short note, and the proposal fingerprint that was reviewed. The audit event for a decision carries the same fields. It does not store the email body, the browser DOM, or a secret.
+
 ## Not stored
 
 - Full email bodies (Observe uses search snippets only; it does not call `get_email`)
@@ -25,4 +29,4 @@ Phase 1 persistence lives in `data/operations.db` (SQLite). The audit directory 
 
 ## Trust
 
-Email and calendar content is always `trusted=false` with `external_communications` authority. Instruction-like text is recorded as data and may be flagged; it cannot grant approval, trigger sends/payments, or resolve secrets.
+Email and calendar content is always `trusted=false` with `external_communications` authority. Instruction-like text is recorded as data and may be flagged; it cannot grant approval, trigger sends/payments, or resolve secrets. A proposal decision is recorded only from an explicit CLI or REPL command. Approval does not resolve a secret.

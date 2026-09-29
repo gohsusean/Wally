@@ -13,6 +13,7 @@ from wally.ops.text import (
     clean_calendar_description,
     clean_email_snippet,
     clean_title,
+    extract_currency_amount,
 )
 from wally.providers.communications import CommunicationsProvider
 from wally.providers.knowledge import KnowledgeProvider
@@ -68,6 +69,10 @@ class SourceObserver:
             extra = {}
             if looks_like_injection(text):
                 extra["injection_suspected"] = "true"
+            if category == ObservationCategory.INVOICE:
+                amount = extract_currency_amount(text)
+                if amount:
+                    extra["amount"] = amount
             observation = Observation(
                 id=str(uuid4()),
                 fingerprint=fingerprint,

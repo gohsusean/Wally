@@ -1128,6 +1128,52 @@ Revisit when Phase 3 introduces the approval inbox and needs an `approved` trans
 
 ---
 
+## ADR-036: Proposal approval is not execution (Chief of Staff Phase 3)
+
+**Status:** Accepted — implemented in v0.14.0  
+**Date:** 2026-09-30  
+**Deciders:** Founding engineer + project owner
+
+### Context
+
+Phase 2 persists `ProposedAction` rows and states that none of them is an authorization (ADR-035). The runtime already has a separate execution-time gate: `ApprovalProvider.request_approval` plus `ApprovalGate`, used when a tool call is about to run. Phase 3 needs a durable decision on a proposal — approve, reject, or defer — without creating a path from `status == approved` to Gmail, Calendar, browser automation, n8n, payment, secret resolution, or a shell.
+
+The failure mode is treating the new status as a token the executor can trust. A second failure mode is letting untrusted source text, or model prose, write that status.
+
+### Decision
+
+1. **Extend `ProposalStatus`** with `approved`, `rejected`, and `deferred`. Keep the Phase 2 closures (`superseded`, `invalidated`, `expired`, `dismissed`). `dismissed` stays terminal. Reject is the user-facing refusal. There is no separate dismiss command in this milestone.
+2. **Store the decision on the proposal row** that was reviewed: `decision`, `decided_at`, `decision_origin`, `decision_note`, `defer_until`, and `decision_fingerprint`. The fingerprint is copied from the stored row inside `record_decision`, so the caller cannot bind the decision to a different version.
+3. **Trusted origins only.** `user_cli` and `user_repl`. `record_decision` rejects every other origin, including text taken from a message or a model reply.
+4. **One writer.** `save_proposal` cannot enter a user-decision status or rewrite a row that already has one. System closure (`close_proposal`) cannot enter a user-decision status either. It can invalidate or supersede an approved row when the facts change.
+5. **Material change voids the approval for the new version.** The previous row keeps its decision and becomes `superseded` or `invalidated`. The successor is `proposed`. A normalized amount on `observation.extra["amount"]` is part of a bill fingerprint when present. Prose in a snippet is not. Snippet-only edits do not churn an approval. A new invoice observation still changes `observation_ids`, which already changes the fingerprint.
+6. **Rejection sticks for that fingerprint.** Deferred proposals return to `proposed` when `defer_until` passes, with the decision fields cleared. The defer remains in the audit log. An invalidated proposal may reopen as `proposed` when the same facts return, with the decision cleared so a prior approval is not inherited. Superseded rows are not reopened.
+7. **Keep `ApprovalProvider` for execution time.** It is not the inbox. The inbox does not call it. v0.14 does not call it as a side effect of approving a proposal.
+8. **`execution_allowed` always returns false.** Orchestrator, runtime, adapters, and safety code do not read `ProposalStatus`. Act & Verify must replace that function later. It must not gain a true branch in this milestone.
+9. **Additive migration.** New columns are `ALTER TABLE ... ADD COLUMN` with empty defaults. The open-proposal unique index is widened to `proposed`, `approved`, and `deferred`. Existing v0.13 rows stay pending and undecided. `operations.db` is not wiped.
+
+### Consequences
+
+**Positive:** Sean can decide on a proposal and the decision survives a refresh. A changed bill cannot keep an old approval. Rejected items do not pop back from the same evidence. Nothing in this milestone can treat approval as permission to send, pay, or resolve a secret.
+
+**Negative:** Approved proposals sit inert until Act & Verify exists. A reverted proposal version that matches a superseded fingerprint still produces no active row, matching the Phase 2 rule that superseded history is not resurrected. Amount changes that never land in `extra["amount"]` or a new observation id do not by themselves change the fingerprint.
+
+### Alternatives considered
+
+| Alternative | Why rejected |
+|-------------|--------------|
+| Reuse `ApprovalProvider.request_approval` as the inbox | That API returns a boolean for a live tool call. It does not persist a proposal version, a defer date, or a rejection |
+| Let `status == approved` satisfy `ApprovalGate` | Collapses authorization intent into execution and lets a later bug skip the human check at act time |
+| Store approval in n8n | Moves policy out of Wally and gives an external system the decision of record |
+| Trust "approved" text in the source | Untrusted data would authorize itself |
+| Overwrite the approved row when the amount changes | The user would no longer be able to see which version they approved |
+
+### Review trigger
+
+Revisit when Act & Verify needs to translate an approved fingerprint into a `PlannedAction`, and when that translation must fail closed unless `decision_fingerprint` still matches and `execution_allowed` is replaced by a real check.
+
+---
+
 ```markdown
 ## ADR-NNN: Title
 

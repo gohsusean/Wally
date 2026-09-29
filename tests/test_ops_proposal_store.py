@@ -489,6 +489,124 @@ def test_lookup_by_fingerprint_returns_the_stored_version(tmp_path: Path) -> Non
     assert store.get_proposal("absent") is None
 
 
+V013_PROPOSALS = """
+CREATE TABLE proposals (
+    id TEXT PRIMARY KEY,
+    fingerprint TEXT NOT NULL,
+    matter_id TEXT NOT NULL,
+    intent TEXT NOT NULL,
+    status TEXT NOT NULL,
+    provenance TEXT NOT NULL,
+    risk TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    title TEXT NOT NULL,
+    rationale TEXT NOT NULL,
+    suggestion TEXT NOT NULL,
+    confidence REAL NOT NULL DEFAULT 1.0,
+    content_hash TEXT NOT NULL DEFAULT '',
+    expires_at TEXT NOT NULL DEFAULT '',
+    status_reason TEXT NOT NULL DEFAULT '',
+    superseded_by TEXT NOT NULL DEFAULT '',
+    observation_ids TEXT NOT NULL DEFAULT '[]',
+    knowledge_ids TEXT NOT NULL DEFAULT '[]',
+    event_id TEXT NOT NULL DEFAULT '',
+    thread_id TEXT NOT NULL DEFAULT ''
+)
+"""
+
+
+def _v013_database(path: Path) -> None:
+    conn = sqlite3.connect(path)
+    try:
+        for statement in LEGACY_SCHEMA:
+            conn.execute(statement)
+        conn.execute(V013_PROPOSALS)
+        conn.execute(
+            """
+            CREATE UNIQUE INDEX idx_proposals_fingerprint ON proposals (fingerprint)
+            """
+        )
+        conn.execute(
+            """
+            CREATE UNIQUE INDEX idx_proposals_active
+            ON proposals (matter_id, intent)
+            WHERE status = 'proposed'
+            """
+        )
+        conn.execute(
+            """
+            INSERT INTO proposals (
+                id, fingerprint, matter_id, intent, status, provenance, risk,
+                created_at, updated_at, title, rationale, suggestion, confidence,
+                content_hash, expires_at, status_reason, superseded_by,
+                observation_ids, knowledge_ids, event_id, thread_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "prop-v013",
+                "matter-legacy:review_bill:hash-v013",
+                "matter-legacy",
+                "review_bill",
+                "proposed",
+                "deterministic_rules",
+                "medium",
+                "2026-08-10T09:00:00+00:00",
+                "2026-08-11T09:00:00+00:00",
+                "Review open bill",
+                "Open finance matter supported by a bill or a recurring obligation.",
+                "Review this bill and decide how to handle it.",
+                1.0,
+                "hash-v013",
+                "",
+                "",
+                "",
+                "[]",
+                "[]",
+                "",
+                "thread-legacy",
+            ),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def test_v013_proposals_gain_decision_columns_without_losing_rows(tmp_path: Path) -> None:
+    path = tmp_path / "operations.db"
+    _v013_database(path)
+    before = {table: _dump(path, table) for table in ("observations", "matters", "checkpoints")}
+
+    store = OperationsStore(path)
+    loaded = store.get_proposal("prop-v013")
+
+    assert loaded is not None
+    assert loaded.status is ProposalStatus.PROPOSED
+    assert loaded.fingerprint == "matter-legacy:review_bill:hash-v013"
+    assert loaded.decision == ""
+    assert loaded.decided_at == ""
+    assert loaded.decision_origin == ""
+    assert loaded.decision_note == ""
+    assert loaded.defer_until == ""
+    assert loaded.decision_fingerprint == ""
+    assert loaded.title == "Review open bill"
+    after = {table: _dump(path, table) for table in ("observations", "matters", "checkpoints")}
+    assert after == before
+
+    recorded = store.record_decision(
+        "prop-v013",
+        status=ProposalStatus.APPROVED,
+        updated_at="2026-08-12T09:00:00+00:00",
+        decision_origin="user_cli",
+        status_reason="user approved",
+    )
+    assert recorded
+    decided = store.get_proposal("prop-v013")
+    assert decided is not None
+    assert decided.status is ProposalStatus.APPROVED
+    assert decided.decision_fingerprint == decided.fingerprint
+
+
 def test_store_does_not_depend_on_execution_types() -> None:
     import wally.ops.store as store_module
 

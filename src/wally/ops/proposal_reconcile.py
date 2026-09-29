@@ -16,6 +16,7 @@ from datetime import UTC, datetime
 
 from wally.exceptions import ProposalTransitionError
 from wally.models.ops import (
+    REOPENABLE_PROPOSAL_STATUSES,
     Matter,
     MatterStatus,
     Observation,
@@ -33,6 +34,10 @@ REASON_MATTER_CLOSED = "matter no longer open"
 REASON_EVIDENCE_INELIGIBLE = "supporting evidence no longer eligible"
 REASON_CONTENT_CHANGED = "proposal content changed"
 REASON_INTENT_CHANGED = "proposal intent changed"
+REASON_DEFER_ELAPSED = "defer window elapsed"
+REASON_REOPENED = "matter reopened; prior authorization cleared"
+
+_BLOCKED_RECREATE = frozenset({ProposalStatus.REJECTED, ProposalStatus.DISMISSED})
 
 
 @dataclass
@@ -44,10 +49,21 @@ class ProposalReconciliation:
     invalidated: list[str] = field(default_factory=list)
     expired: list[str] = field(default_factory=list)
     unchanged: list[str] = field(default_factory=list)
+    defer_elapsed: list[str] = field(default_factory=list)
+    reopened: list[str] = field(default_factory=list)
+    decisions_voided: list[str] = field(default_factory=list)
 
     @property
     def changed(self) -> bool:
-        return bool(self.created or self.superseded or self.invalidated or self.expired)
+        return bool(
+            self.created
+            or self.superseded
+            or self.invalidated
+            or self.expired
+            or self.defer_elapsed
+            or self.reopened
+            or self.decisions_voided
+        )
 
 
 def _aware(value: datetime) -> datetime:
@@ -68,13 +84,10 @@ class ProposalReconciler:
         observations = {item.id: item for item in self._store.list_observations()}
         matters = {item.id: item for item in self._store.list_matters()}
 
-        for proposal in self._store.list_proposals(status=ProposalStatus.PROPOSED):
+        for proposal in self._store.list_open_proposals():
             self._reconcile_active(proposal, matters, observations, current, result)
 
-        active_matters = {
-            proposal.matter_id
-            for proposal in self._store.list_proposals(status=ProposalStatus.PROPOSED)
-        }
+        active_matters = {proposal.matter_id for proposal in self._store.list_open_proposals()}
         for matter in matters.values():
             if matter.id in active_matters or matter.status != MatterStatus.OPEN:
                 continue
@@ -120,6 +133,18 @@ class ProposalReconciler:
             return
 
         if candidate.fingerprint == proposal.fingerprint:
+            if self._defer_has_elapsed(proposal, now):
+                released = self._store.release_defer(
+                    proposal.id,
+                    updated_at=_iso(now),
+                    status_reason=REASON_DEFER_ELAPSED,
+                )
+                if not released:
+                    raise ProposalTransitionError(
+                        f"proposal {proposal.id} was not deferred when the defer window elapsed"
+                    )
+                result.defer_elapsed.append(proposal.id)
+                return
             result.unchanged.append(proposal.id)
             return
 
@@ -146,6 +171,7 @@ class ProposalReconciler:
             updated_at=_iso(now),
             status_reason=reason,
         )
+        self._note_voided_decision(proposal, result)
         if terminal_status == ProposalStatus.SUPERSEDED:
             result.superseded.append(proposal.id)
         else:
@@ -162,10 +188,36 @@ class ProposalReconciler:
         candidate = propose_for_matter(matter, self._support_for(matter, observations), now=now)
         if candidate is None:
             return
-        if self._store.get_proposal_by_fingerprint(candidate.fingerprint) is not None:
+        existing = self._store.get_proposal_by_fingerprint(candidate.fingerprint)
+        if existing is None:
+            self._store.save_proposal(candidate)
+            result.created.append(candidate.id)
             return
-        self._store.save_proposal(candidate)
-        result.created.append(candidate.id)
+        if existing.status in _BLOCKED_RECREATE:
+            return
+        if existing.status in REOPENABLE_PROPOSAL_STATUSES:
+            reopened = self._store.reopen_proposal(
+                existing.id,
+                updated_at=_iso(now),
+                status_reason=REASON_REOPENED,
+            )
+            if reopened:
+                result.reopened.append(existing.id)
+            return
+
+    def _defer_has_elapsed(self, proposal: ProposedAction, now: datetime) -> bool:
+        if proposal.status != ProposalStatus.DEFERRED:
+            return False
+        if not proposal.defer_until:
+            return True
+        deferred_until = parse_time(proposal.defer_until)
+        return deferred_until is None or deferred_until <= now
+
+    def _note_voided_decision(
+        self, proposal: ProposedAction, result: ProposalReconciliation
+    ) -> None:
+        if proposal.decision and proposal.id not in result.decisions_voided:
+            result.decisions_voided.append(proposal.id)
 
     def _has_expired(self, proposal: ProposedAction, now: datetime) -> bool:
         """Timed expiry is calendar-only, so a bill proposal never expires."""
@@ -189,12 +241,13 @@ class ProposalReconciler:
             status_reason=reason,
         )
         if not closed:
-            # The row left PROPOSED underneath this pass. Fail loudly rather than
+            # The row left the open set underneath this pass. Fail loudly rather than
             # report a transition the database never applied.
             raise ProposalTransitionError(
-                f"proposal {proposal.id} was not {ProposalStatus.PROPOSED.value} "
+                f"proposal {proposal.id} was not open (proposed, approved, or deferred) "
                 "when the transition was applied"
             )
+        self._note_voided_decision(proposal, result)
         if status == ProposalStatus.EXPIRED:
             result.expired.append(proposal.id)
         elif status == ProposalStatus.SUPERSEDED:

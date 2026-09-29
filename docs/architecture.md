@@ -1,10 +1,10 @@
 # Wally — Architecture
 
-**Version:** 0.1 design baseline; implementation shipped through v0.13.0  
-**Status:** Living architecture. Current milestone is v0.14 Approval Inbox. Act & Verify is future work.  
+**Version:** 0.1 design baseline; implementation shipped through v0.14.0  
+**Status:** Living architecture. Act & Verify is future work and is not implemented.  
 **Last updated:** 2026-09-30
 
-Shipped: v0.10 browser automation, v0.11.1 secrets hardening, v0.12 Observe & Brief, v0.13 Assess & Propose. Historical sections below keep the design as it was written. They are not rewritten to look like the current milestone.
+Shipped: v0.10 browser automation, v0.11.1 secrets hardening, v0.12 Observe & Brief, v0.13 Assess & Propose, v0.14 Approval Inbox. Historical sections below keep the design as it was written. They are not rewritten to look like the current milestone.
 
 ---
 
@@ -196,7 +196,8 @@ Each external domain has a provider interface. Providers expose *tools* that the
 | `BrowserAutomationProvider` | Deterministic browser execution (portals, forms) | **v0.10** | Playwright (`adapters/browser/playwright_adapter.py`) |
 | `SecretsProvider` | Execution-time credentials | **v0.11** | 1Password CLI (`adapters/secrets/op_cli.py`) |
 | Observe & Brief (`ops/`) | Observations, Matters, operational brief | **v0.12** | Wally SQLite + existing read providers |
-| `ApprovalProvider` | Request human confirmation | **Now** | CLI prompt |
+| `ApprovalProvider` | Execution-time y/n for a consequential tool call | **Now** | CLI prompt |
+| Approval Inbox (`ops/`) | Durable decision on a ProposedAction | **v0.14** | SQLite columns on `proposals`; not a tool grant |
 | `HomeAutomationProvider` | Home device state/control | **Deferred** | Optional HA read-only (future) |
 
 #### Finance safety (`runtime/finance_safety.py`)
@@ -208,6 +209,19 @@ Each external domain has a provider interface. Providers expose *tools* that the
   2. `user_confirmation` — explicit user confirmation
   3. `verification_provider` — future read-only financial verification
 - Without valid evidence, `knowledge_update` / `knowledge_create` that marks a finance-role bill as paid is rejected by `evaluate_bill_paid_write_policy`.
+
+#### Proposal approval versus execution approval (v0.14)
+
+These are different stages.
+
+| | Approval Inbox | `ApprovalProvider` |
+|--|----------------|--------------------|
+| Object | Durable `ProposedAction` | One consequential tool call |
+| When | Before any execution exists | Immediately before a provider write |
+| Effect in v0.14 | Status becomes `approved`, `rejected`, or `deferred` | Still the y/n gate on tools that actually run |
+| Executes? | No. `execution_allowed` is always false | Only if the user confirms that call |
+
+An email, calendar item, Notion page, or model reply cannot set proposal status. n8n does not store it. A material fingerprint change supersedes an approval instead of reusing it. See ADR-036.
 
 #### Browser Automation Provider (v0.10)
 
@@ -519,7 +533,7 @@ The orchestrator assembles prompts from these files. Version numbers allow rollb
 src/wally/
 ├── __init__.py
 ├── __main__.py              # Entry point: python -m wally
-├── ops/                     # Observe → Matter reconcile → brief (v0.12)
+├── ops/                     # Observe → propose → Approval Inbox (v0.12–v0.14)
 ├── orchestrator/
 │   ├── core.py              # Main reasoning loop
 │   ├── context.py           # Context assembly

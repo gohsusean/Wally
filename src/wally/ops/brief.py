@@ -165,6 +165,32 @@ def _active_proposals(
     return tuple(projected)
 
 
+def _decision_lines(
+    brief: OperationalBrief,
+    sections: list[tuple[str, tuple[BriefItem, ...]]],
+    tz: tzinfo,
+) -> list[str]:
+    """Pending proposals only. Approved and deferred rows are not in ``brief.proposals``."""
+    by_matter = {item.matter_id: item for _, items in sections for item in items}
+    lines = ["Decisions waiting for you"]
+    for index, proposal in enumerate(brief.proposals, start=1):
+        matter = by_matter.get(proposal.matter_id)
+        headline = matter.title if matter is not None else proposal.title
+        lines.append(f"{index}. {headline}")
+        deadline = ""
+        if matter is not None and matter.deadline:
+            deadline = format_brief_datetime(matter.deadline, tz=tz)
+        elif proposal.expires_at:
+            deadline = format_brief_datetime(proposal.expires_at, tz=tz)
+        if deadline:
+            lines.append(f"   Due: {deadline}")
+        lines.append(f"   Why: {proposal.rationale}")
+        lines.append(f"   Proposed: {proposal.suggestion}")
+        lines.append(f"   ID: {proposal.proposal_id}")
+    lines.append("")
+    return lines
+
+
 def format_brief(brief: OperationalBrief, *, display_tz: tzinfo | None = None) -> str:
     tz = display_tz or resolve_display_tz(None)
     generated = format_brief_datetime(brief.generated_at, tz=tz)
@@ -201,6 +227,7 @@ def format_brief(brief: OperationalBrief, *, display_tz: tzinfo | None = None) -
     if empty:
         lines.append("Nothing needs attention.")
     if brief.proposals:
+        lines.extend(_decision_lines(brief, sections, tz))
         lines.append(NO_ACTION_FOOTER)
     for note in brief.notes:
         lines.append(note)

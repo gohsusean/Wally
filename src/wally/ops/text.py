@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 from datetime import UTC, datetime, tzinfo
+from decimal import Decimal
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from wally.ops.priority import parse_time
@@ -29,6 +30,11 @@ _CALENDAR_BOILERPLATE_URLS = re.compile(
 
 UNMATCHED_RECEIPT_CHANGE = "Receipt noted; no matching open bill"
 UNMATCHED_RECEIPT_REASON = "Unmatched receipt; no open bill"
+
+_AMOUNT_TOKEN = re.compile(r"^\d{1,9}(?:\.\d{1,2})?$")
+_CURRENCY_AMOUNT = re.compile(
+    r"(?i)(?:usd|sgd|myr|rm|s\$|\$)\s*(\d{1,9}(?:,\d{3})*(?:\.\d{2})?)"
+)
 
 
 def system_display_tz() -> tzinfo:
@@ -71,6 +77,34 @@ def clean_calendar_description(text: str) -> str:
 def clean_email_snippet(text: str, *, receipt: bool = False) -> str:
     limit = RECEIPT_SNIPPET_MAX if receipt else EMAIL_SNIPPET_MAX
     return sanitize_ops_text(text, max_chars=limit)
+
+
+def normalized_amount(value: str) -> str:
+    """Return a canonical decimal amount, or '' when the token is not one.
+
+    ``120``, ``120.5``, and ``120.00`` collapse to ``120.00``. Prose, currency
+    symbols, and instruction-like strings are not amounts.
+    """
+    token = (value or "").strip().replace(",", "")
+    if not _AMOUNT_TOKEN.fullmatch(token):
+        return ""
+    return f"{Decimal(token):.2f}"
+
+
+def extract_currency_amount(text: str) -> str:
+    """Return one normalized currency amount, or '' when the text is ambiguous.
+
+    Several distinct amounts, or none, yield '' so an injected extra figure cannot
+    silently replace the bill's amount or force a version change by itself.
+    """
+    found = {
+        normalized
+        for match in _CURRENCY_AMOUNT.finditer(text or "")
+        if (normalized := normalized_amount(match.group(1)))
+    }
+    if len(found) != 1:
+        return ""
+    return next(iter(found))
 
 
 def clean_title(text: str) -> str:

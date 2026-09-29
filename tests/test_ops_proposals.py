@@ -106,6 +106,9 @@ def test_intents_are_limited_to_the_approved_two() -> None:
 def test_all_lifecycle_statuses_are_defined() -> None:
     assert {s.value for s in ProposalStatus} == {
         "proposed",
+        "approved",
+        "rejected",
+        "deferred",
         "superseded",
         "invalidated",
         "expired",
@@ -113,9 +116,14 @@ def test_all_lifecycle_statuses_are_defined() -> None:
     }
 
 
-def test_no_approved_status_exists() -> None:
-    assert not hasattr(ProposalStatus, "APPROVED")
-    assert all("approv" not in s.value for s in ProposalStatus)
+def test_approval_state_is_not_an_execution_token() -> None:
+    """A decision status exists. It is not an execution grant or a token field."""
+    assert ProposalStatus.APPROVED.value == "approved"
+    names = _field_names(ProposedAction)
+    assert "decision" in names
+    assert "decision_fingerprint" in names
+    for forbidden in ("approval_token", "authorized", "tool_name", "payload", "secret"):
+        assert forbidden not in names
 
 
 def test_provenance_covers_deterministic_rules_only() -> None:

@@ -6,8 +6,16 @@ from dataclasses import asdict
 from datetime import UTC, datetime
 
 from wally.audit.logger import AuditLogger
-from wally.models.ops import Matter, Observation, OperationalBrief
+from wally.models.ops import (
+    Matter,
+    Observation,
+    OperationalBrief,
+    ProposalStatus,
+    ProposedAction,
+)
 from wally.ops.brief import format_brief, generate_brief
+from wally.ops.decisions import UserDecision, apply_user_decision
+from wally.ops.inbox import build_inbox, format_inbox
 from wally.ops.observe import SourceObserver
 from wally.ops.proposal_reconcile import ProposalReconciler, ProposalReconciliation
 from wally.ops.reconcile import MatterReconciler
@@ -103,17 +111,69 @@ class ObserveBriefService:
         now: datetime | None = None,
         since: str | None = None,
     ) -> OperationalBrief:
-        current = now or datetime.now(UTC)
-        if current.tzinfo is None:
-            current = current.replace(tzinfo=UTC)
+        current = self._clock(now)
         if refresh:
             self.refresh(now=current)
         # Runs on every brief, including --no-refresh, so stored proposals still
         # expire and resolved matters still withdraw their suggestions.
-        self._audit_proposals(self._proposals.reconcile(now=current))
+        self._reconcile_proposals(now=current)
         result = generate_brief(self._store, now=current, since=since)
         self._log("brief_generated", result.generated_at, "ops")
         return result
+
+    def approvals(
+        self,
+        *,
+        refresh: bool = False,
+        now: datetime | None = None,
+        as_json: bool = False,
+    ) -> str:
+        """Render the Approval Inbox. Does not execute approved proposals."""
+        current = self._clock(now)
+        if refresh:
+            self.refresh(now=current)
+        self._reconcile_proposals(now=current)
+        inbox = build_inbox(self._store, now=current)
+        self._log("proposal_inbox_viewed", "inbox", f"pending={len(inbox.pending)}")
+        if as_json:
+            import json
+
+            return json.dumps(asdict(inbox), indent=2)
+        return format_inbox(inbox, display_tz=self._display_tz)
+
+    def decide(
+        self,
+        proposal_id: str,
+        *,
+        decision: UserDecision,
+        origin: str,
+        note: str = "",
+        defer_until: str = "",
+        now: datetime | None = None,
+    ) -> ProposedAction:
+        """Record a user decision. Reconciles stored proposals first. Executes nothing."""
+        current = self._clock(now)
+        self._reconcile_proposals(now=current)
+        stored = apply_user_decision(
+            self._store,
+            proposal_id,
+            decision=decision,
+            origin=origin,
+            now=current,
+            note=note,
+            defer_until=defer_until,
+        )
+        self._audit_user_decision(stored)
+        return stored
+
+    def _clock(self, now: datetime | None) -> datetime:
+        current = now or datetime.now(UTC)
+        if current.tzinfo is None:
+            return current.replace(tzinfo=UTC)
+        return current
+
+    def _reconcile_proposals(self, *, now: datetime) -> ProposalReconciliation:
+        return self._audit_proposals(self._proposals.reconcile(now=now))
 
     def render(
         self,
@@ -143,11 +203,13 @@ class ObserveBriefService:
         if abs(previous.priority_score - matter.priority_score) >= 20:
             self._log("priority_changed", matter.id, str(matter.priority_score))
 
-    def _audit_proposals(self, outcome: ProposalReconciliation) -> None:
+    def _audit_proposals(self, outcome: ProposalReconciliation) -> ProposalReconciliation:
         """Log real lifecycle transitions only, by proposal id.
 
         Unchanged proposals are silent, so a repeated brief adds no audit noise, and
         no suggestion prose, matter text, or reference identifier is recorded.
+        Decision voids, defer returns, and reopens add the proposal version without
+        source text.
         """
         for event_type, proposal_ids in (
             ("proposal_created", outcome.created),
@@ -157,6 +219,62 @@ class ObserveBriefService:
         ):
             for proposal_id in proposal_ids:
                 self._log(event_type, proposal_id, "proposals")
+        for proposal_id in outcome.decisions_voided:
+            self._audit_version_event("proposal_approval_invalidated", proposal_id)
+        for proposal_id in outcome.defer_elapsed:
+            self._audit_version_event("proposal_defer_elapsed", proposal_id)
+        for proposal_id in outcome.reopened:
+            self._audit_version_event("proposal_reopened", proposal_id)
+        return outcome
+
+    def _audit_user_decision(self, proposal: ProposedAction) -> None:
+        if self._audit is None:
+            return
+        parameters = {
+            "proposal_id": proposal.id,
+            "fingerprint": proposal.fingerprint,
+            "decision": proposal.decision,
+            "origin": proposal.decision_origin,
+        }
+        if proposal.decision_note:
+            parameters["note"] = proposal.decision_note
+        event = {
+            ProposalStatus.APPROVED: "proposal_approved",
+            ProposalStatus.REJECTED: "proposal_rejected",
+            ProposalStatus.DEFERRED: "proposal_deferred",
+        }.get(proposal.status, "proposal_decided")
+        self._audit.log_simple(
+            event_type=event,
+            session_id="ops",
+            outcome="success",
+            provider="ops",
+            approval_status=proposal.decision,
+            parameters=parameters,
+        )
+
+    def _audit_version_event(self, event_type: str, proposal_id: str) -> None:
+        if self._audit is None:
+            return
+        proposal = self._store.get_proposal(proposal_id)
+        decision = proposal.decision if proposal is not None else ""
+        if event_type == "proposal_defer_elapsed":
+            decision = "deferred"
+        parameters = {
+            "proposal_id": proposal_id,
+            "fingerprint": proposal.fingerprint if proposal is not None else "",
+            "decision": decision,
+            "origin": "reconciliation",
+        }
+        if event_type == "proposal_reopened":
+            parameters["note"] = "prior authorization not inherited"
+        self._audit.log_simple(
+            event_type=event_type,
+            session_id="ops",
+            outcome="success",
+            provider="ops",
+            approval_status=parameters["decision"] or None,
+            parameters=parameters,
+        )
 
     def _log(self, event_type: str, subject: str, detail: str) -> None:
         if self._audit is None:

@@ -32,7 +32,7 @@ from wally.models.ops import (
     ProposedAction,
 )
 from wally.ops.priority import parse_time
-from wally.ops.text import clean_title
+from wally.ops.text import clean_title, normalized_amount
 
 INJECTION_FLAG = "injection_suspected"
 
@@ -111,6 +111,15 @@ def _supporting(matter: Matter, observations: Sequence[Observation]) -> list[Obs
 
 def _injection_suspected(observations: Sequence[Observation]) -> bool:
     return any(item.extra.get(INJECTION_FLAG) == "true" for item in observations)
+
+
+def _bill_amounts(evidence: Sequence[Observation]) -> list[str]:
+    found = {
+        normalized
+        for item in evidence
+        if (normalized := normalized_amount(item.extra.get("amount", "")))
+    }
+    return sorted(found)
 
 
 def _is_bill_evidence(observation: Observation) -> bool:
@@ -210,17 +219,20 @@ def _review_bill(
     knowledge.update(item.related_knowledge_id for item in evidence if item.related_knowledge_id)
     knowledge_ids = tuple(sorted(knowledge))
     due_at = _normalized_time(matter.due_at)
-    digest = content_hash(
-        {
-            "intent": ProposalIntent.REVIEW_BILL.value,
-            "matter_id": matter.id,
-            "title": hashed,
-            "due_at": due_at,
-            "knowledge_ids": list(knowledge_ids),
-            "observation_ids": list(observation_ids),
-            "thread_id": matter.thread_id,
-        }
-    )
+    fields: dict[str, object] = {
+        "intent": ProposalIntent.REVIEW_BILL.value,
+        "matter_id": matter.id,
+        "title": hashed,
+        "due_at": due_at,
+        "knowledge_ids": list(knowledge_ids),
+        "observation_ids": list(observation_ids),
+        "thread_id": matter.thread_id,
+    }
+    # Omitted when absent so a v0.13 bill with no structured amount keeps its fingerprint.
+    amounts = _bill_amounts(evidence)
+    if amounts:
+        fields["amounts"] = amounts
+    digest = content_hash(fields)
     return ProposedAction(
         id=str(uuid4()),
         fingerprint=fingerprint_for(matter.id, ProposalIntent.REVIEW_BILL, digest),

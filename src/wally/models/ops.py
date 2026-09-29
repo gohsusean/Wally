@@ -1,4 +1,4 @@
-"""Operational observation, matter, and proposal models — Chief of Staff Phases 1-2."""
+"""Operational observation, matter, and proposal models — Chief of Staff Phases 1-3."""
 
 from __future__ import annotations
 
@@ -93,13 +93,53 @@ class ProposalIntent(StrEnum):
 
 
 class ProposalStatus(StrEnum):
-    """Proposal lifecycle. There is deliberately no approved state."""
+    """Proposal lifecycle.
+
+    ``approved``, ``rejected``, and ``deferred`` record an explicit user decision.
+    They are authorization state for a later Act & Verify milestone. None of them
+    executes anything, and none of them is an execution-time tool approval.
+    """
 
     PROPOSED = "proposed"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+    DEFERRED = "deferred"
     SUPERSEDED = "superseded"
     INVALIDATED = "invalidated"
     EXPIRED = "expired"
     DISMISSED = "dismissed"
+
+
+# Still awaiting a user decision, or already decided and not yet closed by the system.
+OPEN_PROPOSAL_STATUSES = frozenset(
+    {
+        ProposalStatus.PROPOSED,
+        ProposalStatus.APPROVED,
+        ProposalStatus.DEFERRED,
+    }
+)
+
+# Statuses only an explicit user command may enter.
+USER_DECISION_STATUSES = frozenset(
+    {
+        ProposalStatus.APPROVED,
+        ProposalStatus.REJECTED,
+        ProposalStatus.DEFERRED,
+    }
+)
+
+# System-closed rows that may be reopened when the same facts return.
+# Superseded rows stay history: reverting to an older version must not resurrect it.
+# Rejected and dismissed rows stay closed so unchanged evidence cannot undo a refusal.
+REOPENABLE_PROPOSAL_STATUSES = frozenset(
+    {
+        ProposalStatus.INVALIDATED,
+        ProposalStatus.EXPIRED,
+    }
+)
+
+# The only origins allowed to record a proposal decision.
+TRUSTED_DECISION_ORIGINS = frozenset({"user_cli", "user_repl"})
 
 
 class ProposalProvenance(StrEnum):
@@ -122,8 +162,9 @@ class ProposedAction:
 
     Carries intent plus reference identifiers and display-only prose. It holds no
     tool name, provider arguments, or executable payload, so it cannot be
-    dispatched. Translating an intent into something executable is a later phase's
-    explicit, reviewable step.
+    dispatched. A user decision recorded on this row authorizes nothing by itself.
+    Translating an intent into something executable is a later phase's explicit,
+    reviewable step.
     """
 
     id: str
@@ -147,6 +188,12 @@ class ProposedAction:
     knowledge_ids: tuple[str, ...] = ()
     event_id: str = ""
     thread_id: str = ""
+    decision: str = ""
+    decided_at: str = ""
+    decision_origin: str = ""
+    decision_note: str = ""
+    defer_until: str = ""
+    decision_fingerprint: str = ""
 
 
 @dataclass(frozen=True)

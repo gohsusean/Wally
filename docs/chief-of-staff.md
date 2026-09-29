@@ -1,9 +1,9 @@
 # Chief of Staff — Observe, Brief & Propose
 
-**Version:** 0.13.0 (latest shipped)  
-**Status:** Current milestone is v0.14 Approval Inbox (not production v1.0)
+**Version:** 0.14.0  
+**Status:** Current milestone (not production v1.0)
 
-Wally is building persistent operational understanding: what is happening, what changed, what is still open, what can wait, and what the user might do next. Phases 1 and 2 are **read / assess / brief / propose only**. Phase 3 will record explicit approval without executing.
+Wally is building persistent operational understanding: what is happening, what changed, what is still open, what can wait, and what the user might do next. Phases 1 and 2 are **read / assess / brief / propose only**. Phase 3 records an explicit decision and still does not execute.
 
 ## Loop
 
@@ -11,7 +11,7 @@ Wally is building persistent operational understanding: what is happening, what 
 |-------|--------|-----------|
 | 1 Observe → Assess → Brief | **Complete (v0.12)** | Ingest signals, reconcile Matters, print a brief |
 | 2 Assess & Propose | **Complete (v0.13.0)** | Durable suggestions in the brief; do not execute |
-| 3 Approval Inbox | **Current (v0.14)** | Human authorization of proposals; approval is not execution |
+| 3 Approval Inbox | **Complete (v0.14.0)** | Human authorization of proposals; approval is not execution |
 | 4 Act & Verify | Future | Execute after approval; verify outcomes |
 | 5 Daily-driver hardening | Future | Scheduling, noise, notification UX |
 
@@ -46,9 +46,16 @@ uv run wally brief
 uv run wally brief --json
 uv run wally brief --no-refresh
 uv run wally brief --since 2026-08-01T00:00:00+00:00
+uv run wally approvals
+uv run wally approvals --json
+uv run wally approve <proposal-id> [--note "..."]
+uv run wally reject <proposal-id> [--note "..."]
+uv run wally defer <proposal-id> --until 2026-10-03 [--note "..."]
 ```
 
-In the REPL: `/brief` (add `--no-refresh` to skip a new observe pass).
+In the REPL: `/brief` (add `--no-refresh` to skip a new observe pass), `/approvals`, `/approve <id>`, `/reject <id>`, `/defer <id> --until <date>`.
+
+`approvals` reconciles stored proposals and does not observe external sources unless `--refresh` is set. Approving does not execute.
 
 Brief timestamps use `ops.timezone` when set, otherwise the system local timezone. Stored values remain ISO.
 
@@ -77,14 +84,14 @@ Generation is deterministic: rules over trusted Matter state pick the intent, it
 
 ### Lifecycle and invalidation
 
-`proposed` → `superseded` | `invalidated` | `expired` | `dismissed`. There is no `approved` state; the enum does not contain one.
+As shipped in v0.13.0: `proposed` → `superseded` | `invalidated` | `expired` | `dismissed`. v0.13.0 had no user decision state. Phase 3 adds `approved`, `rejected`, and `deferred` without turning any of them into execution.
 
 | Transition | Rule |
 |------------|------|
 | Superseded | The same matter and intent regenerate with materially changed content. The prior row is kept for audit. |
 | Invalidated | The underlying Matter resolves, or its supporting facts stop holding. |
 | Expired | **Calendar only.** A `PREPARE_FOR_EVENT` proposal expires at event start. |
-| Dismissed | Reserved for Phase 3. No user-facing dismissal ships in v0.13.0. |
+| Dismissed | Terminal status. No dismiss command in v0.13.0. v0.14 uses reject for a user refusal. |
 
 Bill proposals carry no timer. They close only on resolution, material change, or supersession, so an overdue unresolved bill is never hidden by an arbitrary expiry window. Repeated observe passes are idempotent: the same facts regenerate the same proposal rather than a duplicate.
 
@@ -96,15 +103,25 @@ Proposals render inline beneath their Matter, prefixed `↳ Suggested:` so advic
 
 Phase 2 performs no tool call, no provider write, no secret resolution, no capability routing, and no approval bypass. The proposal service is constructed without capability, secrets, or browser dependencies, and tests assert those paths are unreachable from generation. Persistence is additive: a `proposals` table created with `CREATE TABLE IF NOT EXISTS`, leaving v0.12.1 rows unmodified — generation reads Matters but writes nothing back to them — with no reset required.
 
-### Deferred
+### Deferred from Phase 2
 
-`FOLLOW_UP` (it depends on sent-mail observations the live database does not yet produce), dismissal UI, approval, execution, scheduling, and notifications.
+`FOLLOW_UP` (it depends on sent-mail observations the live database does not yet produce), execution, scheduling, and notifications. Approval shipped in Phase 3. Dismissed remains a terminal status; reject is the user-facing refusal.
 
 ### Sequence and exit criteria
 
 Six steps: (1) domain model, (2) additive persistence, (3) deterministic generation of the two intents, (4) lifecycle reconciliation, (5) brief and JSON presentation, (6) documentation and the 0.13.0 version bump.
 
 Those exit criteria are covered by the proposal test suite: a repeated pass produces no duplicates; resolution invalidates and material change supersedes; event proposals expire at start while bill proposals do not; injection-flagged matters yield nothing; tests prove no execution path is reachable; and the brief shows inline suggestions with the no-action footer. Live `REVIEW_BILL` acceptance still waits on a real bill email, since no `invoice` observation has been classified yet. That is an operational check, not missing Phase 2 code.
+
+## Phase 3 — Approval Inbox (v0.14.0)
+
+Implemented. Full rationale in ADR-036. This phase adds no execution path.
+
+A pending proposal can be approved, rejected, or deferred from the CLI or REPL. The decision is stored on that proposal version: timestamp, trusted origin (`user_cli` or `user_repl`), optional note, and `decision_fingerprint` copied from the row. Source text and model output are not origins.
+
+The brief adds **Decisions waiting for you** for pending proposals, with the proposal id. Approved proposals leave that section. Deferred proposals stay quiet until `defer_until`. Rejected proposals do not reappear for the same fingerprint.
+
+`wally.ops.execution.execution_allowed` always returns false. Approval does not resolve secrets or call the tool registry. Act & Verify is still future work.
 
 ## Privacy
 

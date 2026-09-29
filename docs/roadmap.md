@@ -1,7 +1,6 @@
 # Wally — Roadmap
 
-**Version:** 0.13.0 (latest shipped)  
-**Current milestone:** v0.14 — Approval Inbox  
+**Version:** 0.14.0  
 **Last updated:** 2026-09-30
 
 Wally is a **personal Chief of Staff** and **personal AI operating system** — not a home automation platform.
@@ -77,7 +76,7 @@ Wally's primary responsibilities:
 | v0.11.1 | Secrets hardening | Authorization flag, leak scrubbing, VERIFY_AUTH |
 | v0.12 | v1.0 Phase 1 Observe & Brief | Observations, Matters, on-demand brief (no autonomous writes) |
 | v0.13 | v1.0 Phase 2 Assess & Propose | Durable proposed actions surfaced in the brief (still no execution) |
-| v0.14 | v1.0 Phase 3 Approval Inbox | **Current.** Durable review: approve, reject, or defer. Approval is not execution |
+| v0.14 | v1.0 Phase 3 Approval Inbox | Durable review: approve, reject, or defer. Approval is not execution |
 | v1.0 later | Phases 4–5 | Act & Verify, then daily-driver hardening |
 | v1.0+ | Retrieval Router | Runtime-owned retrieval policy (see below) |
 | v1.x+ | Optional providers | Travel, property depth; HA read-only context |
@@ -366,11 +365,26 @@ See ADR-035 and [chief-of-staff.md](chief-of-staff.md).
 
 ---
 
-## v0.14 — v1.0 Phase 3 Approval Inbox ✦ current
+## v0.14.0 — v1.0 Phase 3 Approval Inbox ✓
 
 **Goal:** Make a ProposedAction durable, reviewable, and explicitly approvable, rejectable, or deferrable. Approval records authorization intent only. It does not send, pay, submit, or write.
 
-Not started in the shipped v0.13.0 tree. Act & Verify stays out of this milestone.
+**Lifecycle:** `proposed` → `approved` | `rejected` | `deferred`, and the existing system closures `superseded` | `invalidated` | `expired` | `dismissed`.
+
+- **Approved** stores the user decision, its timestamp, origin (`user_cli` or `user_repl`), optional note, and the fingerprint of the version that was reviewed. It does not call a tool.
+- **Rejected** stays rejected for that fingerprint. The same evidence does not recreate it.
+- **Deferred** leaves the decision queue until `defer_until`, then returns to `proposed`.
+- **Material change** (including a normalized bill amount on `observation.extra["amount"]`) supersedes an approval. The old row keeps its decision. The new row is `proposed`.
+- **Matter resolution** invalidates an open proposal, including one already approved. Reopening the matter with the same facts restores `proposed` and clears the decision.
+- **Dismissed** remains a terminal status. v0.14 does not add a separate dismiss command; reject is the user refusal.
+
+**Commands:** `wally approvals`, `wally approve`, `wally reject`, `wally defer --until`. REPL: `/approvals`, `/approve`, `/reject`, `/defer`.
+
+**Boundary:** `execution_allowed` always returns false. Orchestrator, runtime, and adapters do not read proposal status. n8n does not own approval. Secret references are not resolved.
+
+**Not in this milestone:** executing an approved proposal, scheduling, notifications.
+
+See ADR-036 and [chief-of-staff.md](chief-of-staff.md).
 
 ---
 
