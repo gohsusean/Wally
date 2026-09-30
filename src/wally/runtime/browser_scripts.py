@@ -46,6 +46,20 @@ def card_portal_post_auth_actions(
     return tuple(actions)
 
 
+def portal_verify_auth_actions(bill: dict[str, Any]) -> tuple[BrowserAction, ...]:
+    """Read-only login check. Empty when Knowledge configures no success condition."""
+    selector = auth_success_selector(bill)
+    url_contains = auth_success_url_contains(bill)
+    if not selector and not url_contains:
+        return ()
+    params: dict[str, Any] = {}
+    if selector:
+        params["selector"] = selector
+    if url_contains:
+        params["url_contains"] = url_contains
+    return (BrowserAction(BrowserActionType.VERIFY_AUTH, params),)
+
+
 def card_portal_payment_actions(
     bill: dict[str, Any],
     *,

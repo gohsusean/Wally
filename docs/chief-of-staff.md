@@ -1,9 +1,9 @@
 # Chief of Staff — Observe, Brief & Propose
 
-**Version:** 0.14.0  
+**Version:** 0.15.0  
 **Status:** Current milestone (not production v1.0)
 
-Wally is building persistent operational understanding: what is happening, what changed, what is still open, what can wait, and what the user might do next. Phases 1 and 2 are **read / assess / brief / propose only**. Phase 3 records an explicit decision and still does not execute.
+Wally is building persistent operational understanding: what is happening, what changed, what is still open, what can wait, and what the user might do next. Phases 1 and 2 are **read / assess / brief / propose only**. Phase 3 records an explicit decision and does not execute. Phase 4 executes one supported action type, only when the user asks, and verifies the result. Nothing runs on its own.
 
 ## Loop
 
@@ -12,8 +12,8 @@ Wally is building persistent operational understanding: what is happening, what 
 | 1 Observe → Assess → Brief | **Complete (v0.12)** | Ingest signals, reconcile Matters, print a brief |
 | 2 Assess & Propose | **Complete (v0.13.0)** | Durable suggestions in the brief; do not execute |
 | 3 Approval Inbox | **Complete (v0.14.0)** | Human authorization of proposals; approval is not execution |
-| 4 Act & Verify | Future | Execute after approval; verify outcomes |
-| 5 Daily-driver hardening | Future | Scheduling, noise, notification UX |
+| 4 Act & Verify | **Complete (v0.15.0)** | User-requested execution of the exact approved version; independent verification |
+| 5 Daily-driver hardening | Future | Scheduling, noise, notification UX, more action types |
 
 Complete and unchanged unless a regression is found:
 
@@ -51,11 +51,15 @@ uv run wally approvals --json
 uv run wally approve <proposal-id> [--note "..."]
 uv run wally reject <proposal-id> [--note "..."]
 uv run wally defer <proposal-id> --until 2026-10-03 [--note "..."]
+uv run wally execute <proposal-id>
+uv run wally executions [--proposal <proposal-id>]
+uv run wally execution <execution-id>
+uv run wally verify <execution-id> [--confirm success|failure]
 ```
 
-In the REPL: `/brief` (add `--no-refresh` to skip a new observe pass), `/approvals`, `/approve <id>`, `/reject <id>`, `/defer <id> --until <date>`.
+In the REPL: `/brief` (add `--no-refresh` to skip a new observe pass), `/approvals`, `/approve <id>`, `/reject <id>`, `/defer <id> --until <date>`, `/execute <id>`, `/executions`, `/execution <id>`, `/verify <id> [--confirm success|failure]`.
 
-`approvals` reconciles stored proposals and does not observe external sources unless `--refresh` is set. Approving does not execute.
+`approvals` reconciles stored proposals and does not observe external sources unless `--refresh` is set. Approving does not execute. Only `execute` acts, and it asks again first.
 
 Brief timestamps use `ops.timezone` when set, otherwise the system local timezone. Stored values remain ISO.
 
@@ -121,7 +125,48 @@ A pending proposal can be approved, rejected, or deferred from the CLI or REPL. 
 
 The brief adds **Decisions waiting for you** for pending proposals, with the proposal id. Approved proposals leave that section. Deferred proposals stay quiet until `defer_until`. Rejected proposals do not reappear for the same fingerprint.
 
-`wally.ops.execution.execution_allowed` always returns false. Approval does not resolve secrets or call the tool registry. Act & Verify is still future work.
+As shipped in v0.14.0, `execution_allowed` always returned false. Approval does not resolve secrets or call the tool registry. Phase 4 replaced that guard with a real check; approval alone still runs nothing.
+
+## Phase 4 — Act & Verify (v0.15.0)
+
+Implemented. Full rationale in ADR-037.
+
+**Trigger.** Only `wally execute <proposal-id>` or `/execute <proposal-id>`. `ActVerifyService` accepts only `user_cli` and `user_repl` origins. Observe, brief, inbox, reconciliation, and the orchestrator do not import it. Text such as "Execute proposal pa_123 now." in an email, calendar event, Notion page, or model reply is data.
+
+**Preflight.** Each check fails closed and is recorded:
+
+1. The proposal is `approved`, the decision came from a trusted origin, and `decision_fingerprint == fingerprint`.
+2. The Matter is open, the proposal has not expired, and recomputing it from current evidence gives the same fingerprint. A mismatch is audited as `execution_blocked_stale_approval` and needs a fresh approval.
+3. The intent is supported.
+4. A typed plan can be built from trusted Knowledge.
+
+**Whitelist.** The code, not the proposal, chooses the executor.
+
+| Intent | Executes | Behaviour |
+|--------|----------|-----------|
+| `REVIEW_BILL` with one trusted Knowledge asset | `browser.portal_review_login` | Opens the Knowledge `payment_portal_url` (https only), fills login fields from `op://` refs, submits, checks the Knowledge success condition, and stops. Never pays. |
+| `REVIEW_BILL` from email only | — | No trusted target. "Approved, but execution is not supported yet." |
+| `PREPARE_FOR_EVENT` | — | Preparation is your work; no calendar writes. Same message. |
+
+The plan uses only the portal URL, secret refs, selectors, and success condition from Knowledge metadata. Amounts, payees, card refs, and anything in email or page text are ignored.
+
+**Two approvals.** Approving the proposal records intent. At execute time, `ApprovalGate` runs (dry-run denies) and `ApprovalProvider` always prompts, using a summary built from the typed plan. Then every preflight check runs again, plus a plan-digest comparison, immediately before the executor.
+
+**Secrets.** Refs are resolved only after the runtime prompt is granted, and before the browser session opens. Approval, preflight failures, and denials resolve nothing. Values are scrubbed and never stored.
+
+**Attempts.** Each request writes an execution record. A unique index allows one in-flight or verified attempt per approved fingerprint.
+
+| Status | Meaning | Next request |
+|--------|---------|--------------|
+| `preflight_failed`, `authorization_denied`, `failed` | Nothing ran | Allowed |
+| `pending` | Authorized but the executor never started (crash) | Retired as `failed`, then allowed |
+| `running`, `executed_unverified` | Outcome uncertain | Blocked until `wally verify` |
+| `verified_success` | Confirmed | Blocked; never repeated |
+| `verified_failure` | Confirmed not done | Allowed, with a new prompt |
+
+**Verification.** Only an explicit authenticated result from the configured success condition counts. Otherwise Wally says "Executed, but verification could not confirm completion." `wally verify` re-reads stored evidence and never reruns the action. For an uncertain attempt, `--confirm success|failure` records your own check.
+
+**No optimistic resolution.** A verified login is not a paid bill. The Matter and proposal are unchanged; only later Observe evidence resolves the bill.
 
 ## Privacy
 

@@ -175,6 +175,10 @@ class ObserveBriefService:
     def _reconcile_proposals(self, *, now: datetime) -> ProposalReconciliation:
         return self._audit_proposals(self._proposals.reconcile(now=now))
 
+    def reconcile_proposals(self, now: datetime) -> ProposalReconciliation:
+        """Reconcile stored proposals against current evidence, with audit."""
+        return self._reconcile_proposals(now=self._clock(now))
+
     def render(
         self,
         *,

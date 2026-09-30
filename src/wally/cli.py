@@ -15,16 +15,19 @@ from wally.cli_knowledge import (
 from wally.config.loader import find_project_root
 from wally.exceptions import (
     ConfigurationError,
+    ExecutionRequestError,
     ProposalDecisionError,
     ProviderUnavailableError,
     WallyError,
 )
 from wally.models.messages import Session
+from wally.models.ops import VerificationOutcome
+from wally.ops.act import format_execution, format_executions
 from wally.ops.decisions import UserDecision
 
-BANNER = """Wally v0.14.0 — personal AI operating system
+BANNER = """Wally v0.15.0 — personal AI operating system
 Type a message to talk to Wally.
-Commands: /help /new /health /sessions /knowledge /brief /approvals /exit
+Commands: /help /new /health /sessions /knowledge /brief /approvals /execute /exit
 """
 
 
@@ -90,6 +93,26 @@ def build_parser() -> argparse.ArgumentParser:
     defer.add_argument("proposal_id")
     defer.add_argument("--until", required=True, help="Date or ISO timestamp")
     defer.add_argument("--note", default="")
+    execute = sub.add_parser(
+        "execute",
+        help="Execute an approved proposal (asks again before anything runs)",
+    )
+    execute.add_argument("proposal_id")
+    executions = sub.add_parser("executions", help="List execution attempts")
+    executions.add_argument("--proposal", default=None, dest="execution_proposal")
+    execution = sub.add_parser("execution", help="Show one execution attempt")
+    execution.add_argument("execution_id")
+    verify = sub.add_parser(
+        "verify",
+        help="Re-check an execution from stored evidence (read-only), or record your own check",
+    )
+    verify.add_argument("execution_id")
+    verify.add_argument(
+        "--confirm",
+        choices=["success", "failure"],
+        default=None,
+        help="Record the outcome you checked yourself for an unverified execution",
+    )
     return parser
 
 
@@ -179,9 +202,15 @@ def _print_help() -> None:
         "  /approve <id> [note]\n"
         "  /reject <id> [note]\n"
         "  /defer <id> --until <date> [note]\n"
+        "  /execute <proposal-id>   Act on an approved proposal (asks again first)\n"
+        "  /executions              List execution attempts\n"
+        "  /execution <execution-id>\n"
+        "  /verify <execution-id> [--confirm success|failure]\n"
         "  /exit       Quit\n"
         "\n"
         "Approving a proposal records your decision. It does not send, pay, or submit.\n"
+        "Only /execute acts, and only for supported proposals. A bill review logs in\n"
+        "to the trusted portal and stops; it never pays.\n"
     )
 
 
@@ -237,10 +266,74 @@ def _run_stored_decision(app, args) -> int:
     return 0
 
 
-def parse_repl_ops_command(user_input: str) -> dict | None:
-    """Parse an inbox command. Returns None when the line is not one.
+def _act_required(app) -> bool:
+    if getattr(app, "act", None) is None:
+        print(
+            "Execution is disabled. Set ops.enabled: true in config.",
+            file=sys.stderr,
+        )
+        return False
+    return True
 
-    The verb is case-insensitive. The proposal id is not lowercased.
+
+def _print_execution_report(report) -> None:
+    print(report.message)
+    if report.execution is not None:
+        print(f"Execution: {report.execution.id} ({report.execution.status.value})")
+
+
+def _run_execute(app, proposal_id: str, *, origin: str) -> int:
+    if not _act_required(app):
+        return 1
+    try:
+        report = app.act.execute(proposal_id, origin=origin)
+    except (ExecutionRequestError, ProviderUnavailableError) as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+    _print_execution_report(report)
+    return 1 if report.blocked else 0
+
+
+def _run_verify(app, execution_id: str, *, confirm: str | None, origin: str) -> int:
+    if not _act_required(app):
+        return 1
+    outcome = None
+    if confirm == "success":
+        outcome = VerificationOutcome.VERIFIED_SUCCESS
+    elif confirm == "failure":
+        outcome = VerificationOutcome.VERIFIED_FAILURE
+    try:
+        report = app.act.verify(execution_id, origin=origin, confirm=outcome)
+    except ExecutionRequestError as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+    _print_execution_report(report)
+    return 1 if report.blocked else 0
+
+
+def _run_executions(app, *, proposal_id: str | None) -> int:
+    if not _act_required(app):
+        return 1
+    print(format_executions(app.act.list_executions(proposal_id=proposal_id)))
+    return 0
+
+
+def _run_execution(app, execution_id: str) -> int:
+    if not _act_required(app):
+        return 1
+    try:
+        execution = app.act.get_execution(execution_id)
+    except ExecutionRequestError as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+    print(format_execution(execution))
+    return 0
+
+
+def parse_repl_ops_command(user_input: str) -> dict | None:
+    """Parse an inbox or execution command. Returns None when the line is not one.
+
+    The verb is case-insensitive. Ids are not lowercased.
     """
     parts = user_input.split()
     if not parts:
@@ -252,6 +345,18 @@ def parse_repl_ops_command(user_input: str) -> dict | None:
             "as_json": "--json" in parts[1:],
             "refresh": "--refresh" in parts[1:],
         }
+    if verb == "/executions":
+        return {"action": "executions"}
+    if verb in {"/execute", "/execution", "/verify"}:
+        if len(parts) < 2:
+            raise ExecutionRequestError(f"{verb} needs an id.")
+        confirm = None
+        if verb == "/verify" and "--confirm" in parts[2:]:
+            index = parts.index("--confirm")
+            if index + 1 >= len(parts) or parts[index + 1] not in {"success", "failure"}:
+                raise ExecutionRequestError("--confirm needs success or failure.")
+            confirm = parts[index + 1]
+        return {"action": verb[1:], "id": parts[1], "confirm": confirm}
     if verb not in {"/approve", "/reject", "/defer"}:
         return None
     if len(parts) < 2:
@@ -280,11 +385,23 @@ def _run_repl_ops(app, user_input: str) -> bool:
     """Handle an inbox command. Returns True when the line was an inbox command."""
     try:
         parsed = parse_repl_ops_command(user_input)
-    except ProposalDecisionError as exc:
+    except (ProposalDecisionError, ExecutionRequestError) as exc:
         print(str(exc))
         return True
     if parsed is None:
         return False
+    if parsed["action"] == "execute":
+        _run_execute(app, parsed["id"], origin="user_repl")
+        return True
+    if parsed["action"] == "verify":
+        _run_verify(app, parsed["id"], confirm=parsed["confirm"], origin="user_repl")
+        return True
+    if parsed["action"] == "executions":
+        _run_executions(app, proposal_id=None)
+        return True
+    if parsed["action"] == "execution":
+        _run_execution(app, parsed["id"])
+        return True
     if not _ops_required(app):
         return True
     try:
@@ -328,6 +445,14 @@ def run_cli(argv: list[str] | None = None) -> int:
         return _run_approvals(app, refresh=args.refresh, as_json=args.approvals_json)
     if command in {"approve", "reject", "defer"}:
         return _run_stored_decision(app, args)
+    if command == "execute":
+        return _run_execute(app, args.proposal_id, origin="user_cli")
+    if command == "executions":
+        return _run_executions(app, proposal_id=args.execution_proposal)
+    if command == "execution":
+        return _run_execution(app, args.execution_id)
+    if command == "verify":
+        return _run_verify(app, args.execution_id, confirm=args.confirm, origin="user_cli")
 
     session: Session = app.sessions.resume_or_create(args.session)
     dry_run = "on" if app.settings.dry_run else "off"

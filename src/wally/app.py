@@ -19,6 +19,7 @@ from wally.audit.logger import AuditLogger
 from wally.config.loader import Settings, load_settings
 from wally.exceptions import ProviderUnavailableError
 from wally.knowledge.registry import KnowledgeRegistry
+from wally.ops.act import ActVerifyService
 from wally.ops.service import ObserveBriefService
 from wally.ops.store import OperationsStore
 from wally.orchestrator.core import Orchestrator
@@ -53,6 +54,7 @@ class App:
     secrets: SecretsProvider | None
     knowledge_registry: KnowledgeRegistry | None
     ops: ObserveBriefService | None
+    act: ActVerifyService | None = None
 
 
 class _UnavailableLLM:
@@ -208,9 +210,11 @@ def create_app(
         secrets=secrets_provider,
     )
     ops = None
+    act = None
     if settings.ops_enabled:
+        ops_store = OperationsStore(settings.ops_database)
         ops = ObserveBriefService(
-            OperationsStore(settings.ops_database),
+            ops_store,
             audit=audit,
             communications=communications,
             knowledge=knowledge,
@@ -219,6 +223,16 @@ def create_app(
             email_lookback_days=settings.ops_email_lookback_days,
             bills_role=settings.finance_bills_role,
             display_timezone=settings.ops_timezone,
+        )
+        act = ActVerifyService(
+            ops_store,
+            reconcile=ops.reconcile_proposals,
+            knowledge=knowledge,
+            browser_executor=browser_executor,
+            gate=gate,
+            approval=CLIApprovalProvider(),
+            audit=audit,
+            bills_role=settings.finance_bills_role,
         )
     return App(
         settings=settings,
@@ -234,4 +248,5 @@ def create_app(
         secrets=secrets_provider,
         knowledge_registry=registry,
         ops=ops,
+        act=act,
     )

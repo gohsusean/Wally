@@ -1,15 +1,17 @@
 """Approval Inbox: a read-only view over durable proposal decisions.
 
-Pending items come first. Approved items are listed as waiting for a future
-execution step. They are not executable from this view.
+Pending items come first. Approved items show whether an executor exists and the
+latest execution attempt. Nothing is executable from this view; execution needs a
+separate ``wally execute`` request.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 
 from wally.models.ops import ProposalIntent, ProposalStatus, ProposedAction
+from wally.ops.execution import UNSUPPORTED_EXECUTION_MESSAGE, execution_supported
 from wally.ops.priority import parse_time
 from wally.ops.store import OperationsStore
 from wally.ops.text import format_brief_datetime, resolve_display_tz
@@ -29,6 +31,7 @@ class InboxItem:
     intent: ProposalIntent
     defer_until: str = ""
     decided_at: str = ""
+    execution: str = ""
 
 
 @dataclass(frozen=True)
@@ -89,7 +92,7 @@ def build_inbox(
         if proposal.status == ProposalStatus.PROPOSED:
             pending.append(item)
         elif proposal.status == ProposalStatus.APPROVED:
-            approved.append(item)
+            approved.append(replace(item, execution=_execution_note(store, proposal)))
         elif proposal.status == ProposalStatus.DEFERRED:
             deferred.append(item)
         elif proposal.status == ProposalStatus.REJECTED and proposal.updated_at >= cutoff:
@@ -101,6 +104,20 @@ def build_inbox(
         deferred=tuple(sorted(deferred, key=_sort_key)),
         recently_rejected=tuple(sorted(rejected, key=_sort_key)),
     )
+
+
+def _execution_note(store: OperationsStore, proposal: ProposedAction) -> str:
+    if not execution_supported(proposal):
+        return UNSUPPORTED_EXECUTION_MESSAGE
+    attempts = [
+        item
+        for item in store.list_executions(proposal_id=proposal.id)
+        if item.proposal_fingerprint == proposal.fingerprint
+    ]
+    if not attempts:
+        return f"Ready. Run `wally execute {proposal.id}` to act; you will be asked again."
+    latest = attempts[0]
+    return f"Last attempt {latest.id}: {latest.status.value}"
 
 
 def _render_item(index: int, item: InboxItem, *, tz, extra: tuple[str, ...] = ()) -> list[str]:
@@ -127,14 +144,14 @@ def format_inbox(inbox: ApprovalInbox, *, display_tz=None) -> str:
         lines.append("Nothing is waiting for a decision.")
         lines.append("")
     if inbox.approved:
-        lines.append("Approved — not executed")
+        lines.append("Approved")
         for index, item in enumerate(inbox.approved, start=1):
             lines.extend(
                 _render_item(
                     index,
                     item,
                     tz=tz,
-                    extra=("   Execution: not implemented",),
+                    extra=(f"   Execution: {item.execution}",),
                 )
             )
         lines.append("")

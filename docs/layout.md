@@ -59,7 +59,7 @@ Application source. Organised by responsibility, not by technology.
 
 ```
 src/wally/
-├── ops/              # Observe, Matters, proposals, Approval Inbox (not n8n)
+├── ops/              # Observe, Matters, proposals, Approval Inbox, Act & Verify (not n8n)
 ├── orchestrator/     # Reasoning loop — knows capabilities, not implementations
 ├── providers/        # Protocol definitions (interfaces)
 ├── adapters/         # Concrete integrations (OpenAI, Notion, HA, n8n)

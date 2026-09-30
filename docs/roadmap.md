@@ -1,6 +1,6 @@
 # Wally — Roadmap
 
-**Version:** 0.14.0  
+**Version:** 0.15.0  
 **Last updated:** 2026-09-30
 
 Wally is a **personal Chief of Staff** and **personal AI operating system** — not a home automation platform.
@@ -77,7 +77,8 @@ Wally's primary responsibilities:
 | v0.12 | v1.0 Phase 1 Observe & Brief | Observations, Matters, on-demand brief (no autonomous writes) |
 | v0.13 | v1.0 Phase 2 Assess & Propose | Durable proposed actions surfaced in the brief (still no execution) |
 | v0.14 | v1.0 Phase 3 Approval Inbox | Durable review: approve, reject, or defer. Approval is not execution |
-| v1.0 later | Phases 4–5 | Act & Verify, then daily-driver hardening |
+| v0.15 | v1.0 Phase 4 Act & Verify | User-requested execution of the exact approved version, then independent verification |
+| v1.0 later | Phase 5 | Scheduling, notifications, daily-driver hardening |
 | v1.0+ | Retrieval Router | Runtime-owned retrieval policy (see below) |
 | v1.x+ | Optional providers | Travel, property depth; HA read-only context |
 
@@ -388,10 +389,37 @@ See ADR-036 and [chief-of-staff.md](chief-of-staff.md).
 
 ---
 
-## v1.0 later — Phases 4–5 (future)
+## v0.15.0 — v1.0 Phase 4 Act & Verify ✓
 
-**Phase 4 — Act & Verify:** execute after approval; verify outcomes. Not implemented.  
-**Phase 5 — Daily-driver hardening:** scheduling, notification UX, noise control.
+**Goal:** Execute an approved proposal only on an explicit user request, only for the exact version that was approved, and report what an independent check confirms.
+
+- **Entry points:** `wally execute <proposal-id>` and `/execute`. No scheduler, Observe pass, brief, inbox, model output, or source content can start execution.
+- **Pipeline:**
+  1. Load the proposal.
+  2. Require `approved`, a trusted decision origin, and `decision_fingerprint == fingerprint`.
+  3. Recompute the proposal from current evidence and require the same fingerprint, an open Matter, and no expiry.
+  4. Require a supported intent.
+  5. Build a typed plan from trusted Knowledge.
+  6. Run `ApprovalGate`, then always prompt through `ApprovalProvider`.
+  7. Recheck everything, including the plan digest.
+  8. Resolve secrets, then run the executor.
+  9. Verify.
+  10. Persist.
+- **Supported:** `REVIEW_BILL` backed by one trusted Knowledge asset. It logs in to the trusted portal, checks the login, and stops. It never pays; there is no PAY_BILL intent.
+- **Unsupported:** `PREPARE_FOR_EVENT` and email-only bills stay inert with "Approved, but execution is not supported yet."
+- **Records:** an `executions` table (additive migration) with the statuses `pending`, `preflight_failed`, `authorization_denied`, `running`, `executed_unverified`, `verified_success`, `verified_failure`, and `failed`. There is one in-flight or verified attempt per approved fingerprint. Uncertain attempts block retries until reviewed.
+- **Verification:** only an explicit authenticated result counts. Otherwise Wally reports "Executed, but verification could not confirm completion." `wally verify` is read-only; `--confirm success|failure` records your own check. A verified review never resolves the Matter.
+- **Commands:** `wally execute`, `wally executions`, `wally execution`, and `wally verify`, plus the matching REPL slash commands.
+
+**Not in this milestone:** scheduling or proactive triggers, notifications, payment execution, and other action types.
+
+See ADR-037 and [chief-of-staff.md](chief-of-staff.md).
+
+---
+
+## v1.0 later — Phase 5 (future)
+
+**Phase 5 — Daily-driver hardening:** scheduling and proactive triggers, notification UX, noise control, broader action-type support.
 
 Do not treat n8n as the Chief-of-Staff state machine. Live mailbox tests remain operator-initiated, not CI.
 

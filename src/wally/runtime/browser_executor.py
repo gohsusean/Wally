@@ -5,7 +5,7 @@ from __future__ import annotations
 import time
 from typing import Any
 
-from wally.exceptions import ProviderUnavailableError
+from wally.exceptions import ExecutionNotStartedError, ProviderUnavailableError
 from wally.models.browser import (
     BrowserAction,
     BrowserActionType,
@@ -22,6 +22,7 @@ from wally.runtime.browser_safety import (
 from wally.runtime.browser_scripts import (
     card_portal_post_auth_actions,
     card_portal_pre_auth_actions,
+    portal_verify_auth_actions,
 )
 from wally.runtime.browser_session_store import BrowserSessionStore, PendingBrowserSession
 from wally.runtime.policy import PolicyDecision
@@ -29,6 +30,7 @@ from wally.runtime.secret_resolver import GovernedSecretsResolver
 from wally.runtime.secrets_safety import scrub_secret_values
 
 DEFAULT_SESSION_TIMEOUT_SECONDS = 3600.0
+_REVIEW_LOGIN_ACTION_TYPES = frozenset({BrowserActionType.FILL, BrowserActionType.CLICK})
 
 
 class GovernedBrowserExecutor:
@@ -162,6 +164,95 @@ class GovernedBrowserExecutor:
             clear_pending=False,
             fill_secrets=fill_secrets,
         )
+
+    def run_portal_review_login(
+        self,
+        *,
+        bill: dict[str, Any],
+        authorized: bool,
+    ) -> BrowserStepResult:
+        """Log in to the trusted portal for a bill review. Never reaches a payment step.
+
+        Credentials are resolved only when ``authorized`` is true, and before any
+        session opens, so a secrets failure is known to have submitted nothing.
+        Raises ExecutionNotStartedError for every stop before the login submits.
+        The session stays open for ``verify_portal_review``; the caller closes it.
+        """
+        if not authorized:
+            raise ExecutionNotStartedError("not_authorized", "Execution was not authorized.")
+        try:
+            self._require_provider()
+        except ProviderUnavailableError as exc:
+            raise ExecutionNotStartedError("browser_unavailable", exc.reason) from exc
+        if self._secrets is None:
+            raise ExecutionNotStartedError(
+                "credentials_unavailable", "Portal credentials are not configured."
+            )
+        try:
+            login_actions = self._secrets.build_portal_login_actions(bill, authorized=True)
+        except ProviderUnavailableError as exc:
+            raise ExecutionNotStartedError("credentials_unavailable", exc.reason) from exc
+        if not login_actions:
+            raise ExecutionNotStartedError(
+                "credentials_unavailable",
+                "Knowledge lists no usable portal login references or secrets are unavailable.",
+            )
+        if any(
+            action.action_type not in _REVIEW_LOGIN_ACTION_TYPES for action in login_actions
+        ):
+            raise ExecutionNotStartedError(
+                "policy_denied", "Portal review login may only fill fields and submit login."
+            )
+        try:
+            session = self.open_trusted_session(bill)
+        except ProviderUnavailableError as exc:
+            raise ExecutionNotStartedError("untrusted_target", exc.reason) from exc
+        try:
+            result = self.run_governed_actions(
+                knowledge=bill,
+                session_id=session.session_id,
+                actions=login_actions,
+            )
+        except Exception:
+            self.close_session(session.session_id)
+            raise
+        message = scrub_secret_values(result.message or "", _fill_values(login_actions))
+        return BrowserStepResult(
+            session_id=session.session_id,
+            status=result.status,
+            message=message,
+        )
+
+    def verify_portal_review(
+        self,
+        *,
+        bill: dict[str, Any],
+        session_id: str,
+    ) -> BrowserStepResult:
+        """Read-only login check in an existing session. Never repeats the login."""
+        actions = portal_verify_auth_actions(bill)
+        if not actions:
+            return BrowserStepResult(
+                session_id=session_id,
+                status=BrowserStepStatus.FAILED,
+                message="Knowledge configures no login success condition.",
+            )
+        result = self.run_governed_actions(
+            knowledge=bill,
+            session_id=session_id,
+            actions=actions,
+        )
+        return BrowserStepResult(
+            session_id=session_id,
+            status=result.status,
+            message="",
+            authenticated=result.authenticated,
+        )
+
+    def close_session(self, session_id: str) -> None:
+        provider = self._provider
+        if provider is not None:
+            provider.close_session(session_id)
 
     def resume_card_portal_session(self, session_id: str) -> dict[str, object]:
         """Continue post-login actions in the same browser session."""

@@ -474,10 +474,22 @@ def test_save_proposal_cannot_smuggle_a_decision(tmp_path: Path) -> None:
     assert service.store.get_proposal(proposal.id).status is ProposalStatus.PROPOSED
 
 
-def test_execution_guard_ignores_approved_status() -> None:
-    source = Path(execution_module.__file__).read_text(encoding="utf-8")
-    assert "return True" not in source
-    assert "return False" in source
+def test_execution_guard_requires_current_approval_and_a_trusted_target(
+    tmp_path: Path,
+) -> None:
+    # v0.15 replaced the always-false guard. An email-only bill still has no
+    # trusted portal, so even a current approval does not make it executable.
+    service = _bill(tmp_path)
+    proposal = _proposal(service)
+    assert execution_allowed(proposal) is False
+    decided = service.decide(
+        proposal.id,
+        decision=UserDecision.APPROVE,
+        origin="user_cli",
+        now=NOW + timedelta(hours=1),
+    )
+    assert decided.knowledge_ids == ()
+    assert execution_allowed(decided) is False
 
 
 def test_decision_modules_do_not_import_execution_stacks() -> None:

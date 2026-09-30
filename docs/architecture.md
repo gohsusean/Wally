@@ -1,10 +1,10 @@
 # Wally — Architecture
 
-**Version:** 0.1 design baseline; implementation shipped through v0.14.0  
-**Status:** Living architecture. Act & Verify is future work and is not implemented.  
+**Version:** 0.1 design baseline; implementation shipped through v0.15.0  
+**Status:** Living architecture. Act & Verify executes one action type on explicit user request. Scheduling and notifications are future work.  
 **Last updated:** 2026-09-30
 
-Shipped: v0.10 browser automation, v0.11.1 secrets hardening, v0.12 Observe & Brief, v0.13 Assess & Propose, v0.14 Approval Inbox. Historical sections below keep the design as it was written. They are not rewritten to look like the current milestone.
+Shipped: v0.10 browser automation, v0.11.1 secrets hardening, v0.12 Observe & Brief, v0.13 Assess & Propose, v0.14 Approval Inbox, v0.15 Act & Verify. Historical sections below keep the design as it was written. They are not rewritten to look like the current milestone.
 
 ---
 
@@ -198,6 +198,7 @@ Each external domain has a provider interface. Providers expose *tools* that the
 | Observe & Brief (`ops/`) | Observations, Matters, operational brief | **v0.12** | Wally SQLite + existing read providers |
 | `ApprovalProvider` | Execution-time y/n for a consequential tool call | **Now** | CLI prompt |
 | Approval Inbox (`ops/`) | Durable decision on a ProposedAction | **v0.14** | SQLite columns on `proposals`; not a tool grant |
+| Act & Verify (`ops/act.py`) | User-requested execution of an approved proposal, then verification | **v0.15** | Existing gate, `ApprovalProvider`, browser executor, secrets resolver; `executions` table |
 | `HomeAutomationProvider` | Home device state/control | **Deferred** | Optional HA read-only (future) |
 
 #### Finance safety (`runtime/finance_safety.py`)
@@ -222,6 +223,23 @@ These are different stages.
 | Executes? | No. `execution_allowed` is always false | Only if the user confirms that call |
 
 An email, calendar item, Notion page, or model reply cannot set proposal status. n8n does not store it. A material fingerprint change supersedes an approval instead of reusing it. See ADR-036.
+
+#### Act & Verify (v0.15)
+
+`wally execute <proposal-id>` is the only trigger. `ActVerifyService` does not add a runtime. It composes the existing pieces:
+
+```
+user command → preflight (exact approved fingerprint, open Matter, same fingerprint
+from current evidence, supported intent) → typed plan from trusted Knowledge
+→ ApprovalGate → ApprovalProvider prompt (always) → recheck + plan digest
+→ GovernedBrowserExecutor.run_portal_review_login (secrets resolved here)
+→ verify_portal_review (read-only VERIFY_AUTH) → executions row + audit
+```
+
+- The intent-to-executor map lives in code (`SUPPORTED_EXECUTION_INTENTS`). Proposals carry no tool, provider, URL, argument, or secret.
+- `REVIEW_BILL` logs in and stops. It cannot reach `run_card_portal_payment`, `finance_trigger_payment`, or n8n.
+- The `executions` table keeps one in-flight or verified attempt per approved fingerprint. `running` and `executed_unverified` block retries until the user reviews them.
+- A verified review does not resolve the Matter. Only Observe evidence does. See ADR-037.
 
 #### Browser Automation Provider (v0.10)
 
@@ -533,7 +551,7 @@ The orchestrator assembles prompts from these files. Version numbers allow rollb
 src/wally/
 ├── __init__.py
 ├── __main__.py              # Entry point: python -m wally
-├── ops/                     # Observe → propose → Approval Inbox (v0.12–v0.14)
+├── ops/                     # Observe → propose → Approval Inbox → Act & Verify (v0.12–v0.15)
 ├── orchestrator/
 │   ├── core.py              # Main reasoning loop
 │   ├── context.py           # Context assembly

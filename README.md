@@ -6,11 +6,11 @@ Wally is not a chatbot. It is not a home automation platform.
 
 ## Status
 
-**Status:** **v0.14.0 — Approval Inbox.** Proposals can be approved, rejected, or deferred. Approval is authorization state only. Wally still does not send, pay, submit, or write on its own.
+**Status:** **v0.15.0 — Act & Verify.** An approved proposal can be executed on your explicit request, and the result is checked independently. Only bill review is supported: Wally logs in to the trusted portal from Knowledge, confirms the login, and stops. It never pays. Approval alone still runs nothing, and nothing runs on a schedule.
 
-Complete: v0.10 browser automation, v0.11.1 secrets hardening, v0.12 Observe & Brief, v0.13 Assess & Propose, v0.14 Approval Inbox.
+Complete: v0.10 browser automation, v0.11.1 secrets hardening, v0.12 Observe & Brief, v0.13 Assess & Propose, v0.14 Approval Inbox, v0.15 Act & Verify.
 
-Future: Act & Verify, scheduling and notifications, daily-driver hardening.
+Future: scheduling and proactive triggers, notifications, daily-driver hardening, more supported action types.
 
 ## Getting started
 
@@ -45,6 +45,10 @@ uv run wally
 | `/approve <id>` | Approve a pending proposal. Does not execute it |
 | `/reject <id>` | Reject a pending proposal |
 | `/defer <id> --until <date>` | Hide a proposal until a date |
+| `/execute <proposal-id>` | Act on an approved, supported proposal. Asks again before anything runs |
+| `/executions` | List execution attempts |
+| `/execution <execution-id>` | Show one attempt |
+| `/verify <execution-id> [--confirm success\|failure]` | Re-check stored evidence (read-only), or record your own check |
 | `/exit` | Quit |
 
 One-shot brief (no REPL):
@@ -57,6 +61,10 @@ uv run wally approvals --json
 uv run wally approve <proposal-id>
 uv run wally reject <proposal-id>
 uv run wally defer <proposal-id> --until 2026-10-03
+uv run wally execute <proposal-id>
+uv run wally executions
+uv run wally execution <execution-id>
+uv run wally verify <execution-id>
 ```
 
 See [docs/chief-of-staff.md](docs/chief-of-staff.md).

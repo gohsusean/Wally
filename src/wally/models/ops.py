@@ -1,4 +1,4 @@
-"""Operational observation, matter, and proposal models — Chief of Staff Phases 1-3."""
+"""Operational observation, matter, proposal, and execution models — Chief of Staff Phases 1-4."""
 
 from __future__ import annotations
 
@@ -96,8 +96,8 @@ class ProposalStatus(StrEnum):
     """Proposal lifecycle.
 
     ``approved``, ``rejected``, and ``deferred`` record an explicit user decision.
-    They are authorization state for a later Act & Verify milestone. None of them
-    executes anything, and none of them is an execution-time tool approval.
+    None of them executes anything, and none of them is an execution-time tool
+    approval. Act & Verify runs only on a separate user ``execute`` request.
     """
 
     PROPOSED = "proposed"
@@ -140,6 +140,9 @@ REOPENABLE_PROPOSAL_STATUSES = frozenset(
 
 # The only origins allowed to record a proposal decision.
 TRUSTED_DECISION_ORIGINS = frozenset({"user_cli", "user_repl"})
+
+# The only origins allowed to request execution of an approved proposal.
+TRUSTED_EXECUTION_ORIGINS = frozenset({"user_cli", "user_repl"})
 
 
 class ProposalProvenance(StrEnum):
@@ -194,6 +197,81 @@ class ProposedAction:
     decision_note: str = ""
     defer_until: str = ""
     decision_fingerprint: str = ""
+
+
+class ExecutionStatus(StrEnum):
+    """Lifecycle of one user-requested execution attempt.
+
+    ``pending`` is written only after runtime authorization, and the executor is
+    reached only after a compare-and-set to ``running``. A ``pending`` row therefore
+    means "known not executed"; a ``running`` or ``executed_unverified`` row means
+    the outcome is uncertain and must be reviewed, never retried automatically.
+    """
+
+    PENDING = "pending"
+    PREFLIGHT_FAILED = "preflight_failed"
+    AUTHORIZATION_DENIED = "authorization_denied"
+    RUNNING = "running"
+    EXECUTED_UNVERIFIED = "executed_unverified"
+    VERIFIED_SUCCESS = "verified_success"
+    VERIFIED_FAILURE = "verified_failure"
+    FAILED = "failed"
+
+
+# At most one row per proposal fingerprint may hold one of these at a time.
+BLOCKING_EXECUTION_STATUSES = frozenset(
+    {
+        ExecutionStatus.PENDING,
+        ExecutionStatus.RUNNING,
+        ExecutionStatus.EXECUTED_UNVERIFIED,
+        ExecutionStatus.VERIFIED_SUCCESS,
+    }
+)
+
+# The executor may have acted; only verification or the user can settle these.
+UNCERTAIN_EXECUTION_STATUSES = frozenset(
+    {
+        ExecutionStatus.RUNNING,
+        ExecutionStatus.EXECUTED_UNVERIFIED,
+    }
+)
+
+
+class VerificationOutcome(StrEnum):
+    VERIFIED_SUCCESS = "verified_success"
+    VERIFIED_FAILURE = "verified_failure"
+    INCONCLUSIVE = "inconclusive"
+
+
+@dataclass
+class ProposalExecution:
+    """Durable record of one execution attempt for an approved proposal.
+
+    Holds identifiers, status, and short Wally-authored outcome text only. Secret
+    values, page contents, and source text are never stored here.
+    """
+
+    id: str
+    proposal_id: str
+    proposal_fingerprint: str
+    matter_id: str
+    intent: ProposalIntent
+    status: ExecutionStatus
+    origin: str
+    created_at: str
+    updated_at: str
+    executor: str = ""
+    plan_digest: str = ""
+    preflight: str = ""
+    authorization: str = ""
+    started_at: str = ""
+    finished_at: str = ""
+    verification: str = ""
+    verification_method: str = ""
+    verified_at: str = ""
+    outcome: str = ""
+    failure_category: str = ""
+    evidence: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)

@@ -1,4 +1,4 @@
-"""SQLite persistence for observations, matters, proposals, and observe checkpoints."""
+"""SQLite persistence for observations, matters, proposals, executions, and checkpoints."""
 
 from __future__ import annotations
 
@@ -8,15 +8,18 @@ from pathlib import Path
 
 from wally.exceptions import ProposalTransitionError
 from wally.models.ops import (
+    BLOCKING_EXECUTION_STATUSES,
     OPEN_PROPOSAL_STATUSES,
     REOPENABLE_PROPOSAL_STATUSES,
     TRUSTED_DECISION_ORIGINS,
     USER_DECISION_STATUSES,
+    ExecutionStatus,
     Matter,
     MatterDomain,
     MatterStatus,
     Observation,
     ObservationCategory,
+    ProposalExecution,
     ProposalIntent,
     ProposalProvenance,
     ProposalRisk,
@@ -157,6 +160,45 @@ class OperationsStore:
             # Adding columns and widening the open-status index leaves existing rows in place.
             _ensure_proposal_decision_columns(conn)
             _ensure_open_proposal_index(conn)
+            # v0.15: execution attempts live in their own table; nothing above changes.
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS executions (
+                    id TEXT PRIMARY KEY,
+                    proposal_id TEXT NOT NULL,
+                    proposal_fingerprint TEXT NOT NULL,
+                    matter_id TEXT NOT NULL,
+                    intent TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    origin TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    executor TEXT NOT NULL DEFAULT '',
+                    plan_digest TEXT NOT NULL DEFAULT '',
+                    preflight TEXT NOT NULL DEFAULT '',
+                    authorization TEXT NOT NULL DEFAULT '',
+                    started_at TEXT NOT NULL DEFAULT '',
+                    finished_at TEXT NOT NULL DEFAULT '',
+                    verification TEXT NOT NULL DEFAULT '',
+                    verification_method TEXT NOT NULL DEFAULT '',
+                    verified_at TEXT NOT NULL DEFAULT '',
+                    outcome TEXT NOT NULL DEFAULT '',
+                    failure_category TEXT NOT NULL DEFAULT '',
+                    evidence TEXT NOT NULL DEFAULT '{}'
+                )
+                """
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_executions_proposal ON executions (proposal_id)"
+            )
+            # One in-flight or successful attempt per approved proposal version.
+            conn.execute(
+                """
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_executions_blocking
+                ON executions (proposal_fingerprint)
+                WHERE status IN ('pending', 'running', 'executed_unverified', 'verified_success')
+                """
+            )
 
     def get_observation_by_fingerprint(self, fingerprint: str) -> Observation | None:
         with self._connect() as conn:
@@ -557,6 +599,72 @@ class OperationsStore:
                 )
             _insert_proposal(conn, _proposal_payload(successor))
 
+    def insert_execution(self, execution: ProposalExecution) -> bool:
+        """Insert an execution attempt.
+
+        Returns False when another pending, running, unverified, or verified attempt
+        already holds this proposal fingerprint. The unique index enforces that, so a
+        concurrent second ``execute`` cannot slip past a read-then-write race.
+        """
+        try:
+            with self._connect() as conn:
+                conn.execute(
+                    f"INSERT INTO executions ({_EXECUTION_COLUMN_LIST}) "
+                    f"VALUES ({_EXECUTION_PLACEHOLDERS})",
+                    _execution_payload(execution),
+                )
+        except sqlite3.IntegrityError:
+            return False
+        return True
+
+    def transition_execution(
+        self,
+        execution: ProposalExecution,
+        *,
+        expected: ExecutionStatus,
+    ) -> bool:
+        """Write ``execution`` only if the stored row still has status ``expected``."""
+        payload = _execution_payload(execution)
+        assignments = ", ".join(f"{name}=?" for name in _EXECUTION_COLUMNS[1:])
+        try:
+            with self._connect() as conn:
+                cursor = conn.execute(
+                    f"UPDATE executions SET {assignments} WHERE id = ? AND status = ?",
+                    payload[1:] + (execution.id, expected.value),
+                )
+                return cursor.rowcount == 1
+        except sqlite3.IntegrityError:
+            return False
+
+    def get_execution(self, execution_id: str) -> ProposalExecution | None:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM executions WHERE id = ?", (execution_id,)
+            ).fetchone()
+        return _execution_from_row(row) if row else None
+
+    def list_executions(self, *, proposal_id: str | None = None) -> list[ProposalExecution]:
+        sql = "SELECT * FROM executions"
+        params: tuple = ()
+        if proposal_id:
+            sql += " WHERE proposal_id = ?"
+            params = (proposal_id,)
+        sql += " ORDER BY created_at DESC, id ASC"
+        with self._connect() as conn:
+            rows = conn.execute(sql, params).fetchall()
+        return [_execution_from_row(row) for row in rows]
+
+    def blocking_execution(self, proposal_fingerprint: str) -> ProposalExecution | None:
+        statuses = tuple(status.value for status in BLOCKING_EXECUTION_STATUSES)
+        placeholders = ", ".join("?" for _ in statuses)
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM executions "
+                f"WHERE proposal_fingerprint = ? AND status IN ({placeholders})",
+                (proposal_fingerprint, *statuses),
+            ).fetchone()
+        return _execution_from_row(row) if row else None
+
     def get_checkpoint(self, source: str) -> dict:
         with self._connect() as conn:
             row = conn.execute(
@@ -730,6 +838,85 @@ def _proposal_from_row(row: sqlite3.Row) -> ProposedAction:
         decision_note=row["decision_note"] or "",
         defer_until=row["defer_until"] or "",
         decision_fingerprint=row["decision_fingerprint"] or "",
+    )
+
+
+_EXECUTION_COLUMNS = (
+    "id",
+    "proposal_id",
+    "proposal_fingerprint",
+    "matter_id",
+    "intent",
+    "status",
+    "origin",
+    "created_at",
+    "updated_at",
+    "executor",
+    "plan_digest",
+    "preflight",
+    "authorization",
+    "started_at",
+    "finished_at",
+    "verification",
+    "verification_method",
+    "verified_at",
+    "outcome",
+    "failure_category",
+    "evidence",
+)
+_EXECUTION_COLUMN_LIST = ", ".join(_EXECUTION_COLUMNS)
+_EXECUTION_PLACEHOLDERS = ", ".join("?" for _ in _EXECUTION_COLUMNS)
+
+
+def _execution_payload(execution: ProposalExecution) -> tuple:
+    return (
+        execution.id,
+        execution.proposal_id,
+        execution.proposal_fingerprint,
+        execution.matter_id,
+        execution.intent.value,
+        execution.status.value,
+        execution.origin,
+        execution.created_at,
+        execution.updated_at,
+        execution.executor,
+        execution.plan_digest,
+        execution.preflight,
+        execution.authorization,
+        execution.started_at,
+        execution.finished_at,
+        execution.verification,
+        execution.verification_method,
+        execution.verified_at,
+        execution.outcome,
+        execution.failure_category,
+        json.dumps(execution.evidence, sort_keys=True),
+    )
+
+
+def _execution_from_row(row: sqlite3.Row) -> ProposalExecution:
+    return ProposalExecution(
+        id=row["id"],
+        proposal_id=row["proposal_id"],
+        proposal_fingerprint=row["proposal_fingerprint"],
+        matter_id=row["matter_id"],
+        intent=ProposalIntent(row["intent"]),
+        status=ExecutionStatus(row["status"]),
+        origin=row["origin"],
+        created_at=row["created_at"],
+        updated_at=row["updated_at"],
+        executor=row["executor"] or "",
+        plan_digest=row["plan_digest"] or "",
+        preflight=row["preflight"] or "",
+        authorization=row["authorization"] or "",
+        started_at=row["started_at"] or "",
+        finished_at=row["finished_at"] or "",
+        verification=row["verification"] or "",
+        verification_method=row["verification_method"] or "",
+        verified_at=row["verified_at"] or "",
+        outcome=row["outcome"] or "",
+        failure_category=row["failure_category"] or "",
+        evidence=json.loads(row["evidence"] or "{}"),
     )
 
 

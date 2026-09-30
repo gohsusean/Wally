@@ -1174,6 +1174,61 @@ Revisit when Act & Verify needs to translate an approved fingerprint into a `Pla
 
 ---
 
+## ADR-037: Guarded execution of the exact approved version (Chief of Staff Phase 4)
+
+**Status:** Accepted — implemented in v0.15.0  
+**Date:** 2026-09-30  
+**Deciders:** Founding engineer + project owner
+
+### Context
+
+ADR-036 made approval durable and kept it inert. Phase 4 needs a way to act on an approved proposal and to report what really happened. The risks are the ones ADR-036 guarded against, now with a live executor behind them:
+
+- An approval is treated as a standing permission.
+- An approval is carried over to a version the user never saw.
+- The proposal names its own tool, URL, or credential.
+- A browser step that merely returned is reported as a completed obligation.
+- A crash or timeout leads to a silent second submission.
+
+### Decision
+
+1. **Execution is a separate user request.** `wally execute <proposal-id>` and `/execute` are the only entry points. `ActVerifyService.execute` accepts only `user_cli` and `user_repl` origins. Observe, brief, inbox, reconciliation, the orchestrator, and model output do not import it. Approving a proposal never runs it.
+2. **Exact approved version.** Execution requires `status == approved`, `decision == approved`, a trusted decision origin, and `decision_fingerprint == fingerprint`. The Matter must be open and the proposal unexpired. The proposal is recomputed from current evidence and must produce the same fingerprint. A mismatch is audited as `execution_blocked_stale_approval` and requires a fresh approval. All of this is checked again after the runtime prompt and immediately before the executor runs. The plan digest must also be unchanged.
+3. **Code-owned whitelist.** `SUPPORTED_EXECUTION_INTENTS = {REVIEW_BILL}`. The intent maps to one typed `PortalReviewPlan` executor, `browser.portal_review_login`. The plan is built only from whitelisted metadata keys on the single trusted Knowledge asset the proposal references: portal URL, secret refs, selectors, and success condition. The asset must not be pending and must belong to the bills role. The URL must be https. No proposal field names a tool, provider, URL, argument, or secret. `PREPARE_FOR_EVENT` and email-only bills are unsupported and show "Approved, but execution is not supported yet."
+4. **REVIEW_BILL is not PAY_BILL.** A review logs in to the trusted portal, checks the login, and stops. Only FILL and CLICK login actions and a read-only VERIFY_AUTH are allowed. The card-payment path, `finance_trigger_payment`, and n8n are unreachable from this executor. There is no PAY_BILL intent.
+5. **Both approvals are kept.** After preflight, `ApprovalGate` is evaluated (dry-run denies without prompting). `ApprovalProvider.request_approval` is then always called with a summary built from the typed plan, even when the gate would allow. A denial or prompt error records `authorization_denied`.
+6. **Secrets after authorization only.** Preflight sees refs. Approval, preflight failure, and denial resolve nothing. The executor resolves both refs through `GovernedSecretsResolver` after authorization and before opening a session, so a secrets failure is known not executed. Values do not reach records, audit, reports, or the model.
+7. **Durable attempts and idempotency.** Each request writes an `executions` row with a status of `pending`, `preflight_failed`, `authorization_denied`, `running`, `executed_unverified`, `verified_success`, `verified_failure`, or `failed`. A partial unique index allows one `pending`, `running`, `executed_unverified`, or `verified_success` row per proposal fingerprint. The executor runs only after a compare-and-set from `pending` to `running`.
+   - A leftover `pending` row is known not executed; it is retired as `failed`, and a retry is allowed.
+   - `running` and `executed_unverified` are uncertain. They block new attempts until reviewed.
+   - `verified_success` is never repeated.
+   - An executor exception after the session opens is recorded as uncertain and never auto-retried.
+8. **Independent verification.** Success requires an explicit authenticated result from the Knowledge-configured success condition. A missing signal is inconclusive and reported as "Executed, but verification could not confirm completion." `wally verify` re-assesses stored evidence without calling the executor. For uncertain attempts, it can record the user's own check with `--confirm success|failure`.
+9. **No optimistic resolution.** A verified portal review does not resolve the Matter or change the proposal. Only Observe evidence resolves a bill. Settled attempts are audited as `matter_unchanged_after_execution`.
+10. **Additive migration.** `CREATE TABLE IF NOT EXISTS executions` plus indexes. Observations, matters, proposals, decisions, and checkpoints are untouched.
+
+### Consequences
+
+**Positive:** An approved bill with a trusted portal can be opened and logged into on explicit request. The result is recorded and checked independently. Stale approvals, untrusted targets, denials, and uncertain outcomes all fail closed with an audit trail.
+
+**Negative:** Only one action type is executable. Execution still needs two human confirmations. An uncertain attempt needs manual review before anything else can run for that version. `wally verify` cannot reopen the browser session, so a later check relies on stored evidence or the user's confirmation.
+
+### Alternatives considered
+
+| Alternative | Why rejected |
+|-------------|--------------|
+| Map proposal fields to a tool name and arguments | The proposal would choose its own capability; untrusted evidence could steer it |
+| Treat proposal approval as the runtime approval | Removes the last human check at act time; one stale approval becomes a standing grant |
+| Add PAY_BILL to exercise the executor | Invents a consequential action without a design; a review approval could drift into payment |
+| Auto-retry on timeout | A login or submission may already have happened; duplicates are worse than a manual review |
+| Resolve the Matter when login verifies | Login is not payment evidence |
+
+### Review trigger
+
+Revisit when a second action type is proposed, when scheduling or notifications want to start execution, or when the double confirmation proves too costly in daily use.
+
+---
+
 ```markdown
 ## ADR-NNN: Title
 
