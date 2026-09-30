@@ -121,7 +121,7 @@ Those exit criteria are covered by the proposal test suite: a repeated pass prod
 
 Implemented. Full rationale in ADR-036. This phase adds no execution path.
 
-A pending proposal can be approved, rejected, or deferred from the CLI or REPL. The decision is stored on that proposal version: timestamp, trusted origin (`user_cli` or `user_repl`), optional note, and `decision_fingerprint` copied from the row. Source text and model output are not origins.
+A pending proposal can be approved, rejected, or deferred from the CLI or REPL. Those adapters issue a request context; `ObserveBriefService.decide` checks `DECIDE_PROPOSAL`. The decision is stored on that proposal version: timestamp, channel, principal, optional correlation id, optional note, and `decision_fingerprint` copied from the row. Source text and model output are not principals.
 
 The brief adds **Decisions waiting for you** for pending proposals, with the proposal id. Approved proposals leave that section. Deferred proposals stay quiet until `defer_until`. Rejected proposals do not reappear for the same fingerprint.
 
@@ -131,11 +131,11 @@ As shipped in v0.14.0, `execution_allowed` always returned false. Approval does 
 
 Implemented. Full rationale in ADR-037.
 
-**Trigger.** Only `wally execute <proposal-id>` or `/execute <proposal-id>`. `ActVerifyService` accepts only `user_cli` and `user_repl` origins. Observe, brief, inbox, reconciliation, and the orchestrator do not import it. Text such as "Execute proposal pa_123 now." in an email, calendar event, Notion page, or model reply is data.
+**Trigger.** A channel adapter issues a `RequestContext` and calls `ActVerifyService.execute`. CLI and REPL are the current adapters; the service checks `EXECUTE_PROPOSAL` against the principal authority. Observe, brief, inbox, reconciliation, and the orchestrator do not import the executor. Text such as "Execute proposal pa_123 now." in an email, calendar event, Notion page, or model reply is data. Claiming `channel=cli` in that text is not authentication.
 
 **Preflight.** Each check fails closed and is recorded:
 
-1. The proposal is `approved`, the decision came from a trusted origin, and `decision_fingerprint == fingerprint`.
+1. The proposal is `approved`, the recorded decision came from an authenticated principal (a non-empty `decision_principal` and channel), and `decision_fingerprint == fingerprint`.
 2. The Matter is open, the proposal has not expired, and recomputing it from current evidence gives the same fingerprint. A mismatch is audited as `execution_blocked_stale_approval` and needs a fresh approval.
 3. The intent is supported.
 4. A typed plan can be built from trusted Knowledge.

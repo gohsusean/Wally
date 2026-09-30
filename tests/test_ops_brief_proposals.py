@@ -371,10 +371,10 @@ def test_refresh_reconciles_proposals_exactly_once(tmp_path: Path) -> None:
     inner = service._proposals
 
     class CountingReconciler:
-        def reconcile(self, *, now: datetime):
+        def reconcile(self, *, now: datetime, provenance=None):
             calls.append(now)
             assert service.store.list_matters(), "matters must be reconciled first"
-            return inner.reconcile(now=now)
+            return inner.reconcile(now=now, provenance=provenance)
 
     service._proposals = CountingReconciler()
 

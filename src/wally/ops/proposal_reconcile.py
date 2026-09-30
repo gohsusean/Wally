@@ -24,6 +24,7 @@ from wally.models.ops import (
     ProposalStatus,
     ProposedAction,
 )
+from wally.models.principal import RequestProvenance
 from wally.ops.priority import parse_time
 from wally.ops.propose import propose_for_matter
 from wally.ops.store import OperationsStore
@@ -77,9 +78,21 @@ def _iso(value: datetime) -> str:
 class ProposalReconciler:
     def __init__(self, store: OperationsStore) -> None:
         self._store = store
+        self._provenance = RequestProvenance()
 
-    def reconcile(self, *, now: datetime) -> ProposalReconciliation:
+    def reconcile(
+        self,
+        *,
+        now: datetime,
+        provenance: RequestProvenance | None = None,
+    ) -> ProposalReconciliation:
+        """Bring stored proposals in line with current evidence.
+
+        ``provenance`` names the request that triggered this pass. New proposals
+        record it; it is not part of any fingerprint and authorizes nothing.
+        """
         current = _aware(now)
+        self._provenance = provenance or RequestProvenance()
         result = ProposalReconciliation()
         observations = {item.id: item for item in self._store.list_observations()}
         matters = {item.id: item for item in self._store.list_matters()}
@@ -164,6 +177,12 @@ class ProposalReconciler:
             self._close(proposal, terminal_status, reason, now, result)
             return
 
+        # A successor continues its predecessor's request lineage.
+        candidate.request_provenance = (
+            proposal.request_provenance
+            if not proposal.request_provenance.is_empty()
+            else self._provenance
+        )
         self._store.replace_proposal(
             proposal.id,
             candidate,
@@ -190,6 +209,7 @@ class ProposalReconciler:
             return
         existing = self._store.get_proposal_by_fingerprint(candidate.fingerprint)
         if existing is None:
+            candidate.request_provenance = self._provenance
             self._store.save_proposal(candidate)
             result.created.append(candidate.id)
             return

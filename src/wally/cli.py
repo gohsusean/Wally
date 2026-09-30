@@ -25,6 +25,9 @@ from wally.models.ops import VerificationOutcome
 from wally.ops.act import format_execution, format_executions
 from wally.ops.decisions import UserDecision
 
+CLI_CHANNEL = "cli"
+REPL_CHANNEL = "repl"
+
 BANNER = """Wally v0.15.0 — personal AI operating system
 Type a message to talk to Wally.
 Commands: /help /new /health /sessions /knowledge /brief /approvals /execute /exit
@@ -171,19 +174,40 @@ def _run_brief(app, args) -> int:
     return 0
 
 
-def _print_brief(app, *, refresh: bool = True) -> None:
-    text = _render_brief(app, refresh=refresh, since=None, as_json=False)
+def _print_brief(app, *, refresh: bool = True, context=None) -> None:
+    text = _render_brief(app, refresh=refresh, since=None, as_json=False, context=context)
     if text is None:
         return
     print("\n" + text)
 
 
-def _render_brief(app, *, refresh: bool, since: str | None, as_json: bool) -> str | None:
+def _request(app, channel: str, *, session_id: str = ""):
+    """Channel adapter: the operator at this terminal is the authenticated principal.
+
+    The adapter only asks for a context. Whether that context may decide, execute,
+    or verify is checked by the application service, not here.
+    """
+    return app.authority.issue(channel, external_session_ref=session_id)
+
+
+def _render_brief(
+    app,
+    *,
+    refresh: bool,
+    since: str | None,
+    as_json: bool,
+    context=None,
+) -> str | None:
     if app.ops is None:
         print("Operational brief is disabled. Set ops.enabled: true in config.", file=sys.stderr)
         return None
     try:
-        return app.ops.render(refresh=refresh, since=since, as_json=as_json)
+        return app.ops.render(
+            refresh=refresh,
+            since=since,
+            as_json=as_json,
+            context=context or _request(app, CLI_CHANNEL),
+        )
     except ProviderUnavailableError as exc:
         print(f"Brief failed: {exc}", file=sys.stderr)
         return None
@@ -235,7 +259,9 @@ def _run_approvals(app, *, refresh: bool, as_json: bool) -> int:
     if not _ops_required(app):
         return 1
     try:
-        text = app.ops.approvals(refresh=refresh, as_json=as_json)
+        text = app.ops.approvals(
+            refresh=refresh, as_json=as_json, context=_request(app, CLI_CHANNEL)
+        )
     except ProviderUnavailableError as exc:
         print(f"Approvals failed: {exc}", file=sys.stderr)
         return 1
@@ -255,7 +281,7 @@ def _run_stored_decision(app, args) -> int:
         proposal = app.ops.decide(
             args.proposal_id,
             decision=decision,
-            origin="user_cli",
+            context=_request(app, CLI_CHANNEL),
             note=getattr(args, "note", "") or "",
             defer_until=getattr(args, "until", "") or "",
         )
@@ -282,11 +308,11 @@ def _print_execution_report(report) -> None:
         print(f"Execution: {report.execution.id} ({report.execution.status.value})")
 
 
-def _run_execute(app, proposal_id: str, *, origin: str) -> int:
+def _run_execute(app, proposal_id: str, *, context) -> int:
     if not _act_required(app):
         return 1
     try:
-        report = app.act.execute(proposal_id, origin=origin)
+        report = app.act.execute(proposal_id, context=context)
     except (ExecutionRequestError, ProviderUnavailableError) as exc:
         print(str(exc), file=sys.stderr)
         return 1
@@ -294,7 +320,7 @@ def _run_execute(app, proposal_id: str, *, origin: str) -> int:
     return 1 if report.blocked else 0
 
 
-def _run_verify(app, execution_id: str, *, confirm: str | None, origin: str) -> int:
+def _run_verify(app, execution_id: str, *, confirm: str | None, context) -> int:
     if not _act_required(app):
         return 1
     outcome = None
@@ -303,7 +329,7 @@ def _run_verify(app, execution_id: str, *, confirm: str | None, origin: str) -> 
     elif confirm == "failure":
         outcome = VerificationOutcome.VERIFIED_FAILURE
     try:
-        report = app.act.verify(execution_id, origin=origin, confirm=outcome)
+        report = app.act.verify(execution_id, context=context, confirm=outcome)
     except ExecutionRequestError as exc:
         print(str(exc), file=sys.stderr)
         return 1
@@ -381,7 +407,7 @@ def parse_repl_ops_command(user_input: str) -> dict | None:
     }
 
 
-def _run_repl_ops(app, user_input: str) -> bool:
+def _run_repl_ops(app, user_input: str, *, session_id: str = "") -> bool:
     """Handle an inbox command. Returns True when the line was an inbox command."""
     try:
         parsed = parse_repl_ops_command(user_input)
@@ -390,11 +416,12 @@ def _run_repl_ops(app, user_input: str) -> bool:
         return True
     if parsed is None:
         return False
+    context = _request(app, REPL_CHANNEL, session_id=session_id)
     if parsed["action"] == "execute":
-        _run_execute(app, parsed["id"], origin="user_repl")
+        _run_execute(app, parsed["id"], context=context)
         return True
     if parsed["action"] == "verify":
-        _run_verify(app, parsed["id"], confirm=parsed["confirm"], origin="user_repl")
+        _run_verify(app, parsed["id"], confirm=parsed["confirm"], context=context)
         return True
     if parsed["action"] == "executions":
         _run_executions(app, proposal_id=None)
@@ -406,13 +433,15 @@ def _run_repl_ops(app, user_input: str) -> bool:
         return True
     try:
         if parsed["action"] == "approvals":
-            text = app.ops.approvals(refresh=parsed["refresh"], as_json=parsed["as_json"])
+            text = app.ops.approvals(
+                refresh=parsed["refresh"], as_json=parsed["as_json"], context=context
+            )
             print("\n" + text)
             return True
         proposal = app.ops.decide(
             parsed["proposal_id"],
             decision=UserDecision(parsed["action"]),
-            origin="user_repl",
+            context=context,
             note=parsed["note"],
             defer_until=parsed["until"],
         )
@@ -446,13 +475,18 @@ def run_cli(argv: list[str] | None = None) -> int:
     if command in {"approve", "reject", "defer"}:
         return _run_stored_decision(app, args)
     if command == "execute":
-        return _run_execute(app, args.proposal_id, origin="user_cli")
+        return _run_execute(app, args.proposal_id, context=_request(app, CLI_CHANNEL))
     if command == "executions":
         return _run_executions(app, proposal_id=args.execution_proposal)
     if command == "execution":
         return _run_execution(app, args.execution_id)
     if command == "verify":
-        return _run_verify(app, args.execution_id, confirm=args.confirm, origin="user_cli")
+        return _run_verify(
+            app,
+            args.execution_id,
+            confirm=args.confirm,
+            context=_request(app, CLI_CHANNEL),
+        )
 
     session: Session = app.sessions.resume_or_create(args.session)
     dry_run = "on" if app.settings.dry_run else "off"
@@ -533,9 +567,13 @@ def run_cli(argv: list[str] | None = None) -> int:
                 )
                 continue
             if verb == "/brief":
-                _print_brief(app, refresh="--no-refresh" not in user_input.split())
+                _print_brief(
+                    app,
+                    refresh="--no-refresh" not in user_input.split(),
+                    context=_request(app, REPL_CHANNEL, session_id=session.id),
+                )
                 continue
-            if _run_repl_ops(app, user_input):
+            if _run_repl_ops(app, user_input, session_id=session.id):
                 continue
             print(f"Unknown command: {user_input}. Type /help for options.")
             continue

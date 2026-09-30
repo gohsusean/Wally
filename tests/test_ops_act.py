@@ -12,12 +12,12 @@ from pathlib import Path
 import pytest
 
 from tests.mock_knowledge import MockKnowledgeProvider
-from tests.test_ops_approvals import FixtureCommunications, _audit, _email
+from tests.test_ops_approvals import FixtureCommunications, _audit, _email, _set_amount
 from wally.adapters.browser.recording import RecordingBrowserAdapter
 from wally.adapters.secrets.memory import MemorySecretsProvider
 from wally.audit.logger import AuditLogger
 from wally.cli import build_parser, parse_repl_ops_command
-from wally.exceptions import ExecutionRequestError
+from wally.exceptions import ExecutionRequestError, ProposalDecisionError
 from wally.models.browser import (
     BrowserActionType,
     BrowserStepResult,
@@ -33,6 +33,7 @@ from wally.models.ops import (
     ProposalStatus,
     VerificationOutcome,
 )
+from wally.models.principal import Capability, Principal, RequestContext
 from wally.ops import act as act_module
 from wally.ops.act import (
     EXECUTED_UNVERIFIED_MESSAGE,
@@ -45,6 +46,11 @@ from wally.ops.inbox import build_inbox, format_inbox
 from wally.ops.service import ObserveBriefService
 from wally.ops.store import OperationsStore
 from wally.runtime.browser_executor import GovernedBrowserExecutor
+from wally.runtime.principals import (
+    LOCAL_OPERATOR_CHANNELS,
+    ChannelPolicy,
+    PrincipalAuthority,
+)
 from wally.runtime.secret_resolver import GovernedSecretsResolver
 from wally.safety.gates import ApprovalGate
 
@@ -148,6 +154,9 @@ class Harness:
     def store(self) -> OperationsStore:
         return self.service.store
 
+    def ctx(self, channel: str = "cli", **refs: str) -> RequestContext:
+        return self.service.authority.issue(channel, **refs)
+
     def proposal(self):
         proposals = [
             item
@@ -161,12 +170,12 @@ class Harness:
         return self.service.decide(
             self.proposal().id,
             decision=UserDecision.APPROVE,
-            origin="user_cli",
+            context=self.ctx(),
             now=DECIDED,
         )
 
     def execute(self, proposal_id: str | None = None, *, now: datetime = RUN):
-        return self.act.execute(proposal_id or self.proposal().id, origin="user_cli", now=now)
+        return self.act.execute(proposal_id or self.proposal().id, context=self.ctx(), now=now)
 
 
 def _harness(
@@ -178,6 +187,7 @@ def _harness(
     content: str = "Monthly recurring electricity bill.",
     dry_run: bool = False,
     approve: bool = True,
+    brief_context: RequestContext | None = None,
 ) -> Harness:
     knowledge = MockKnowledgeProvider()
     asset = knowledge.seed("Acme Power bill", content, role="finance")
@@ -200,6 +210,7 @@ def _harness(
     prompt = approval or ScriptedApproval()
     act = ActVerifyService(
         store,
+        authority=service.authority,
         reconcile=service.reconcile_proposals,
         knowledge=knowledge,
         browser_executor=executor,
@@ -210,7 +221,7 @@ def _harness(
         approval=prompt,
         audit=audit,
     )
-    service.brief(now=NOW)
+    service.brief(now=NOW, context=brief_context)
     harness = Harness(
         tmp_path=tmp_path,
         service=service,
@@ -255,7 +266,7 @@ def _seed_execution(harness: Harness, status: ExecutionStatus, **fields) -> Prop
         matter_id=proposal.matter_id,
         intent=proposal.intent,
         status=status,
-        origin="user_cli",
+        origin="cli",
         created_at=DECIDED.isoformat(),
         updated_at=DECIDED.isoformat(),
         executor=act_module.PORTAL_REVIEW_EXECUTOR,
@@ -284,7 +295,7 @@ def test_approved_current_proposal_executes_and_verifies(tmp_path: Path) -> None
     assert execution.proposal_fingerprint == proposal.fingerprint
     assert execution.executor == act_module.PORTAL_REVIEW_EXECUTOR
     assert execution.authorization == "granted"
-    assert execution.origin == "user_cli"
+    assert execution.origin == "cli"
     assert execution.started_at and execution.finished_at and execution.verified_at
     assert "No payment was made" in report.message
 
@@ -360,7 +371,7 @@ def test_rejected_or_deferred_proposal_cannot_execute(
     harness.service.decide(
         harness.proposal().id,
         decision=decision,
-        origin="user_cli",
+        context=harness.ctx(),
         defer_until=(NOW + timedelta(days=5)).isoformat()
         if decision == UserDecision.DEFER
         else "",
@@ -375,7 +386,7 @@ def test_rejected_or_deferred_proposal_cannot_execute(
 def test_unknown_proposal_is_refused_without_a_record(tmp_path: Path) -> None:
     harness = _harness(tmp_path)
     with pytest.raises(ExecutionRequestError):
-        harness.act.execute("pa_missing", origin="user_cli", now=RUN)
+        harness.act.execute("pa_missing", context=harness.ctx(), now=RUN)
     assert harness.store.list_executions() == []
     _nothing_ran(harness)
 
@@ -580,13 +591,19 @@ def test_raw_credentials_in_knowledge_are_refused(tmp_path: Path) -> None:
 # F. Injection -------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("origin", ["email", "calendar", "notion", "model", "scheduler", ""])
-def test_untrusted_origins_cannot_execute_or_verify(tmp_path: Path, origin: str) -> None:
+@pytest.mark.parametrize(
+    "channel", ["cli", "repl", "email", "calendar", "notion", "model", "scheduler", ""]
+)
+def test_forged_principals_cannot_execute_or_verify(tmp_path: Path, channel: str) -> None:
     harness = _harness(tmp_path)
+    forged = RequestContext(
+        principal=Principal(subject="owner", channel=channel, authentication="local_terminal"),
+        correlation_id="req_forged",
+    )
     with pytest.raises(ExecutionRequestError):
-        harness.act.execute(harness.proposal().id, origin=origin, now=RUN)
+        harness.act.execute(harness.proposal().id, context=forged, now=RUN)
     with pytest.raises(ExecutionRequestError):
-        harness.act.verify("ex_any", origin=origin, now=RUN)
+        harness.act.verify("ex_any", context=forged, now=RUN)
     assert harness.store.list_executions() == []
     _nothing_ran(harness)
 
@@ -698,7 +715,7 @@ def test_unique_index_blocks_a_second_in_flight_row(tmp_path: Path) -> None:
         matter_id=proposal.matter_id,
         intent=proposal.intent,
         status=ExecutionStatus.PENDING,
-        origin="user_cli",
+        origin="cli",
         created_at=RUN.isoformat(),
         updated_at=RUN.isoformat(),
     )
@@ -734,14 +751,14 @@ def test_user_review_settles_an_uncertain_execution_without_rerunning(tmp_path: 
     execution = harness.execute().execution
     batches = list(harness.browser.batches)
 
-    inconclusive = harness.act.verify(execution.id, origin="user_cli", now=RUN)
+    inconclusive = harness.act.verify(execution.id, context=harness.ctx(), now=RUN)
     assert inconclusive.blocked is True
     assert EXECUTED_UNVERIFIED_MESSAGE in inconclusive.message
     assert harness.store.get_execution(execution.id).status == ExecutionStatus.EXECUTED_UNVERIFIED
 
     confirmed = harness.act.verify(
         execution.id,
-        origin="user_cli",
+        context=harness.ctx(),
         confirm=VerificationOutcome.VERIFIED_SUCCESS,
         now=RUN,
     )
@@ -756,7 +773,7 @@ def test_user_confirmed_failure_allows_a_fresh_attempt(tmp_path: Path) -> None:
     execution = harness.execute().execution
     failed = harness.act.verify(
         execution.id,
-        origin="user_cli",
+        context=harness.ctx(),
         confirm=VerificationOutcome.VERIFIED_FAILURE,
         now=RUN,
     )
@@ -825,7 +842,7 @@ def test_crash_during_adapter_blocks_and_requires_review(tmp_path: Path) -> None
     assert EXECUTED_UNVERIFIED_MESSAGE in report.message
     assert harness.approval.prompts == []
     _nothing_ran(harness)
-    review = harness.act.verify(running.id, origin="user_cli", now=RUN)
+    review = harness.act.verify(running.id, context=harness.ctx(), now=RUN)
     assert review.blocked is True
     _nothing_ran(harness)
 
@@ -841,7 +858,7 @@ def test_crash_after_adapter_before_verification_blocks(tmp_path: Path) -> None:
     assert report.blocked is True
     assert report.execution.id == executed.id
     _nothing_ran(harness)
-    assert harness.act.verify(executed.id, origin="user_cli", now=RUN).blocked is True
+    assert harness.act.verify(executed.id, context=harness.ctx(), now=RUN).blocked is True
 
 
 def test_crash_after_verification_before_persistence_settles_from_evidence(
@@ -857,7 +874,7 @@ def test_crash_after_verification_before_persistence_settles_from_evidence(
             "authenticated": "true",
         },
     )
-    report = harness.act.verify(executed.id, origin="user_cli", now=RUN)
+    report = harness.act.verify(executed.id, context=harness.ctx(), now=RUN)
     assert report.execution.status == ExecutionStatus.VERIFIED_SUCCESS
     _nothing_ran(harness)
     assert harness.execute().blocked is True
@@ -868,7 +885,7 @@ def test_verify_on_a_settled_execution_is_read_only(tmp_path: Path) -> None:
     harness = _harness(tmp_path)
     execution = harness.execute().execution
     batches = list(harness.browser.batches)
-    report = harness.act.verify(execution.id, origin="user_cli", now=RUN)
+    report = harness.act.verify(execution.id, context=harness.ctx(), now=RUN)
     assert "nothing to verify" in report.message
     assert harness.browser.batches == batches
     assert harness.store.get_execution(execution.id) == execution
@@ -897,6 +914,7 @@ def test_prepare_for_event_approval_stays_inert(tmp_path: Path) -> None:
     approval = ScriptedApproval()
     act = ActVerifyService(
         store,
+        authority=service.authority,
         reconcile=service.reconcile_proposals,
         knowledge=None,
         browser_executor=GovernedBrowserExecutor(browser),
@@ -907,9 +925,10 @@ def test_prepare_for_event_approval_stays_inert(tmp_path: Path) -> None:
     service.brief(now=NOW)
     [proposal] = store.list_proposals(status=ProposalStatus.PROPOSED)
     assert proposal.intent == ProposalIntent.PREPARE_FOR_EVENT
-    service.decide(proposal.id, decision=UserDecision.APPROVE, origin="user_cli", now=DECIDED)
+    cli = service.authority.issue("cli")
+    service.decide(proposal.id, decision=UserDecision.APPROVE, context=cli, now=DECIDED)
 
-    report = act.execute(proposal.id, origin="user_cli", now=RUN)
+    report = act.execute(proposal.id, context=cli, now=RUN)
     assert report.message == UNSUPPORTED_EXECUTION_MESSAGE
     assert report.execution.failure_category == "unsupported_action"
     assert approval.prompts == []
@@ -934,6 +953,7 @@ def test_email_only_bill_has_no_trusted_target(tmp_path: Path) -> None:
     browser = ScriptedBrowser()
     act = ActVerifyService(
         store,
+        authority=service.authority,
         reconcile=service.reconcile_proposals,
         knowledge=harness.knowledge,
         browser_executor=GovernedBrowserExecutor(browser),
@@ -943,8 +963,9 @@ def test_email_only_bill_has_no_trusted_target(tmp_path: Path) -> None:
     )
     service.brief(now=NOW)
     [proposal] = store.list_proposals(status=ProposalStatus.PROPOSED)
-    service.decide(proposal.id, decision=UserDecision.APPROVE, origin="user_cli", now=DECIDED)
-    report = act.execute(proposal.id, origin="user_cli", now=RUN)
+    cli = service.authority.issue("cli")
+    service.decide(proposal.id, decision=UserDecision.APPROVE, context=cli, now=DECIDED)
+    report = act.execute(proposal.id, context=cli, now=RUN)
     assert report.message == UNSUPPORTED_EXECUTION_MESSAGE
     assert report.execution.failure_category == "no_trusted_target"
     assert browser.opened_urls == []
@@ -1063,3 +1084,143 @@ def test_inbox_shows_ready_then_last_attempt(tmp_path: Path) -> None:
     execution = harness.execute().execution
     after = format_inbox(build_inbox(harness.store, now=RUN))
     assert f"Last attempt {execution.id}: verified_success" in after
+
+
+# Principal, provenance, correlation ---------------------------------------------------
+
+
+def test_channel_name_in_text_is_not_authorization(tmp_path: Path) -> None:
+    harness = _harness(tmp_path, approve=False)
+    for channel in ("cli", "repl"):
+        with pytest.raises(ProposalDecisionError):
+            harness.service.decide(
+                harness.proposal().id,
+                decision=UserDecision.APPROVE,
+                context=_forged_context(channel),
+                now=DECIDED,
+            )
+    assert harness.proposal().status is ProposalStatus.PROPOSED
+    _nothing_ran(harness)
+
+
+def test_foreign_authority_cannot_execute(tmp_path: Path) -> None:
+    harness = _harness(tmp_path)
+    outsider = PrincipalAuthority().issue("cli")
+    with pytest.raises(ExecutionRequestError):
+        harness.act.execute(harness.proposal().id, context=outsider, now=RUN)
+    _nothing_ran(harness)
+
+
+def test_narrow_channel_can_be_registered_without_changing_act(tmp_path: Path) -> None:
+    authority = PrincipalAuthority(
+        {
+            **LOCAL_OPERATOR_CHANNELS,
+            "remote": ChannelPolicy(
+                "remote_session", frozenset({Capability.DECIDE_PROPOSAL})
+            ),
+        }
+    )
+    harness = _harness(tmp_path, approve=False)
+    harness.service._authority = authority
+    harness.act._authority = authority
+    remote = authority.issue("remote")
+    decided = harness.service.decide(
+        harness.proposal().id,
+        decision=UserDecision.APPROVE,
+        context=remote,
+        now=DECIDED,
+    )
+    assert decided.decision_origin == "remote"
+    with pytest.raises(ExecutionRequestError):
+        harness.act.execute(decided.id, context=remote, now=RUN)
+    _nothing_ran(harness)
+    report = harness.act.execute(decided.id, context=authority.issue("cli"), now=RUN)
+    assert report.execution.status == ExecutionStatus.VERIFIED_SUCCESS
+
+
+def test_provenance_does_not_change_the_fingerprint(tmp_path: Path) -> None:
+    ctx = PrincipalAuthority().issue(
+        "cli",
+        correlation_id="req_tagged",
+        external_session_ref="sess-1",
+        external_request_ref="msg-9",
+    )
+    harness = _harness(tmp_path, approve=True, brief_context=ctx)
+    proposal = harness.proposal()
+    assert proposal.request_provenance.correlation_id == "req_tagged"
+    assert proposal.request_provenance.channel == "cli"
+    assert proposal.request_provenance.external_session_ref == "sess-1"
+    # Recomputing the action from current evidence still matches, so execution proceeds.
+    report = harness.execute()
+    assert report.execution.status == ExecutionStatus.VERIFIED_SUCCESS
+    assert report.execution.proposal_fingerprint == proposal.fingerprint
+
+
+def test_correlation_survives_request_through_verification(tmp_path: Path) -> None:
+    cid = "req_lifecycle01"
+    request = PrincipalAuthority().issue(
+        "cli",
+        correlation_id=cid,
+        external_session_ref="sess-life",
+        external_request_ref="msg-life",
+    )
+    harness = _harness(tmp_path, approve=False, brief_context=request)
+    ctx = harness.ctx(
+        "cli",
+        correlation_id=cid,
+        external_session_ref="sess-life",
+        external_request_ref="msg-life",
+    )
+    proposal = harness.proposal()
+    assert proposal.request_provenance.correlation_id == cid
+    decided = harness.service.decide(
+        proposal.id, decision=UserDecision.APPROVE, context=ctx, now=DECIDED
+    )
+    assert decided.decision_correlation_id == cid
+    assert decided.decision_principal == "owner"
+    assert decided.decision_origin == "cli"
+    report = harness.act.execute(decided.id, context=ctx, now=RUN)
+    execution = report.execution
+    assert execution.correlation_id == cid
+    assert execution.principal == "owner"
+    assert execution.origin == "cli"
+    assert execution.request_provenance.correlation_id == cid
+    life = harness.act.lifecycle(execution.id)
+    assert life.proposal_request.correlation_id == cid
+    assert life.approval.correlation_id == cid
+    assert life.execution.correlation_id == cid
+    assert life.verification.correlation_id == cid
+    proposals, executions = harness.store.correlated(cid)
+    assert [item.id for item in proposals] == [decided.id]
+    assert [item.id for item in executions] == [execution.id]
+    grant = ctx.principal.grant
+    assert grant
+    persisted = _all_persisted_text(tmp_path)
+    assert grant not in persisted
+    blob = json.dumps(_audit_all(tmp_path))
+    assert cid in blob
+    assert grant not in blob
+
+
+def test_successor_proposal_keeps_request_provenance(tmp_path: Path) -> None:
+    ctx = PrincipalAuthority().issue("cli", correlation_id="req_keep")
+    harness = _harness(tmp_path, approve=True, brief_context=ctx)
+    observation = harness.store.list_observations()[0]
+    _set_amount(harness.service, observation.id, "150.00")
+    harness.service.brief(refresh=False, now=RUN)
+    previous = [item for item in harness.store.list_proposals() if item.decision == "approved"][0]
+    successor = [
+        item for item in harness.store.list_proposals() if item.status is ProposalStatus.PROPOSED
+    ][0]
+    assert previous.status is ProposalStatus.SUPERSEDED
+    assert previous.request_provenance.correlation_id == "req_keep"
+    assert successor.request_provenance.correlation_id == "req_keep"
+    assert successor.decision == ""
+    assert successor.fingerprint != previous.fingerprint
+
+
+def _forged_context(channel: str) -> RequestContext:
+    return RequestContext(
+        principal=Principal(subject="owner", channel=channel, authentication="local_terminal"),
+        correlation_id="req_forged",
+    )

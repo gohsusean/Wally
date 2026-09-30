@@ -199,6 +199,7 @@ Each external domain has a provider interface. Providers expose *tools* that the
 | `ApprovalProvider` | Execution-time y/n for a consequential tool call | **Now** | CLI prompt |
 | Approval Inbox (`ops/`) | Durable decision on a ProposedAction | **v0.14** | SQLite columns on `proposals`; not a tool grant |
 | Act & Verify (`ops/act.py`) | User-requested execution of an approved proposal, then verification | **v0.15** | Existing gate, `ApprovalProvider`, browser executor, secrets resolver; `executions` table |
+| Principal authority (`runtime/principals.py`) | Issue and check authenticated request contexts | **v0.15** | Per-process HMAC grant; capabilities, not channel-name lists |
 | `HomeAutomationProvider` | Home device state/control | **Deferred** | Optional HA read-only (future) |
 
 #### Finance safety (`runtime/finance_safety.py`)
@@ -226,12 +227,12 @@ An email, calendar item, Notion page, or model reply cannot set proposal status.
 
 #### Act & Verify (v0.15)
 
-`wally execute <proposal-id>` is the only trigger. `ActVerifyService` does not add a runtime. It composes the existing pieces:
+A channel adapter issues an authenticated `RequestContext` and calls `ActVerifyService.execute`. The service, not the adapter, checks `EXECUTE_PROPOSAL`. CLI and REPL are the current adapters; they are not the authorization boundary.
 
 ```
-user command → preflight (exact approved fingerprint, open Matter, same fingerprint
-from current evidence, supported intent) → typed plan from trusted Knowledge
-→ ApprovalGate → ApprovalProvider prompt (always) → recheck + plan digest
+authenticated request context → preflight (exact approved fingerprint, open Matter,
+same fingerprint from current evidence, supported intent) → typed plan from trusted
+Knowledge → ApprovalGate → ApprovalProvider prompt (always) → recheck + plan digest
 → GovernedBrowserExecutor.run_portal_review_login (secrets resolved here)
 → verify_portal_review (read-only VERIFY_AUTH) → executions row + audit
 ```
@@ -240,6 +241,11 @@ from current evidence, supported intent) → typed plan from trusted Knowledge
 - `REVIEW_BILL` logs in and stops. It cannot reach `run_card_portal_payment`, `finance_trigger_payment`, or n8n.
 - The `executions` table keeps one in-flight or verified attempt per approved fingerprint. `running` and `executed_unverified` block retries until the user reviews them.
 - A verified review does not resolve the Matter. Only Observe evidence does. See ADR-037.
+- Request provenance (channel, principal, external refs, correlation id) is audit metadata. It does not enter the proposal fingerprint. See ADR-038.
+
+#### Authenticated principals (v0.15)
+
+`PrincipalAuthority` (`runtime/principals.py`) is the only issuer of request contexts. Local channels today: `cli` and `repl`, both with decide, execute, and verify. A future channel registers a policy; Act & Verify does not learn its name. Hand-built principals and unregistered channel names fail closed.
 
 #### Browser Automation Provider (v0.10)
 

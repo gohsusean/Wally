@@ -11,7 +11,6 @@ from wally.models.ops import (
     BLOCKING_EXECUTION_STATUSES,
     OPEN_PROPOSAL_STATUSES,
     REOPENABLE_PROPOSAL_STATUSES,
-    TRUSTED_DECISION_ORIGINS,
     USER_DECISION_STATUSES,
     ExecutionStatus,
     Matter,
@@ -26,6 +25,7 @@ from wally.models.ops import (
     ProposalStatus,
     ProposedAction,
 )
+from wally.models.principal import RequestProvenance
 
 _SYSTEM_TERMINAL_STATUSES = frozenset(
     {
@@ -42,7 +42,22 @@ _DECISION_COLUMNS = (
     ("decision_note", "TEXT NOT NULL DEFAULT ''"),
     ("defer_until", "TEXT NOT NULL DEFAULT ''"),
     ("decision_fingerprint", "TEXT NOT NULL DEFAULT ''"),
+    ("decision_principal", "TEXT NOT NULL DEFAULT ''"),
+    ("decision_correlation_id", "TEXT NOT NULL DEFAULT ''"),
+    ("request_provenance", "TEXT NOT NULL DEFAULT '{}'"),
 )
+
+_EXECUTION_PROVENANCE_COLUMNS = (
+    ("principal", "TEXT NOT NULL DEFAULT ''"),
+    ("correlation_id", "TEXT NOT NULL DEFAULT ''"),
+    ("request_provenance", "TEXT NOT NULL DEFAULT '{}'"),
+    ("verification_provenance", "TEXT NOT NULL DEFAULT '{}'"),
+)
+
+# v0.14 decisions named the local terminal channel in the origin itself. They were
+# made by the single local operator, so the migration attributes them to that owner.
+_LEGACY_LOCAL_DECISION_ORIGINS = ("user_cli", "user_repl")
+_LEGACY_LOCAL_PRINCIPAL = "owner"
 
 
 class OperationsStore:
@@ -159,6 +174,7 @@ class OperationsStore:
             # v0.13 databases already have the proposals table without decision columns.
             # Adding columns and widening the open-status index leaves existing rows in place.
             _ensure_proposal_decision_columns(conn)
+            _attribute_legacy_decisions(conn)
             _ensure_open_proposal_index(conn)
             # v0.15: execution attempts live in their own table; nothing above changes.
             conn.execute(
@@ -184,12 +200,21 @@ class OperationsStore:
                     verified_at TEXT NOT NULL DEFAULT '',
                     outcome TEXT NOT NULL DEFAULT '',
                     failure_category TEXT NOT NULL DEFAULT '',
-                    evidence TEXT NOT NULL DEFAULT '{}'
+                    evidence TEXT NOT NULL DEFAULT '{}',
+                    principal TEXT NOT NULL DEFAULT '',
+                    correlation_id TEXT NOT NULL DEFAULT '',
+                    request_provenance TEXT NOT NULL DEFAULT '{}',
+                    verification_provenance TEXT NOT NULL DEFAULT '{}'
                 )
                 """
             )
+            _ensure_columns(conn, "executions", _EXECUTION_PROVENANCE_COLUMNS)
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_executions_proposal ON executions (proposal_id)"
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_executions_correlation "
+                "ON executions (correlation_id)"
             )
             # One in-flight or successful attempt per approved proposal version.
             conn.execute(
@@ -418,7 +443,8 @@ class OperationsStore:
                         status_reason=?, superseded_by=?, observation_ids=?,
                         knowledge_ids=?, event_id=?, thread_id=?, decision=?,
                         decided_at=?, decision_origin=?, decision_note=?, defer_until=?,
-                        decision_fingerprint=?
+                        decision_fingerprint=?, decision_principal=?,
+                        decision_correlation_id=?, request_provenance=?
                     WHERE id=?
                     """,
                     payload[1:] + (proposal.id,),
@@ -432,12 +458,16 @@ class OperationsStore:
         *,
         status: ProposalStatus,
         updated_at: str,
-        decision_origin: str,
+        decided_by: RequestProvenance,
         decision_note: str = "",
         defer_until: str = "",
         status_reason: str,
     ) -> bool:
         """Record an explicit user decision on a proposal that is still pending.
+
+        Authorization happens before this call, in the application service, against
+        the principal authority. The store only refuses a decision with no named
+        principal and channel, so an anonymous write cannot land here.
 
         The decision fingerprint is copied from the stored row, so a caller cannot
         attach this decision to a different proposal version. Returns True when
@@ -445,8 +475,10 @@ class OperationsStore:
         """
         if status not in USER_DECISION_STATUSES:
             raise ProposalTransitionError("record_decision only accepts a user decision status")
-        if decision_origin not in TRUSTED_DECISION_ORIGINS:
-            raise ProposalTransitionError("decision origin is not a trusted user command")
+        if not isinstance(decided_by, RequestProvenance) or not (
+            decided_by.principal and decided_by.channel
+        ):
+            raise ProposalTransitionError("a decision needs an authenticated principal and channel")
         if status == ProposalStatus.DEFERRED and not defer_until:
             raise ProposalTransitionError("defer requires defer_until")
         if status != ProposalStatus.DEFERRED and defer_until:
@@ -457,7 +489,8 @@ class OperationsStore:
                 UPDATE proposals
                 SET status = ?, updated_at = ?, decision = ?, decided_at = ?,
                     decision_origin = ?, decision_note = ?, defer_until = ?,
-                    decision_fingerprint = fingerprint, status_reason = ?
+                    decision_fingerprint = fingerprint, status_reason = ?,
+                    decision_principal = ?, decision_correlation_id = ?
                 WHERE id = ? AND status = ?
                 """,
                 (
@@ -465,10 +498,12 @@ class OperationsStore:
                     updated_at,
                     status.value,
                     updated_at,
-                    decision_origin,
+                    decided_by.channel,
                     decision_note,
                     defer_until,
                     status_reason,
+                    decided_by.principal,
+                    decided_by.correlation_id,
                     proposal_id,
                     ProposalStatus.PROPOSED.value,
                 ),
@@ -492,7 +527,8 @@ class OperationsStore:
                 UPDATE proposals
                 SET status = ?, updated_at = ?, status_reason = ?,
                     decision = '', decided_at = '', decision_origin = '',
-                    decision_note = '', defer_until = '', decision_fingerprint = ''
+                    decision_note = '', defer_until = '', decision_fingerprint = '',
+                    decision_principal = '', decision_correlation_id = ''
                 WHERE id = ? AND status = ?
                 """,
                 (
@@ -521,7 +557,8 @@ class OperationsStore:
                 UPDATE proposals
                 SET status = ?, updated_at = ?, status_reason = ?, superseded_by = '',
                     decision = '', decided_at = '', decision_origin = '',
-                    decision_note = '', defer_until = '', decision_fingerprint = ''
+                    decision_note = '', defer_until = '', decision_fingerprint = '',
+                    decision_principal = '', decision_correlation_id = ''
                 WHERE id = ? AND status IN ({placeholders})
                 """,
                 (
@@ -654,6 +691,36 @@ class OperationsStore:
             rows = conn.execute(sql, params).fetchall()
         return [_execution_from_row(row) for row in rows]
 
+    def correlated(
+        self, correlation_id: str
+    ) -> tuple[list[ProposedAction], list[ProposalExecution]]:
+        """Proposals and executions that carry ``correlation_id`` at any stage."""
+        if not correlation_id:
+            return [], []
+        with self._connect() as conn:
+            proposal_rows = conn.execute(
+                """
+                SELECT * FROM proposals
+                WHERE decision_correlation_id = ?
+                   OR json_extract(request_provenance, '$.correlation_id') = ?
+                ORDER BY created_at ASC, id ASC
+                """,
+                (correlation_id, correlation_id),
+            ).fetchall()
+            execution_rows = conn.execute(
+                """
+                SELECT * FROM executions
+                WHERE correlation_id = ?
+                   OR json_extract(verification_provenance, '$.correlation_id') = ?
+                ORDER BY created_at ASC, id ASC
+                """,
+                (correlation_id, correlation_id),
+            ).fetchall()
+        return (
+            [_proposal_from_row(row) for row in proposal_rows],
+            [_execution_from_row(row) for row in execution_rows],
+        )
+
     def blocking_execution(self, proposal_fingerprint: str) -> ProposalExecution | None:
         statuses = tuple(status.value for status in BLOCKING_EXECUTION_STATUSES)
         placeholders = ", ".join("?" for _ in statuses)
@@ -714,6 +781,9 @@ def _proposal_payload(proposal: ProposedAction) -> tuple:
         proposal.decision_note,
         proposal.defer_until,
         proposal.decision_fingerprint,
+        proposal.decision_principal,
+        proposal.decision_correlation_id,
+        json.dumps(proposal.request_provenance.as_dict(), sort_keys=True),
     )
 
 
@@ -726,10 +796,11 @@ def _insert_proposal(conn: sqlite3.Connection, payload: tuple) -> None:
             content_hash, expires_at, status_reason, superseded_by,
             observation_ids, knowledge_ids, event_id, thread_id,
             decision, decided_at, decision_origin, decision_note, defer_until,
-            decision_fingerprint
+            decision_fingerprint, decision_principal, decision_correlation_id,
+            request_provenance
         ) VALUES (
             ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-            ?, ?, ?, ?, ?, ?
+            ?, ?, ?, ?, ?, ?, ?, ?, ?
         )
         """,
         payload,
@@ -838,7 +909,17 @@ def _proposal_from_row(row: sqlite3.Row) -> ProposedAction:
         decision_note=row["decision_note"] or "",
         defer_until=row["defer_until"] or "",
         decision_fingerprint=row["decision_fingerprint"] or "",
+        decision_principal=row["decision_principal"] or "",
+        decision_correlation_id=row["decision_correlation_id"] or "",
+        request_provenance=_provenance(row["request_provenance"]),
     )
+
+
+def _provenance(raw: str | None) -> RequestProvenance:
+    try:
+        return RequestProvenance.from_dict(json.loads(raw or "{}"))
+    except (TypeError, ValueError):
+        return RequestProvenance()
 
 
 _EXECUTION_COLUMNS = (
@@ -863,6 +944,10 @@ _EXECUTION_COLUMNS = (
     "outcome",
     "failure_category",
     "evidence",
+    "principal",
+    "correlation_id",
+    "request_provenance",
+    "verification_provenance",
 )
 _EXECUTION_COLUMN_LIST = ", ".join(_EXECUTION_COLUMNS)
 _EXECUTION_PLACEHOLDERS = ", ".join("?" for _ in _EXECUTION_COLUMNS)
@@ -891,6 +976,10 @@ def _execution_payload(execution: ProposalExecution) -> tuple:
         execution.outcome,
         execution.failure_category,
         json.dumps(execution.evidence, sort_keys=True),
+        execution.principal,
+        execution.correlation_id,
+        json.dumps(execution.request_provenance.as_dict(), sort_keys=True),
+        json.dumps(execution.verification_provenance.as_dict(), sort_keys=True),
     )
 
 
@@ -917,6 +1006,10 @@ def _execution_from_row(row: sqlite3.Row) -> ProposalExecution:
         outcome=row["outcome"] or "",
         failure_category=row["failure_category"] or "",
         evidence=json.loads(row["evidence"] or "{}"),
+        principal=row["principal"] or "",
+        correlation_id=row["correlation_id"] or "",
+        request_provenance=_provenance(row["request_provenance"]),
+        verification_provenance=_provenance(row["verification_provenance"]),
     )
 
 
@@ -930,14 +1023,34 @@ def _carries_user_decision(proposal: ProposedAction) -> bool:
         or proposal.decision_note
         or proposal.defer_until
         or proposal.decision_fingerprint
+        or proposal.decision_principal
+        or proposal.decision_correlation_id
     )
 
 
 def _ensure_proposal_decision_columns(conn: sqlite3.Connection) -> None:
-    existing = {row[1] for row in conn.execute("PRAGMA table_info(proposals)")}
-    for name, declaration in _DECISION_COLUMNS:
+    _ensure_columns(conn, "proposals", _DECISION_COLUMNS)
+
+
+def _ensure_columns(
+    conn: sqlite3.Connection, table: str, columns: tuple[tuple[str, str], ...]
+) -> None:
+    existing = {row[1] for row in conn.execute(f"PRAGMA table_info({table})")}
+    for name, declaration in columns:
         if name not in existing:
-            conn.execute(f"ALTER TABLE proposals ADD COLUMN {name} {declaration}")
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {name} {declaration}")
+
+
+def _attribute_legacy_decisions(conn: sqlite3.Connection) -> None:
+    placeholders = ", ".join("?" for _ in _LEGACY_LOCAL_DECISION_ORIGINS)
+    conn.execute(
+        f"""
+        UPDATE proposals SET decision_principal = ?
+        WHERE decision != '' AND decision_principal = ''
+          AND decision_origin IN ({placeholders})
+        """,
+        (_LEGACY_LOCAL_PRINCIPAL, *_LEGACY_LOCAL_DECISION_ORIGINS),
+    )
 
 
 def _ensure_open_proposal_index(conn: sqlite3.Connection) -> None:

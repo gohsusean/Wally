@@ -13,6 +13,7 @@ from wally.models.ops import (
     ProposalStatus,
     ProposedAction,
 )
+from wally.models.principal import RequestContext, RequestProvenance
 from wally.ops.brief import format_brief, generate_brief
 from wally.ops.decisions import UserDecision, apply_user_decision
 from wally.ops.inbox import build_inbox, format_inbox
@@ -23,6 +24,7 @@ from wally.ops.store import OperationsStore
 from wally.ops.text import resolve_display_tz
 from wally.providers.communications import CommunicationsProvider
 from wally.providers.knowledge import KnowledgeProvider
+from wally.runtime.principals import PrincipalAuthority
 
 # Used when a deduplicated fingerprint has no stored observation to name.
 UNRESOLVED_OBSERVATION = "unresolved-observation"
@@ -41,9 +43,11 @@ class ObserveBriefService:
         email_lookback_days: int = 14,
         bills_role: str = "finance",
         display_timezone: str | None = None,
+        authority: PrincipalAuthority | None = None,
     ) -> None:
         self._store = store
         self._audit = audit
+        self._authority = authority or PrincipalAuthority()
         self._communications = communications
         self._knowledge = knowledge
         self._calendar_horizon_days = calendar_horizon_days
@@ -57,6 +61,10 @@ class ObserveBriefService:
     @property
     def store(self) -> OperationsStore:
         return self._store
+
+    @property
+    def authority(self) -> PrincipalAuthority:
+        return self._authority
 
     def refresh(self, *, now: datetime | None = None) -> list[Observation]:
         self._observer.skipped_fingerprints.clear()
@@ -110,13 +118,14 @@ class ObserveBriefService:
         refresh: bool = True,
         now: datetime | None = None,
         since: str | None = None,
+        context: RequestContext | None = None,
     ) -> OperationalBrief:
         current = self._clock(now)
         if refresh:
             self.refresh(now=current)
         # Runs on every brief, including --no-refresh, so stored proposals still
         # expire and resolved matters still withdraw their suggestions.
-        self._reconcile_proposals(now=current)
+        self._reconcile_proposals(now=current, provenance=_provenance_of(context))
         result = generate_brief(self._store, now=current, since=since)
         self._log("brief_generated", result.generated_at, "ops")
         return result
@@ -127,12 +136,13 @@ class ObserveBriefService:
         refresh: bool = False,
         now: datetime | None = None,
         as_json: bool = False,
+        context: RequestContext | None = None,
     ) -> str:
         """Render the Approval Inbox. Does not execute approved proposals."""
         current = self._clock(now)
         if refresh:
             self.refresh(now=current)
-        self._reconcile_proposals(now=current)
+        self._reconcile_proposals(now=current, provenance=_provenance_of(context))
         inbox = build_inbox(self._store, now=current)
         self._log("proposal_inbox_viewed", "inbox", f"pending={len(inbox.pending)}")
         if as_json:
@@ -146,19 +156,24 @@ class ObserveBriefService:
         proposal_id: str,
         *,
         decision: UserDecision,
-        origin: str,
+        context: RequestContext,
         note: str = "",
         defer_until: str = "",
         now: datetime | None = None,
     ) -> ProposedAction:
-        """Record a user decision. Reconciles stored proposals first. Executes nothing."""
+        """Record a user decision. Reconciles stored proposals first. Executes nothing.
+
+        ``context`` must come from this service's principal authority and hold
+        ``DECIDE_PROPOSAL``; any channel adapter calls this same method.
+        """
         current = self._clock(now)
         self._reconcile_proposals(now=current)
         stored = apply_user_decision(
             self._store,
             proposal_id,
             decision=decision,
-            origin=origin,
+            context=context,
+            authority=self._authority,
             now=current,
             note=note,
             defer_until=defer_until,
@@ -172,8 +187,11 @@ class ObserveBriefService:
             return current.replace(tzinfo=UTC)
         return current
 
-    def _reconcile_proposals(self, *, now: datetime) -> ProposalReconciliation:
-        return self._audit_proposals(self._proposals.reconcile(now=now))
+    def _reconcile_proposals(
+        self, *, now: datetime, provenance: RequestProvenance | None = None
+    ) -> ProposalReconciliation:
+        outcome = self._proposals.reconcile(now=now, provenance=provenance)
+        return self._audit_proposals(outcome, provenance=provenance)
 
     def reconcile_proposals(self, now: datetime) -> ProposalReconciliation:
         """Reconcile stored proposals against current evidence, with audit."""
@@ -186,8 +204,9 @@ class ObserveBriefService:
         now: datetime | None = None,
         since: str | None = None,
         as_json: bool = False,
+        context: RequestContext | None = None,
     ) -> str:
-        result = self.brief(refresh=refresh, now=now, since=since)
+        result = self.brief(refresh=refresh, now=now, since=since, context=context)
         if as_json:
             import json
 
@@ -207,7 +226,12 @@ class ObserveBriefService:
         if abs(previous.priority_score - matter.priority_score) >= 20:
             self._log("priority_changed", matter.id, str(matter.priority_score))
 
-    def _audit_proposals(self, outcome: ProposalReconciliation) -> ProposalReconciliation:
+    def _audit_proposals(
+        self,
+        outcome: ProposalReconciliation,
+        *,
+        provenance: RequestProvenance | None = None,
+    ) -> ProposalReconciliation:
         """Log real lifecycle transitions only, by proposal id.
 
         Unchanged proposals are silent, so a repeated brief adds no audit noise, and
@@ -222,7 +246,10 @@ class ObserveBriefService:
             ("proposal_expired", outcome.expired),
         ):
             for proposal_id in proposal_ids:
-                self._log(event_type, proposal_id, "proposals")
+                extra = {}
+                if event_type == "proposal_created" and provenance is not None:
+                    extra = provenance.as_dict()
+                self._log(event_type, proposal_id, "proposals", **extra)
         for proposal_id in outcome.decisions_voided:
             self._audit_version_event("proposal_approval_invalidated", proposal_id)
         for proposal_id in outcome.defer_elapsed:
@@ -239,6 +266,8 @@ class ObserveBriefService:
             "fingerprint": proposal.fingerprint,
             "decision": proposal.decision,
             "origin": proposal.decision_origin,
+            "principal": proposal.decision_principal,
+            "correlation_id": proposal.decision_correlation_id,
         }
         if proposal.decision_note:
             parameters["note"] = proposal.decision_note
@@ -280,7 +309,7 @@ class ObserveBriefService:
             parameters=parameters,
         )
 
-    def _log(self, event_type: str, subject: str, detail: str) -> None:
+    def _log(self, event_type: str, subject: str, detail: str, **extra: str) -> None:
         if self._audit is None:
             return
         self._audit.log_simple(
@@ -288,5 +317,9 @@ class ObserveBriefService:
             session_id="ops",
             outcome="success",
             provider="ops",
-            parameters={"subject": subject, "detail": detail[:300]},
+            parameters={"subject": subject, "detail": detail[:300], **extra},
         )
+
+
+def _provenance_of(context: RequestContext | None) -> RequestProvenance | None:
+    return context.provenance() if isinstance(context, RequestContext) else None

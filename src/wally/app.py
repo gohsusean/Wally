@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from wally.adapters.browser.factory import create_browser_provider
@@ -34,6 +34,7 @@ from wally.providers.secrets import SecretsProvider
 from wally.providers.web import WebProvider
 from wally.providers.workflow import WorkflowProvider
 from wally.runtime.browser_executor import GovernedBrowserExecutor
+from wally.runtime.principals import PrincipalAuthority
 from wally.runtime.secret_resolver import GovernedSecretsResolver
 from wally.safety.gates import ApprovalGate
 from wally.session.store import SessionStore
@@ -55,6 +56,7 @@ class App:
     knowledge_registry: KnowledgeRegistry | None
     ops: ObserveBriefService | None
     act: ActVerifyService | None = None
+    authority: PrincipalAuthority = field(default_factory=PrincipalAuthority)
 
 
 class _UnavailableLLM:
@@ -209,6 +211,9 @@ def create_app(
         finance=finance,
         secrets=secrets_provider,
     )
+    # One authority per process. Every channel adapter issues request contexts
+    # from it, and every service checks capabilities against it.
+    authority = PrincipalAuthority()
     ops = None
     act = None
     if settings.ops_enabled:
@@ -223,9 +228,11 @@ def create_app(
             email_lookback_days=settings.ops_email_lookback_days,
             bills_role=settings.finance_bills_role,
             display_timezone=settings.ops_timezone,
+            authority=authority,
         )
         act = ActVerifyService(
             ops_store,
+            authority=authority,
             reconcile=ops.reconcile_proposals,
             knowledge=knowledge,
             browser_executor=browser_executor,
@@ -249,4 +256,5 @@ def create_app(
         knowledge_registry=registry,
         ops=ops,
         act=act,
+        authority=authority,
     )

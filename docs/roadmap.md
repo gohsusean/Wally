@@ -393,7 +393,7 @@ See ADR-036 and [chief-of-staff.md](chief-of-staff.md).
 
 **Goal:** Execute an approved proposal only on an explicit user request, only for the exact version that was approved, and report what an independent check confirms.
 
-- **Entry points:** `wally execute <proposal-id>` and `/execute`. No scheduler, Observe pass, brief, inbox, model output, or source content can start execution.
+- **Entry points:** `wally execute <proposal-id>` and `/execute` issue a request context and call the same `ActVerifyService`. No scheduler, Observe pass, brief, inbox, model output, or source content can start execution. A channel name in text is not authentication.
 - **Pipeline:**
   1. Load the proposal.
   2. Require `approved`, a trusted decision origin, and `decision_fingerprint == fingerprint`.
@@ -413,7 +413,7 @@ See ADR-036 and [chief-of-staff.md](chief-of-staff.md).
 
 **Not in this milestone:** scheduling or proactive triggers, notifications, payment execution, and other action types.
 
-See ADR-037 and [chief-of-staff.md](chief-of-staff.md).
+See ADR-037, ADR-038, and [chief-of-staff.md](chief-of-staff.md).
 
 ---
 

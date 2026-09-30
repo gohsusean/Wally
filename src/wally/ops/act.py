@@ -1,7 +1,9 @@
 """Act & Verify: execute one approved proposal on explicit user request, then verify.
 
-Only a trusted user command reaches ``ActVerifyService.execute``. No Observe pass,
-brief, inbox, model output, or source content calls it.
+``ActVerifyService`` is interface-neutral. A channel adapter (CLI and REPL today)
+asks the principal authority for a request context and calls ``execute``; the
+service, not the adapter, checks that context for ``EXECUTE_PROPOSAL``. No Observe
+pass, brief, inbox, model output, or source content calls it.
 
 The proposal never selects an executor, tool, URL, or credential. The code maps a
 supported intent to one typed plan built from trusted Knowledge, asks the user
@@ -23,12 +25,15 @@ from urllib.parse import urlparse
 from uuid import uuid4
 
 from wally.audit.logger import AuditLogger
-from wally.exceptions import ExecutionNotStartedError, ExecutionRequestError
+from wally.exceptions import (
+    AuthorizationError,
+    ExecutionNotStartedError,
+    ExecutionRequestError,
+)
 from wally.models.actions import ActionClass, PlannedAction
 from wally.models.browser import BrowserStepStatus
 from wally.models.knowledge import KnowledgeClass
 from wally.models.ops import (
-    TRUSTED_EXECUTION_ORIGINS,
     UNCERTAIN_EXECUTION_STATUSES,
     ExecutionStatus,
     MatterStatus,
@@ -37,6 +42,7 @@ from wally.models.ops import (
     ProposedAction,
     VerificationOutcome,
 )
+from wally.models.principal import Capability, RequestContext, RequestProvenance
 from wally.ops.execution import (
     NO_TRUSTED_TARGET,
     STALE_APPROVAL,
@@ -53,6 +59,7 @@ from wally.providers.approval import ApprovalProvider
 from wally.providers.knowledge import KnowledgeProvider
 from wally.runtime.browser_executor import GovernedBrowserExecutor
 from wally.runtime.browser_safety import resolve_trusted_portal_url
+from wally.runtime.principals import PrincipalAuthority
 from wally.runtime.secrets_safety import (
     auth_success_selector,
     auth_success_url_contains,
@@ -127,11 +134,24 @@ class ExecutionReport:
     blocked: bool = False
 
 
+@dataclass(frozen=True)
+class ExecutionLifecycle:
+    """Who asked, and under which correlation id, at each stage of one execution."""
+
+    proposal_request: RequestProvenance
+    approval: RequestProvenance
+    execution: RequestProvenance
+    verification: RequestProvenance
+
+
 class ActVerifyService:
+    """Interface-neutral execution service. Channel adapters only build contexts."""
+
     def __init__(
         self,
         store: OperationsStore,
         *,
+        authority: PrincipalAuthority,
         reconcile: Callable[[datetime], object],
         knowledge: KnowledgeProvider | None,
         browser_executor: GovernedBrowserExecutor | None,
@@ -141,6 +161,7 @@ class ActVerifyService:
         bills_role: str = "finance",
     ) -> None:
         self._store = store
+        self._authority = authority
         self._reconcile = reconcile
         self._knowledge = knowledge
         self._browser = browser_executor
@@ -157,15 +178,20 @@ class ActVerifyService:
         self,
         proposal_id: str,
         *,
-        origin: str,
+        context: RequestContext,
         now: datetime | None = None,
     ) -> ExecutionReport:
-        if origin not in TRUSTED_EXECUTION_ORIGINS:
-            raise ExecutionRequestError("Execution requires a trusted user command.")
+        """Execute one approved proposal for an authenticated caller.
+
+        Every channel adapter calls this same method. The adapter is not the
+        authorization boundary: this service asks the principal authority, and only
+        a context it issued with ``EXECUTE_PROPOSAL`` proceeds.
+        """
+        self._require(context, Capability.EXECUTE_PROPOSAL, "Execution")
         current = _clock(now)
         if self._store.get_proposal(proposal_id) is None:
             raise ExecutionRequestError(f"Unknown proposal: {proposal_id}")
-        self._log("execution_requested", proposal_id=proposal_id, origin=origin)
+        self._log("execution_requested", proposal_id=proposal_id, **_trace(context))
 
         self._reconcile(current)
         proposal = self._store.get_proposal(proposal_id)
@@ -174,11 +200,11 @@ class ActVerifyService:
 
         problem = approval_problem(proposal) or self._matter_problem(proposal, current)
         if problem is not None:
-            return self._preflight_failed(proposal, origin, current, problem)
+            return self._preflight_failed(proposal, context, current, problem)
 
         unsupported = support_problem(proposal)
         if unsupported is not None:
-            return self._preflight_failed(proposal, origin, current, unsupported)
+            return self._preflight_failed(proposal, context, current, unsupported)
 
         existing = self._recover_pending(proposal, current)
         if existing is not None:
@@ -186,7 +212,7 @@ class ActVerifyService:
 
         plan, plan_problem = self._build_plan(proposal)
         if plan is None:
-            return self._preflight_failed(proposal, origin, current, plan_problem)
+            return self._preflight_failed(proposal, context, current, plan_problem)
         self._log(
             "execution_preflight_passed",
             proposal_id=proposal.id,
@@ -198,7 +224,7 @@ class ActVerifyService:
         if authorization != "granted":
             return self._record_terminal(
                 proposal,
-                origin,
+                context,
                 current,
                 status=ExecutionStatus.AUTHORIZATION_DENIED,
                 plan=plan,
@@ -214,7 +240,7 @@ class ActVerifyService:
         if final_check is not None:
             return self._record_terminal(
                 proposal,
-                origin,
+                context,
                 current,
                 status=ExecutionStatus.PREFLIGHT_FAILED,
                 plan=plan,
@@ -224,16 +250,11 @@ class ActVerifyService:
                 event=_preflight_event(final_check),
             )
 
-        execution = ProposalExecution(
-            id=f"ex_{uuid4().hex[:12]}",
-            proposal_id=proposal.id,
-            proposal_fingerprint=proposal.fingerprint,
-            matter_id=proposal.matter_id,
-            intent=proposal.intent,
+        execution = _new_execution(
+            proposal,
+            context,
+            current,
             status=ExecutionStatus.PENDING,
-            origin=origin,
-            created_at=_iso(current),
-            updated_at=_iso(current),
             executor=PORTAL_REVIEW_EXECUTOR,
             plan_digest=plan.digest,
             preflight="passed",
@@ -262,18 +283,22 @@ class ActVerifyService:
         self,
         execution_id: str,
         *,
-        origin: str,
+        context: RequestContext,
         confirm: VerificationOutcome | None = None,
         now: datetime | None = None,
     ) -> ExecutionReport:
-        """Re-assess stored evidence, or record the user's own check. Runs no action."""
-        if origin not in TRUSTED_EXECUTION_ORIGINS:
-            raise ExecutionRequestError("Verification requires a trusted user command.")
+        """Re-assess stored evidence, or record the user's own check. Runs no action.
+
+        Only a context holding ``VERIFY_EXECUTION`` may record an outcome, so no
+        channel can claim success merely by saying so.
+        """
+        self._require(context, Capability.VERIFY_EXECUTION, "Verification")
         current = _clock(now)
         execution = self._store.get_execution(execution_id)
         if execution is None:
             raise ExecutionRequestError(f"Unknown execution: {execution_id}")
-        self._log_execution("execution_verify_requested", execution)
+        verifier = context.provenance()
+        self._log_execution("execution_verify_requested", execution, context=verifier)
         if execution.status not in UNCERTAIN_EXECUTION_STATUSES:
             return ExecutionReport(
                 f"Execution is {execution.status.value}; nothing to verify.", execution
@@ -292,10 +317,11 @@ class ActVerifyService:
                     if confirm == VerificationOutcome.VERIFIED_SUCCESS
                     else "You confirmed the portal review did not complete."
                 ),
+                verification_provenance=verifier,
             )
             if not self._store.transition_execution(confirmed, expected=execution.status):
                 raise ExecutionRequestError("Execution changed while recording confirmation.")
-            self._log_execution("execution_user_confirmed", confirmed)
+            self._log_execution("execution_user_confirmed", confirmed, context=verifier)
             self._log_matter_unchanged(confirmed)
             return ExecutionReport(
                 confirmed.outcome,
@@ -305,14 +331,39 @@ class ActVerifyService:
 
         outcome = assess_portal_review(execution.evidence)
         if outcome == VerificationOutcome.INCONCLUSIVE:
-            self._log_execution("execution_verification_inconclusive", execution)
+            self._log_execution(
+                "execution_verification_inconclusive", execution, context=verifier
+            )
             return ExecutionReport(
                 f"{EXECUTED_UNVERIFIED_MESSAGE} Check the portal yourself, then run "
                 f"`wally verify {execution.id} --confirm success` or `--confirm failure`.",
                 execution,
                 blocked=True,
             )
-        return self._settle(execution, outcome, current, method=VERIFY_AUTH_METHOD)
+        return self._settle(
+            execution, outcome, current, method=VERIFY_AUTH_METHOD, verifier=verifier
+        )
+
+    def lifecycle(self, execution_id: str) -> ExecutionLifecycle:
+        """Correlation ids for request → proposal → approval → execution → verification."""
+        execution = self._store.get_execution(execution_id)
+        if execution is None:
+            raise ExecutionRequestError(f"Unknown execution: {execution_id}")
+        proposal = self._store.get_proposal(execution.proposal_id)
+        return ExecutionLifecycle(
+            proposal_request=(
+                proposal.request_provenance if proposal is not None else RequestProvenance()
+            ),
+            approval=RequestProvenance(
+                channel=proposal.decision_origin if proposal is not None else "",
+                principal=proposal.decision_principal if proposal is not None else "",
+                correlation_id=(
+                    proposal.decision_correlation_id if proposal is not None else ""
+                ),
+            ),
+            execution=execution.request_provenance,
+            verification=execution.verification_provenance,
+        )
 
     def list_executions(self, *, proposal_id: str | None = None) -> list[ProposalExecution]:
         executions = self._store.list_executions(proposal_id=proposal_id)
@@ -404,7 +455,13 @@ class ActVerifyService:
                 with_evidence,
                 blocked=True,
             )
-        return self._settle(with_evidence, outcome, now, method=VERIFY_AUTH_METHOD)
+        return self._settle(
+            with_evidence,
+            outcome,
+            now,
+            method=VERIFY_AUTH_METHOD,
+            verifier=with_evidence.request_provenance,
+        )
 
     def _settle(
         self,
@@ -413,6 +470,7 @@ class ActVerifyService:
         now: datetime,
         *,
         method: str,
+        verifier: RequestProvenance,
     ) -> ExecutionReport:
         settled = replace(
             execution,
@@ -426,10 +484,11 @@ class ActVerifyService:
                 if outcome == VerificationOutcome.VERIFIED_SUCCESS
                 else REVIEW_FAILURE_OUTCOME
             ),
+            verification_provenance=verifier,
         )
         if not self._store.transition_execution(settled, expected=execution.status):
             raise ExecutionRequestError("Execution changed while recording verification.")
-        self._log_execution(f"execution_{outcome.value}", settled)
+        self._log_execution(f"execution_{outcome.value}", settled, context=verifier)
         self._log_matter_unchanged(settled)
         return ExecutionReport(
             settled.outcome,
@@ -599,13 +658,13 @@ class ActVerifyService:
     def _preflight_failed(
         self,
         proposal: ProposedAction,
-        origin: str,
+        context: RequestContext,
         now: datetime,
         category: str,
     ) -> ExecutionReport:
         return self._record_terminal(
             proposal,
-            origin,
+            context,
             now,
             status=ExecutionStatus.PREFLIGHT_FAILED,
             plan=None,
@@ -618,7 +677,7 @@ class ActVerifyService:
     def _record_terminal(
         self,
         proposal: ProposedAction,
-        origin: str,
+        context: RequestContext,
         now: datetime,
         *,
         status: ExecutionStatus,
@@ -628,16 +687,11 @@ class ActVerifyService:
         outcome: str,
         event: str,
     ) -> ExecutionReport:
-        execution = ProposalExecution(
-            id=f"ex_{uuid4().hex[:12]}",
-            proposal_id=proposal.id,
-            proposal_fingerprint=proposal.fingerprint,
-            matter_id=proposal.matter_id,
-            intent=proposal.intent,
+        execution = _new_execution(
+            proposal,
+            context,
+            now,
             status=status,
-            origin=origin,
-            created_at=_iso(now),
-            updated_at=_iso(now),
             executor=PORTAL_REVIEW_EXECUTOR if plan is not None else "",
             plan_digest=plan.digest if plan is not None else "",
             preflight="passed" if plan is not None else "failed",
@@ -659,7 +713,14 @@ class ActVerifyService:
             status=execution.status.value,
         )
 
-    def _log_execution(self, event_type: str, execution: ProposalExecution) -> None:
+    def _log_execution(
+        self,
+        event_type: str,
+        execution: ProposalExecution,
+        *,
+        context: RequestProvenance | None = None,
+    ) -> None:
+        caller = context or execution.request_provenance
         self._log(
             event_type,
             execution_id=execution.id,
@@ -668,8 +729,19 @@ class ActVerifyService:
             status=execution.status.value,
             category=execution.failure_category,
             executor=execution.executor,
-            origin=execution.origin,
+            origin=caller.channel or execution.origin,
+            principal=caller.principal or execution.principal,
+            correlation_id=caller.correlation_id or execution.correlation_id,
+            execution_correlation_id=execution.correlation_id,
         )
+
+    def _require(self, context: object, capability: Capability, action: str) -> None:
+        try:
+            self._authority.authorize(context, capability)
+        except AuthorizationError as exc:
+            raise ExecutionRequestError(
+                f"{action} requires an authenticated user request. {exc}"
+            ) from exc
 
     def _log(self, event_type: str, **parameters: str) -> None:
         if self._audit is None:
@@ -681,6 +753,38 @@ class ActVerifyService:
             provider="ops",
             parameters={key: value for key, value in parameters.items() if value},
         )
+
+
+def _new_execution(
+    proposal: ProposedAction,
+    context: RequestContext,
+    now: datetime,
+    **fields: Any,
+) -> ProposalExecution:
+    provenance = context.provenance()
+    return ProposalExecution(
+        id=f"ex_{uuid4().hex[:12]}",
+        proposal_id=proposal.id,
+        proposal_fingerprint=proposal.fingerprint,
+        matter_id=proposal.matter_id,
+        intent=proposal.intent,
+        origin=provenance.channel,
+        created_at=_iso(now),
+        updated_at=_iso(now),
+        principal=provenance.principal,
+        correlation_id=provenance.correlation_id,
+        request_provenance=provenance,
+        **fields,
+    )
+
+
+def _trace(context: RequestContext) -> dict[str, str]:
+    provenance = context.provenance()
+    return {
+        "origin": provenance.channel,
+        "principal": provenance.principal,
+        "correlation_id": provenance.correlation_id,
+    }
 
 
 def assess_portal_review(evidence: dict[str, Any]) -> VerificationOutcome:
@@ -752,6 +856,8 @@ def format_execution(execution: ProposalExecution) -> str:
         f"   Status: {execution.status.value}",
         f"   Requested: {execution.created_at} via {execution.origin}",
     ]
+    if execution.correlation_id:
+        lines.append(f"   Correlation: {execution.correlation_id}")
     if execution.executor:
         lines.append(f"   Executor: {execution.executor}")
     if execution.authorization:

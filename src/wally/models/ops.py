@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import StrEnum
 
+from wally.models.principal import RequestProvenance
+
 
 class ObservationCategory(StrEnum):
     EMAIL_RECEIVED = "email_received"
@@ -138,12 +140,6 @@ REOPENABLE_PROPOSAL_STATUSES = frozenset(
     }
 )
 
-# The only origins allowed to record a proposal decision.
-TRUSTED_DECISION_ORIGINS = frozenset({"user_cli", "user_repl"})
-
-# The only origins allowed to request execution of an approved proposal.
-TRUSTED_EXECUTION_ORIGINS = frozenset({"user_cli", "user_repl"})
-
 
 class ProposalProvenance(StrEnum):
     """How a proposal was authored."""
@@ -193,10 +189,16 @@ class ProposedAction:
     thread_id: str = ""
     decision: str = ""
     decided_at: str = ""
+    # Channel the decision came through (``cli``, ``repl``; ``user_cli`` on v0.14 rows).
     decision_origin: str = ""
     decision_note: str = ""
     defer_until: str = ""
     decision_fingerprint: str = ""
+    decision_principal: str = ""
+    decision_correlation_id: str = ""
+    # Where the request that produced this proposal came from. Audit data only:
+    # excluded from the fingerprint and never consulted for authorization.
+    request_provenance: RequestProvenance = field(default_factory=RequestProvenance)
 
 
 class ExecutionStatus(StrEnum):
@@ -257,6 +259,7 @@ class ProposalExecution:
     matter_id: str
     intent: ProposalIntent
     status: ExecutionStatus
+    # Channel the execute request came through.
     origin: str
     created_at: str
     updated_at: str
@@ -272,6 +275,10 @@ class ProposalExecution:
     outcome: str = ""
     failure_category: str = ""
     evidence: dict[str, str] = field(default_factory=dict)
+    principal: str = ""
+    correlation_id: str = ""
+    request_provenance: RequestProvenance = field(default_factory=RequestProvenance)
+    verification_provenance: RequestProvenance = field(default_factory=RequestProvenance)
 
 
 @dataclass(frozen=True)

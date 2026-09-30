@@ -15,6 +15,7 @@ from wally.models.ops import (
     ProposalStatus,
     ProposedAction,
 )
+from wally.models.principal import RequestProvenance
 from wally.ops.store import OperationsStore
 
 # Exactly the v0.12.1 schema: observations, matters, checkpoints, and no proposals.
@@ -589,6 +590,9 @@ def test_v013_proposals_gain_decision_columns_without_losing_rows(tmp_path: Path
     assert loaded.decision_note == ""
     assert loaded.defer_until == ""
     assert loaded.decision_fingerprint == ""
+    assert loaded.decision_principal == ""
+    assert loaded.decision_correlation_id == ""
+    assert loaded.request_provenance.is_empty()
     assert loaded.title == "Review open bill"
     after = {table: _dump(path, table) for table in ("observations", "matters", "checkpoints")}
     assert after == before
@@ -597,7 +601,7 @@ def test_v013_proposals_gain_decision_columns_without_losing_rows(tmp_path: Path
         "prop-v013",
         status=ProposalStatus.APPROVED,
         updated_at="2026-08-12T09:00:00+00:00",
-        decision_origin="user_cli",
+        decided_by=RequestProvenance(channel="cli", principal="owner"),
         status_reason="user approved",
     )
     assert recorded
@@ -605,6 +609,37 @@ def test_v013_proposals_gain_decision_columns_without_losing_rows(tmp_path: Path
     assert decided is not None
     assert decided.status is ProposalStatus.APPROVED
     assert decided.decision_fingerprint == decided.fingerprint
+    assert decided.decision_origin == "cli"
+    assert decided.decision_principal == "owner"
+
+
+def test_v014_user_cli_decisions_are_attributed_to_the_owner(tmp_path: Path) -> None:
+    store = OperationsStore(tmp_path / "operations.db")
+    store.save_proposal(_proposal())
+    conn = sqlite3.connect(store._path)
+    try:
+        conn.execute(
+            """
+            UPDATE proposals
+            SET status = 'approved', decision = 'approved',
+                decided_at = '2026-08-12T09:00:00+00:00',
+                decision_origin = 'user_cli',
+                decision_fingerprint = fingerprint,
+                decision_principal = ''
+            WHERE id = 'prop-1'
+            """
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    reopened = OperationsStore(tmp_path / "operations.db")
+    loaded = reopened.get_proposal("prop-1")
+    assert loaded is not None
+    assert loaded.status is ProposalStatus.APPROVED
+    assert loaded.decision_origin == "user_cli"
+    assert loaded.decision_principal == "owner"
+    assert loaded.decision_fingerprint == loaded.fingerprint
 
 
 def test_store_does_not_depend_on_execution_types() -> None:

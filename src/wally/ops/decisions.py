@@ -1,8 +1,9 @@
 """Explicit user decisions on ProposedActions.
 
 Approval, rejection, and deferral are authorization state. They do not execute,
-resolve secrets, or call a provider. The only accepted origins are trusted Wally
-commands. Source text and model output cannot decide a proposal.
+resolve secrets, or call a provider. A decision needs a request context that the
+principal authority issued and that holds ``DECIDE_PROPOSAL``. Source text, model
+output, and a channel name typed anywhere cannot decide a proposal.
 """
 
 from __future__ import annotations
@@ -10,14 +11,12 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from enum import StrEnum
 
-from wally.exceptions import ProposalDecisionError
-from wally.models.ops import (
-    TRUSTED_DECISION_ORIGINS,
-    ProposalStatus,
-    ProposedAction,
-)
+from wally.exceptions import AuthorizationError, ProposalDecisionError
+from wally.models.ops import ProposalStatus, ProposedAction
+from wally.models.principal import Capability, RequestContext
 from wally.ops.priority import parse_time
 from wally.ops.store import OperationsStore
+from wally.runtime.principals import PrincipalAuthority
 
 NOTE_MAX = 280
 
@@ -67,19 +66,23 @@ def apply_user_decision(
     proposal_id: str,
     *,
     decision: UserDecision,
-    origin: str,
+    context: RequestContext,
+    authority: PrincipalAuthority,
     now: datetime,
     note: str = "",
     defer_until: str = "",
 ) -> ProposedAction:
     """Record one explicit user decision against the proposal version in the store.
 
-    ``origin`` must be a trusted command. The stored fingerprint is copied onto the
-    decision inside the store, so this function cannot approve a different version
-    from the one that is pending.
+    The stored fingerprint is copied onto the decision inside the store, so this
+    function cannot approve a different version from the one that is pending.
     """
-    if origin not in TRUSTED_DECISION_ORIGINS:
-        raise ProposalDecisionError("Only an explicit user command can decide a proposal.")
+    try:
+        authority.authorize(context, Capability.DECIDE_PROPOSAL)
+    except AuthorizationError as exc:
+        raise ProposalDecisionError(
+            f"Only an authenticated user request can decide a proposal. {exc}"
+        ) from exc
     proposal = store.get_proposal(proposal_id)
     if proposal is None:
         raise ProposalDecisionError(f"No proposal with id {proposal_id}.")
@@ -97,7 +100,7 @@ def apply_user_decision(
         proposal_id,
         status=status,
         updated_at=_iso(now),
-        decision_origin=origin,
+        decided_by=context.provenance(),
         decision_note=clean_note(note),
         defer_until=until,
         status_reason=_STATUS_REASON[status],

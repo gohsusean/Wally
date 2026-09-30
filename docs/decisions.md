@@ -1229,6 +1229,48 @@ Revisit when a second action type is proposed, when scheduling or notifications 
 
 ---
 
+## ADR-038: Authenticated principals, not channel-name literals
+
+**Status:** Accepted — implemented in v0.15.0  
+**Date:** 2026-09-30  
+**Deciders:** Founding engineer + project owner
+
+### Context
+
+ADR-036 and ADR-037 authorized decisions and execution by comparing a string origin to `{user_cli, user_repl}`. That couples the application services to two CLI-shaped identities. A later ChatGPT, Telegram, or Home Assistant channel would have to edit Act & Verify and the approval inbox, or worse, pass a forged origin string.
+
+The CLI and REPL must not be the authorization boundary. They should only authenticate the local operator and call the same services.
+
+### Decision
+
+1. **`Principal` + `RequestContext`.** A channel adapter asks `PrincipalAuthority.issue(channel)` for a context carrying subject, channel, authentication method, a per-process HMAC grant, a correlation id, and optional external session/request refs. Application services call `authority.authorize(context, capability)` before deciding, executing, or verifying.
+2. **Capabilities, not name lists.** `DECIDE_PROPOSAL`, `EXECUTE_PROPOSAL`, `VERIFY_EXECUTION`. Core logic never compares `user_cli` or `cli` itself. Adding a channel is a registration on the authority with an explicit capability set.
+3. **Adapters issue; services check.** `wally execute` and `/execute` call `ActVerifyService.execute(context=...)`. Approvals call `ObserveBriefService.decide(context=...)`. A hand-built `Principal(channel="cli")`, a channel named in email or model text, or a context from another authority instance fails closed.
+4. **Provenance is not authorization.** `RequestProvenance` (channel, principal, external refs, correlation id) is stored on proposals and executions for audit. It is never part of the proposal fingerprint. A future ChatGPT turn may supply selected conversational context as evidence; Wally still constructs the ProposedAction from canonical facts.
+5. **Correlation is optional and additive.** The same correlation id can be reused across brief → decide → execute → verify. Each CLI invocation may also use its own. `executions.correlation_id` and `proposals.decision_correlation_id` plus `store.correlated()` make the lineage queryable. This is not an active-matters system.
+6. **v0.14 rows.** Decisions recorded as `user_cli` / `user_repl` keep that origin string and gain `decision_principal = owner` on open. They remain valid approvals.
+
+### Consequences
+
+**Positive:** A later remote channel can be registered without changing Act & Verify. Forged channel names grant nothing. Provenance and correlation exist without changing what was approved.
+
+**Negative:** HMAC grants are per-process and not persisted, so a context cannot be replayed across processes. That is intended. CLI and REPL still share the local-operator policy; remote channels will need a narrower policy when they exist.
+
+### Alternatives considered
+
+| Alternative | Why rejected |
+|-------------|--------------|
+| Keep `{user_cli, user_repl}` sets in every service | Every new channel edits Act & Verify |
+| Trust a channel string on the request | Email and model text would approve themselves |
+| Store the HMAC grant | A leaked database row would become a bearer token |
+| Put correlation in the fingerprint | The same bill would look like a new action per interface |
+
+### Review trigger
+
+Revisit when the first remote channel is added, and when that channel's authentication is stronger than "this process issued the context."
+
+---
+
 ```markdown
 ## ADR-NNN: Title
 

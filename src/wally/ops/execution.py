@@ -12,7 +12,6 @@ authorize the typed plan at execution time.
 from __future__ import annotations
 
 from wally.models.ops import (
-    TRUSTED_DECISION_ORIGINS,
     ProposalIntent,
     ProposalStatus,
     ProposedAction,
@@ -43,7 +42,9 @@ def approval_problem(proposal: ProposedAction) -> str | None:
         return NOT_APPROVED
     if proposal.decision != ProposalStatus.APPROVED.value:
         return NOT_APPROVED
-    if proposal.decision_origin not in TRUSTED_DECISION_ORIGINS:
+    # ``record_decision`` writes a principal only after the principal authority
+    # authorized the request, and ``save_proposal`` cannot write one at all.
+    if not proposal.decision_principal or not proposal.decision_origin:
         return UNTRUSTED_DECISION
     if not proposal.decision_fingerprint or proposal.decision_fingerprint != proposal.fingerprint:
         return STALE_APPROVAL

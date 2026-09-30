@@ -34,6 +34,10 @@ class ProposalDecisionError(WallyError):
     """
 
 
+class AuthorizationError(WallyError):
+    """A request context is not authenticated, or lacks the capability it needs."""
+
+
 class ExecutionRequestError(WallyError):
     """An execution request was refused before any execution record was written.
 
