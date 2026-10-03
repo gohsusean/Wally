@@ -57,6 +57,14 @@ Default post-login behaviour with `auth_success_selector` or `auth_success_url_c
 
 Policy: `runtime/secrets_safety.py`. Resolver: `runtime/secret_resolver.py`.
 
+## Telegram bot token (v0.18)
+
+The deployed poller reads `telegram.bot_token_ref` from config, or `WALLY_TELEGRAM_BOT_TOKEN_REF`. The value must be an `op://` pointer. `wally telegram poll` resolves it through `SecretsProvider` at startup and writes a `secrets_resolve` audit event with the reference and purpose `telegram_bot`. The token value is not stored.
+
+`WALLY_TELEGRAM_BOT_TOKEN` remains an injection path for tests and local development when no reference is set. `telegram.owner_user_id` / `WALLY_TELEGRAM_OWNER_USER_ID` is configuration, not a secret.
+
+This startup read is not an execution approval. Proposal execution still requires `authorized=True` after the approval gate.
+
 ## Playwright artifacts (privacy default)
 
 Wally does **not** write screenshots, traces, HAR files, or video. `SCREENSHOT` actions are denied. Playwright tracing is not started.

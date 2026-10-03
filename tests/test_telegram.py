@@ -5,15 +5,17 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+from wally.adapters.secrets.memory import MemorySecretsProvider
 from wally.audit.logger import AuditLogger
 from wally.cli import build_parser
+from wally.exceptions import ProviderUnavailableError
 from wally.gateway.service import GatewayRuntime
 from wally.ops.request_propose import TrustedRecord
 from wally.ops.service import ObserveBriefService
 from wally.ops.store import OperationsStore
 from wally.runtime.principals import LOCAL_OPERATOR_CHANNELS, PrincipalAuthority
 from wally.telegram.outbox import OUTBOUND_SEMANTICS
-from wally.telegram.poll import telegram_registration
+from wally.telegram.poll import resolve_bot_token, telegram_registration
 from wally.telegram.service import TelegramConfig, TelegramService, telegram_policy
 
 OWNER = "42"
@@ -299,6 +301,47 @@ def test_edited_message_is_ignored(tmp_path: Path) -> None:
         NOW,
     )
     assert store.list_proposals() == []
+
+
+def test_bot_token_comes_from_the_secrets_provider(tmp_path: Path) -> None:
+    canary = "canary-bot-token-value"
+    ref = "op://Personal/Wally/telegram"
+    provider = MemorySecretsProvider({ref: canary})
+    audit = AuditLogger(tmp_path / "audit")
+    token = resolve_bot_token(ref, provider=provider, audit=audit, env={})
+    assert token == canary
+    assert provider.resolve_calls == [ref]
+    logged = "".join(
+        path.read_text(encoding="utf-8") for path in (tmp_path / "audit").glob("*.jsonl")
+    )
+    assert ref in logged
+    assert canary not in logged
+    assert "telegram_bot" in logged
+
+
+def test_raw_bot_token_is_not_a_secret_reference() -> None:
+    provider = MemorySecretsProvider({})
+    try:
+        resolve_bot_token(
+            "123456:abcdefghijklmnopqrstuvwxyz",
+            provider=provider,
+            audit=None,
+            env={},
+        )
+    except ProviderUnavailableError as exc:
+        assert "123456:" not in str(exc)
+    else:
+        raise AssertionError("raw token was accepted")
+
+
+def test_env_token_remains_for_local_injection() -> None:
+    token = resolve_bot_token(
+        "",
+        provider=None,
+        audit=None,
+        env={"WALLY_TELEGRAM_BOT_TOKEN": "local-test-token"},
+    )
+    assert token == "local-test-token"
 
 
 def test_telegram_poll_command_parses() -> None:

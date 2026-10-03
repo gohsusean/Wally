@@ -463,6 +463,7 @@ See ADR-040.
 **Goal:** Telegram is the private place Wally can open a conversation. The owner sees one approval card, decides with a button, and can ask what is going on in the same chat. Approve records a decision. It does not execute.
 
 - **Path:** long poll → fixed `telegram` Gateway adapter → existing submit, read, link, and decide services. One numeric user id in a private chat. A local lease keeps a single poller.
+- **Bot token:** `telegram.bot_token_ref` is an `op://` pointer resolved by the existing secrets provider. The owner user id stays ordinary configuration. `WALLY_TELEGRAM_BOT_TOKEN` is the test injection path.
 - **Callbacks:** `callback_data` is a random nonce plus a compact action. The outbox row binds the nonce to the proposal id, fingerprint, chat, and allowed actions. The payload is not trusted because Telegram delivered it.
 - **Ingress:** each `update_id` is stored before the long-poll offset moves. A redelivery does not open a second request, Matter, proposal, or decision.
 - **Outbox:** one row per dedupe key. Delivery is at-least-once with best-effort duplicate suppression. A stale `sending` lease can be retried. A durably delivered row is not sent again. A second card after an ambiguous crash is acceptable. A second decision is not.
@@ -470,6 +471,8 @@ See ADR-040.
 - **Not now:** dismisses that notification. The proposal stays `proposed`. No reminder is scheduled.
 - **Text:** "approve it" can show the card again. The text does not record the decision. Utterances stay untrusted evidence and use the existing grounding path. There is no reasoner in this release.
 - **Schema:** `notification_outbox`, `telegram_updates`, `telegram_cursor`, and `telegram_lease`.
+
+**Deployment:** The credential path is in place. A live Bot API smoke test has not been run. This machine has no `op` CLI on `PATH`, no `telegram.bot_token_ref`, and no owner user id. Until those are set, `wally telegram poll` cannot reach Telegram. The fake-client suite covers callbacks, replay, Not now, and the lease.
 
 **Not in this milestone:** Home Assistant, a general scheduler, remote execution from Telegram, a Wally Reasoner, group chats, transcript sync, and a public webhook.
 

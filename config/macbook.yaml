@@ -85,6 +85,12 @@ providers:
     enabled: true
     calendar_id: primary
 
+# Deployed Telegram bot token is an op:// pointer, resolved at poll startup.
+# owner_user_id is configuration. WALLY_TELEGRAM_BOT_TOKEN is the test injection.
+# telegram:
+#   bot_token_ref: op://vault/item/credential
+#   owner_user_id: "123456789"
+
 ops:
   enabled: true
   database: data/operations.db

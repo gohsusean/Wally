@@ -462,7 +462,7 @@ def _run_repl_ops(app, user_input: str, *, session_id: str = "") -> bool:
 
 
 def _run_telegram(app, args) -> int:
-    from wally.telegram.poll import serve_from_env
+    from wally.telegram.poll import serve
 
     if getattr(args, "telegram_command", None) != "poll":
         print("Usage: wally telegram poll", file=sys.stderr)
@@ -470,7 +470,8 @@ def _run_telegram(app, args) -> int:
     if app.ops is None:
         print("Operations storage is disabled.", file=sys.stderr)
         return 1
-    return serve_from_env(app.settings)
+    provider = getattr(app.secrets, "provider", None)
+    return serve(app.settings, secrets_provider=provider, audit=app.audit)
 
 
 def _run_chatgpt(app, args) -> int:

@@ -151,6 +151,8 @@ class Settings:
     ops_timezone: str | None
     notion: NotionPlatformConfig
     log_level: str
+    telegram_bot_token_ref: str
+    telegram_owner_user_id: str
 
 
 def find_project_root(start: Path | None = None) -> Path:
@@ -432,6 +434,9 @@ def load_settings(
     secrets = _provider_section(providers, "secrets")
     browser = _provider_section(providers, "browser")
     ops_cfg = raw.get("ops") or {}
+    telegram_cfg = raw.get("telegram") or {}
+    if not isinstance(telegram_cfg, dict):
+        telegram_cfg = {}
     prompts = raw.get("prompts", {})
 
     dry_run_env = os.environ.get("WALLY_DRY_RUN", "").lower()
@@ -546,6 +551,16 @@ def load_settings(
         ),
         notion=load_notion_config(root),
         log_level=os.environ.get("WALLY_LOG_LEVEL", "INFO").upper(),
+        telegram_bot_token_ref=str(
+            telegram_cfg.get("bot_token_ref")
+            or os.environ.get("WALLY_TELEGRAM_BOT_TOKEN_REF")
+            or ""
+        ).strip(),
+        telegram_owner_user_id=str(
+            telegram_cfg.get("owner_user_id")
+            or os.environ.get("WALLY_TELEGRAM_OWNER_USER_ID")
+            or ""
+        ).strip(),
     )
 
 

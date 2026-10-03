@@ -269,7 +269,9 @@ The adapter is implemented. A hosted ChatGPT connection has not been validated, 
 
 #### Telegram inbox (v0.18)
 
-`wally telegram poll` long-polls the Bot API from this Mac. There is no public webhook. The adapter is registered as channel `telegram` with `approval_adapter` false. The owner is `WALLY_TELEGRAM_OWNER_USER_ID` in a private chat. Display name, username, groups, edits, and message text do not authorize.
+`wally telegram poll` long-polls the Bot API from this Mac. There is no public webhook. The adapter is registered as channel `telegram` with `approval_adapter` false. The owner is `telegram.owner_user_id` in a private chat. Display name, username, groups, edits, and message text do not authorize.
+
+The bot token is `telegram.bot_token_ref`, an `op://` pointer resolved by `SecretsProvider` when the poller starts. The audit log records that reference, not the token. `WALLY_TELEGRAM_BOT_TOKEN` is only the test and local injection path. The in-process Gateway credential is minted for that process when it is not already set.
 
 Callback data is a short random nonce plus `a`, `r`, or `n`. The outbox row binds that nonce to the proposal id, fingerprint, chat, and allowed actions. The handler loads that row and then runs the existing decide path. `Not now` dismisses the notification and leaves the proposal `proposed`. It does not schedule a reminder.
 
