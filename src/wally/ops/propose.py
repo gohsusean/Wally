@@ -44,6 +44,9 @@ PREPARE_FOR_EVENT_SUGGESTION = "Set aside time to prepare before this event star
 REVIEW_BILL_TITLE = "Review open bill"
 REVIEW_BILL_RATIONALE = "Open finance matter supported by a bill or a recurring obligation."
 REVIEW_BILL_SUGGESTION = "Review this bill and decide how to handle it."
+DELIVER_DOCUMENT_TITLE = "Deliver a trusted document"
+DELIVER_DOCUMENT_RATIONALE = "A trusted document and recipient are on record."
+DELIVER_DOCUMENT_SUGGESTION = "Review this delivery and decide whether to approve it."
 
 _CALENDAR_SUPPORT = frozenset(
     {
@@ -252,4 +255,49 @@ def _review_bill(
         observation_ids=observation_ids,
         knowledge_ids=knowledge_ids,
         thread_id=matter.thread_id,
+    )
+
+
+def propose_deliver_document(
+    matter: Matter,
+    *,
+    document_id: str,
+    recipient_id: str,
+    now: datetime,
+) -> ProposedAction | None:
+    """One delivery proposal from canonical ids. Wording is not an input.
+
+    ``knowledge_ids`` stays ``(document_id, recipient_id)`` so a later reconcile
+    can rebuild the same fingerprint. The caller has already resolved those ids
+    from trusted records.
+    """
+    if matter.status != MatterStatus.OPEN or not document_id or not recipient_id:
+        return None
+    if document_id == recipient_id:
+        return None
+    current = _aware(now)
+    digest = content_hash(
+        {
+            "intent": ProposalIntent.DELIVER_DOCUMENT.value,
+            "matter_id": matter.id,
+            "document_id": document_id,
+            "recipient_id": recipient_id,
+        }
+    )
+    return ProposedAction(
+        id=str(uuid4()),
+        fingerprint=fingerprint_for(matter.id, ProposalIntent.DELIVER_DOCUMENT, digest),
+        matter_id=matter.id,
+        intent=ProposalIntent.DELIVER_DOCUMENT,
+        status=ProposalStatus.PROPOSED,
+        provenance=ProposalProvenance.DETERMINISTIC_RULES,
+        risk=ProposalRisk.MEDIUM,
+        created_at=_iso(current),
+        updated_at=_iso(current),
+        title=DELIVER_DOCUMENT_TITLE,
+        rationale=DELIVER_DOCUMENT_RATIONALE,
+        suggestion=DELIVER_DOCUMENT_SUGGESTION,
+        confidence=matter.confidence,
+        content_hash=digest,
+        knowledge_ids=(document_id, recipient_id),
     )

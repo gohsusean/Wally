@@ -30,6 +30,10 @@ An ActiveMatter stores an id, an optional canonical Matter id, a short title, an
 
 Gateway responses and audit events do not include the HMAC grant, the adapter credential, or evidence text. `get_context` returns Matter status, proposal and execution ids and statuses, and the handle. It does not return the evidence capsule.
 
+## ChatGPT connection (v0.17)
+
+The owner secret, the Gateway credential, and the bearer token are process memory. They are not written to `operations.db` or the audit log. An OpenAI subject, when the host supplies one, is stored as audit metadata on a Gateway call. It is not part of a proposal fingerprint and it is not a credential. Decision notes stay the short note the decide path already stores.
+
 ## Execution records (v0.15)
 
 An execution record stores these fields and nothing else:

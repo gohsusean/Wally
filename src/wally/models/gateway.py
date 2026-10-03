@@ -28,6 +28,8 @@ FORBIDDEN_CLAIM_KEYS = frozenset(
         "capability",
         "capabilities",
         "authentication",
+        "subject",
+        "owner",
     }
 )
 

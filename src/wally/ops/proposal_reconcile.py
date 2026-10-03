@@ -26,7 +26,7 @@ from wally.models.ops import (
 )
 from wally.models.principal import RequestProvenance
 from wally.ops.priority import parse_time
-from wally.ops.propose import propose_for_matter
+from wally.ops.propose import propose_deliver_document, propose_for_matter
 from wally.ops.store import OperationsStore
 
 # Fixed internal reasons. No Matter or Observation text is ever recorded here.
@@ -107,6 +107,34 @@ class ProposalReconciler:
             self._open_new(matter, observations, current, result)
         return result
 
+    def _reconcile_delivery(
+        self,
+        proposal: ProposedAction,
+        matter: Matter,
+        now: datetime,
+        result: ProposalReconciliation,
+    ) -> None:
+        """Keep a delivery proposal only when its canonical ids still hash the same."""
+        if len(matter.knowledge_ids) != 2:
+            self._close(
+                proposal,
+                ProposalStatus.INVALIDATED,
+                REASON_EVIDENCE_INELIGIBLE,
+                now,
+                result,
+            )
+            return
+        document_id, recipient_id = matter.knowledge_ids
+        candidate = propose_deliver_document(
+            matter, document_id=document_id, recipient_id=recipient_id, now=now
+        )
+        if candidate is not None and candidate.fingerprint == proposal.fingerprint:
+            result.unchanged.append(proposal.id)
+            return
+        self._close(
+            proposal, ProposalStatus.INVALIDATED, REASON_EVIDENCE_INELIGIBLE, now, result
+        )
+
     def _support_for(
         self, matter: Matter, observations: dict[str, Observation]
     ) -> list[Observation]:
@@ -136,6 +164,10 @@ class ProposalReconciler:
         matter = matters.get(proposal.matter_id)
         if matter is None or matter.status != MatterStatus.OPEN:
             self._close(proposal, ProposalStatus.INVALIDATED, REASON_MATTER_CLOSED, now, result)
+            return
+
+        if proposal.intent == ProposalIntent.DELIVER_DOCUMENT:
+            self._reconcile_delivery(proposal, matter, now, result)
             return
 
         candidate = propose_for_matter(matter, self._support_for(matter, observations), now=now)

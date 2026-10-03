@@ -1,7 +1,7 @@
 # Wally — Roadmap
 
-**Version:** 0.16.0  
-**Last updated:** 2026-09-30
+**Version:** 0.17.0  
+**Last updated:** 2026-10-04
 
 Wally is a **personal Chief of Staff** and **personal AI operating system** — not a home automation platform.
 
@@ -434,6 +434,25 @@ See ADR-037, ADR-038, and [chief-of-staff.md](chief-of-staff.md).
 **Not in this milestone:** ChatGPT, MCP, Telegram, Home Assistant, a public network API, remote approval UX, scheduling, notifications, transcript sync, and a generic tool interface.
 
 See ADR-039.
+
+---
+
+## v0.17.0 — ChatGPT interface ✓
+
+**Goal:** ChatGPT is the primary ad-hoc interface. It asks what needs attention, continues an ActiveMatter, and submits work. Wally builds the canonical proposal. A decision is recorded only for an authenticated owner, on an exact proposal fingerprint, when the host is known to confirm that call.
+
+- **Path:** ChatGPT MCP client → localhost adapter → Gateway → existing Observe / proposal / decide services. The registration fixes the channel at `chatgpt`. The model cannot set channel, principal, grant, subject, or owner.
+- **Authentication:** `POST /oauth/token` on `127.0.0.1` accepts the owner secret plus a PKCE S256 verifier and returns a random bearer. `tools/list` and `tools/call` require that bearer. A subject string does not mint it. The Gateway credential is a separate secret. The HMAC key stays in `PrincipalAuthority`.
+- **Subject pin:** `_meta["openai/subject"]` must be in the configured allowlist before `record_decision` runs. An empty allowlist leaves that tool unregistered. The subject is audit metadata, not a fingerprint field.
+- **Confirmation:** `record_decision` is registered only when `WALLY_CHATGPT_DECISION_CONFIRMATION` is set, together with writes, both secrets, and a non-empty subject allowlist. The default is off. The tool is annotated `destructiveHint=true` so the host treats it as a consequential write. The handler still checks owner, subject, capability, status `proposed`, and the exact fingerprint.
+- **Tools:** reads `list_attention`, `get_matter`, `list_proposals`, `get_lifecycle` (`readOnlyHint=true`). Writes `submit_request`, `link_session`, `set_handle_visibility` (`readOnlyHint=false`). No `execute` or `verify`.
+- **Requests:** a delivery utterance is untrusted. Wally grounds it to one trusted document title and one trusted recipient title, then stores a `deliver_document` proposal at status `proposed`. The fingerprint covers matter, intent, document id, and recipient id. Ambiguous or unknown titles write nothing. The proposal is not executable.
+- **Continuity:** the host session id links the handle. One session can hold many Matters. One Matter can hold many sessions. Archive changes handle visibility only. No transcript is stored.
+- **Schema:** no new tables.
+
+**Not in this milestone:** remote execution, Telegram, Home Assistant, scheduling, notifications, transcript sync, and a generic operation tool. `record_decision` stays disabled until a live ChatGPT host is observed confirming that call. The localhost owner-secret grant is not a public ChatGPT OAuth connector; do not publish `/oauth/token` through a tunnel.
+
+See ADR-040.
 
 ---
 

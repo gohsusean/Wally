@@ -6,11 +6,11 @@ Wally is not a chatbot. It is not a home automation platform.
 
 ## Status
 
-**Status:** **v0.16.0 — Gateway.** A local Gateway can submit a request, read canonical state, and call the existing decide / execute / verify services. The runtime chooses the channel from the authenticated adapter. Conversational text is untrusted evidence. Wally remains the only durable source of truth. Act & Verify is unchanged: only bill review runs, only when you ask, and it never pays. Nothing runs on a schedule.
+**Status:** **v0.17.0 — ChatGPT interface.** ChatGPT is the ad-hoc interface. It reaches Wally only through the Gateway, on a localhost bearer minted from the owner secret. A pinned OpenAI subject is an extra identity check for decisions, not the login. Wally turns a grounded request into a canonical proposal. `record_decision` stays unregistered until the host is known to confirm that exact call. Act & Verify is unchanged: only bill review runs, only when you ask, and it never pays. Nothing runs on a schedule.
 
-Complete: v0.10 browser automation, v0.11.1 secrets hardening, v0.12 Observe & Brief, v0.13 Assess & Propose, v0.14 Approval Inbox, v0.15 Act & Verify, v0.16 Gateway.
+Complete: v0.10 browser automation, v0.11.1 secrets hardening, v0.12 Observe & Brief, v0.13 Assess & Propose, v0.14 Approval Inbox, v0.15 Act & Verify, v0.16 Gateway, v0.17 ChatGPT interface.
 
-Future: a ChatGPT adapter, scheduling and proactive triggers, notifications, daily-driver hardening, more supported action types.
+Future: scheduling and proactive triggers, notifications, daily-driver hardening, more supported action types. Remote execution from ChatGPT is not part of this release.
 
 ## Getting started
 

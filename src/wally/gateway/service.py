@@ -10,6 +10,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 from collections.abc import Callable
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
@@ -27,9 +28,15 @@ from wally.models.gateway import (
     parse_evidence,
 )
 from wally.models.ops import Matter, ProposalExecution, ProposedAction, VerificationOutcome
-from wally.models.principal import Capability, RequestContext, clean_ref
+from wally.models.principal import Capability, RequestContext, RequestProvenance, clean_ref
 from wally.ops.act import ActVerifyService, ExecutionLifecycle, ExecutionReport
 from wally.ops.decisions import UserDecision
+from wally.ops.request_propose import (
+    GroundingError,
+    TrustedRecord,
+    attach_delivery,
+    ground_delivery,
+)
 from wally.ops.service import ObserveBriefService
 from wally.ops.store import OperationsStore
 from wally.runtime.principals import PrincipalAuthority, new_correlation_id
@@ -38,8 +45,9 @@ GATEWAY_INGRESS = "gateway_ingress"
 _LOCAL_CHANNELS = frozenset({"cli", "repl"})
 _AUTH_FAILURE = "Gateway authentication failed."
 _CLAIM_FAILURE = (
-    "External payloads cannot set channel, principal, grant, or capabilities."
+    "External payloads cannot set channel, principal, subject, grant, or capabilities."
 )
+CHATGPT_CHANNEL = "chatgpt"
 _NO_APPROVAL = "Execution requires an approval adapter for this channel. Nothing ran."
 
 _OPS: dict[str, Capability] = {
@@ -77,6 +85,22 @@ class GatewayResult:
         return {"ok": self.ok, "error": self.error, "data": self.data}
 
 
+@dataclass(frozen=True)
+class GatewayHost:
+    """Identity the MCP host supplied, after the connection itself authenticated.
+
+    A subject string in a tool argument never populates this object.
+    """
+
+    connection_authenticated: bool = False
+    subject: str = ""
+    organization: str = ""
+    session: str = ""
+
+
+_HOST: ContextVar[GatewayHost | None] = ContextVar("wally_gateway_host", default=None)
+
+
 class GatewayRuntime:
     """Dispatch Gateway calls into the existing runtime services."""
 
@@ -89,12 +113,18 @@ class GatewayRuntime:
         ops: ObserveBriefService | None = None,
         act: ActVerifyService | None = None,
         audit: Any = None,
+        trusted_records: tuple[TrustedRecord, ...] = (),
+        owner_subjects: frozenset[str] = frozenset(),
+        owner_organizations: frozenset[str] = frozenset(),
     ) -> None:
         self._store = store
         self._authority = authority
         self._ops = ops
         self._act = act
         self._audit = audit
+        self._records = trusted_records
+        self._owner_subjects = owner_subjects
+        self._owner_orgs = owner_organizations
         self._adapters = _registrations(authority, adapters)
 
     def dispatch(
@@ -105,8 +135,30 @@ class GatewayRuntime:
         op: str,
         body: dict | None = None,
         now: datetime | None = None,
+        host: GatewayHost | None = None,
     ) -> GatewayResult:
         payload = body if isinstance(body, dict) else None
+        token = _HOST.set(host)
+        try:
+            return self._dispatch_body(
+                adapter_id=adapter_id,
+                credential=credential,
+                op=op,
+                payload=payload,
+                now=now,
+            )
+        finally:
+            _HOST.reset(token)
+
+    def _dispatch_body(
+        self,
+        *,
+        adapter_id: str,
+        credential: str,
+        op: str,
+        payload: dict | None,
+        now: datetime | None,
+    ) -> GatewayResult:
         if payload is None:
             return self._denied("", "", op, (), "Request body must be an object.")
         adapter = self._authenticate(adapter_id, credential)
@@ -160,6 +212,9 @@ class GatewayRuntime:
         continued = clean_ref(body.get("continue_correlation_id"))
         session_ref = clean_ref(body.get("external_session_ref"))
         request_ref = clean_ref(body.get("external_request_ref"))
+        host = _HOST.get()
+        if host is not None and host.session:
+            session_ref = clean_ref(host.session)
         correlation_id = self._correlation(continued, active_id)
         if active_id and self._store.get_active_matter(active_id) is None:
             raise GatewayError(f"Unknown active matter: {active_id}")
@@ -170,6 +225,14 @@ class GatewayRuntime:
             request_ref=request_ref,
         )
         self._authority.authorize(context, Capability.SUBMIT_REQUEST)
+        proposal, chosen_handle = self._proposal_for_submit(
+            body,
+            active_id=active_id,
+            provenance=context.provenance(),
+            now=now,
+        )
+        if proposal is not None and not active_id:
+            active_id = chosen_handle or self._handle_for_matter(proposal.matter_id, now)
         stamp = _iso(now)
         record = GatewayRequestRecord(
             id=f"gw_{uuid4().hex[:16]}",
@@ -209,8 +272,72 @@ class GatewayRuntime:
                 "channel": record.channel,
                 "evidence_count": len(evidence),
                 "evidence_hashes": [item.content_hash for item in evidence],
+                "proposal": _public_proposal(proposal) if proposal is not None else None,
             },
         )
+
+    def _proposal_for_submit(
+        self,
+        body: dict,
+        *,
+        active_id: str,
+        provenance: RequestProvenance,
+        now: datetime,
+    ) -> tuple[ProposedAction | None, str]:
+        document_hint = cap_text(body.get("document_hint"), TITLE_MAX)
+        recipient_hint = cap_text(body.get("recipient_hint"), TITLE_MAX)
+        if not document_hint and not recipient_hint:
+            return None, ""
+        try:
+            grounding = ground_delivery(
+                self._records,
+                document_hint=document_hint,
+                recipient_hint=recipient_hint,
+            )
+            proposal, chosen = attach_delivery(
+                self._store,
+                grounding,
+                active_matter_id=active_id,
+                provenance=provenance,
+                now=now,
+            )
+        except GroundingError as exc:
+            raise GatewayError(str(exc)) from exc
+        return proposal, chosen
+
+    def _handle_for_matter(self, matter_id: str, now: datetime) -> str:
+        matter = self._store.get_matter(matter_id)
+        title = matter.title if matter is not None else "Delivery"
+        stamp = _iso(now)
+        handle = ActiveMatter(
+            id=f"am_{uuid4().hex[:16]}",
+            matter_id=matter_id,
+            title=title,
+            visibility=HandleVisibility.ACTIVE,
+            created_at=stamp,
+            updated_at=stamp,
+        )
+        self._store.save_active_matter(handle)
+        return handle.id
+
+    def _require_chatgpt_decision(
+        self, host: GatewayHost | None, expected: str, proposal_id: str
+    ) -> None:
+        if host is None or not host.connection_authenticated:
+            raise GatewayError("Decision requires an authenticated ChatGPT connection.")
+        subject = host.subject.strip()
+        if not subject or subject not in self._owner_subjects:
+            raise GatewayError("This ChatGPT identity is not the Wally owner.")
+        if self._owner_orgs and host.organization.strip() not in self._owner_orgs:
+            raise GatewayError("This ChatGPT workspace is not allowed to decide.")
+        if not expected:
+            raise GatewayError("A decision needs the exact proposal fingerprint.")
+        self._match_fingerprint(proposal_id, expected)
+
+    def _match_fingerprint(self, proposal_id: str, expected: str) -> None:
+        proposal = self._store.get_proposal(proposal_id)
+        if proposal is None or not _same_text(proposal.fingerprint, expected):
+            raise GatewayError("The proposal version does not match.")
 
     def _correlation(self, continued: str, active_id: str) -> str:
         if not continued:
@@ -322,6 +449,15 @@ class GatewayRuntime:
             decision = UserDecision(str(body.get("decision") or ""))
         except ValueError as exc:
             raise GatewayError("decision must be approve, reject, or defer.") from exc
+        host = _HOST.get()
+        expected = body.get("expected_fingerprint")
+        expected_text = expected if isinstance(expected, str) else ""
+        if adapter.channel == CHATGPT_CHANNEL:
+            if decision == UserDecision.DEFER:
+                raise GatewayError("ChatGPT decisions are approve or reject.")
+            self._require_chatgpt_decision(host, expected_text, proposal_id)
+        elif expected_text:
+            self._match_fingerprint(proposal_id, expected_text)
         context = self._issued_for_body(adapter, body)
         stored = self._ops.decide(
             proposal_id,
@@ -338,6 +474,7 @@ class GatewayRuntime:
             context.correlation_id,
             "decide",
             (),
+            external_subject="" if host is None else host.subject,
         )
         return GatewayResult(ok=True, data=_public_proposal(stored))
 
@@ -493,24 +630,34 @@ class GatewayRuntime:
         correlation_id: str,
         op: str,
         evidence: tuple[EvidenceItem, ...],
+        external_subject: str = "",
     ) -> None:
         if self._audit is None:
             return
         hashes = [item.content_hash for item in evidence]
+        parameters: dict[str, Any] = {
+            "op": op,
+            "channel": channel,
+            "principal": principal,
+            "correlation_id": correlation_id,
+            "evidence_count": len(evidence),
+            "evidence_hashes": hashes,
+        }
+        if external_subject:
+            parameters["external_subject"] = external_subject
         self._audit.log_simple(
             event_type="gateway_request_accepted" if ok else "gateway_request_denied",
             session_id="gateway",
             outcome="success" if ok else "denied",
             provider="gateway",
-            parameters={
-                "op": op,
-                "channel": channel,
-                "principal": principal,
-                "correlation_id": correlation_id,
-                "evidence_count": len(evidence),
-                "evidence_hashes": hashes,
-            },
+            parameters=parameters,
         )
+
+
+def _same_text(left: str, right: str) -> bool:
+    if len(left) != len(right):
+        return False
+    return hmac.compare_digest(left.encode(), right.encode())
 
 
 def _registrations(

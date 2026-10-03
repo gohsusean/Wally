@@ -1,6 +1,6 @@
 # Wally — Architecture
 
-**Version:** 0.1 design baseline; implementation shipped through v0.16.0  
+**Version:** 0.1 design baseline; implementation shipped through v0.17.0  
 **Status:** Living architecture. Act & Verify executes one action type on explicit user request. Scheduling and notifications are future work.  
 **Last updated:** 2026-09-30
 
@@ -256,6 +256,14 @@ CLI and REPL do not go through the Gateway. They still issue in-process. `create
 An ActiveMatter is a continuity handle across interfaces: many correlation ids, and many session refs per channel. Its `active` / `archived` visibility is about whether Wally should keep offering the handle. Where a canonical Matter exists, that Matter's status remains the state of the bill or problem.
 
 Conversational items on a request are a short untrusted capsule. They are not stored as a transcript, not returned by `get_context`, and not part of a proposal fingerprint. See ADR-039.
+
+#### ChatGPT interface (v0.17)
+
+`wally chatgpt serve` binds `127.0.0.1` only. `initialize` returns no private state. `tools/list` and `tools/call` require `Authorization: Bearer`. The bearer is a random token minted after the owner secret completes a PKCE S256 grant on `POST /oauth/token`. That grant stays on localhost. It is not published through a tunnel. The OpenAI subject string cannot mint the token.
+
+The adapter is registered as channel `chatgpt` with `approval_adapter` false, so Gateway execute still fails closed. Tool annotations mark reads `readOnlyHint=true` and writes `readOnlyHint=false`. `record_decision` is annotated `destructiveHint=true` and is registered only when writes are on, the subject allowlist is non-empty, both secrets are set, and `WALLY_CHATGPT_DECISION_CONFIRMATION` is set because the operator has seen the host confirm that call. The handler still checks the bearer, the pinned subject, `decide_proposal`, proposal status `proposed`, and an exact fingerprint.
+
+An ad-hoc delivery request is grounded against exact trusted titles. A unique document and recipient become a `deliver_document` proposal through the existing proposal path. The utterance is not in the fingerprint. Zero or several matches write nothing. `deliver_document` is not an executable intent. See ADR-040.
 
 #### Browser Automation Provider (v0.10)
 

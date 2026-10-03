@@ -28,7 +28,7 @@ from wally.ops.decisions import UserDecision
 CLI_CHANNEL = "cli"
 REPL_CHANNEL = "repl"
 
-BANNER = """Wally v0.16.0 — personal AI operating system
+BANNER = """Wally v0.17.0 — personal AI operating system
 Type a message to talk to Wally.
 Commands: /help /new /health /sessions /knowledge /brief /approvals /execute /exit
 """
@@ -116,6 +116,12 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Record the outcome you checked yourself for an unverified execution",
     )
+    chatgpt = sub.add_parser("chatgpt", help="Serve the local ChatGPT adapter")
+    chatgpt_sub = chatgpt.add_subparsers(dest="chatgpt_command")
+    serve = chatgpt_sub.add_parser(
+        "serve", help="Listen on localhost for an authenticated MCP client"
+    )
+    serve.add_argument("--port", type=int, default=8765)
     return parser
 
 
@@ -452,6 +458,29 @@ def _run_repl_ops(app, user_input: str, *, session_id: str = "") -> bool:
     return True
 
 
+def _run_chatgpt(app, args) -> int:
+    import os
+
+    from wally.chatgpt.http import build_adapter, config_from_env, serve
+
+    if getattr(args, "chatgpt_command", None) != "serve":
+        print("Usage: wally chatgpt serve", file=sys.stderr)
+        return 2
+    if app.ops is None:
+        print("Operations storage is disabled.", file=sys.stderr)
+        return 1
+    config = config_from_env(dict(os.environ))
+    if not config.owner_secret or not config.gateway_credential:
+        print(
+            "Set WALLY_CHATGPT_OWNER_SECRET and WALLY_CHATGPT_GATEWAY_CREDENTIAL.",
+            file=sys.stderr,
+        )
+        return 1
+    adapter = build_adapter(app.settings, config)
+    serve(adapter, "127.0.0.1", args.port)
+    return 0
+
+
 def run_cli(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
@@ -480,6 +509,8 @@ def run_cli(argv: list[str] | None = None) -> int:
         return _run_executions(app, proposal_id=args.execution_proposal)
     if command == "execution":
         return _run_execution(app, args.execution_id)
+    if command == "chatgpt":
+        return _run_chatgpt(app, args)
     if command == "verify":
         return _run_verify(
             app,

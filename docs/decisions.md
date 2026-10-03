@@ -1315,6 +1315,50 @@ Revisit when the first real adapter (ChatGPT) is registered, when that adapter n
 
 ---
 
+## ADR-040: ChatGPT authenticates the connection, then the subject
+
+**Status:** Accepted — implemented in v0.17.0  
+**Date:** 2026-10-04  
+**Deciders:** Founding engineer + project owner
+
+### Context
+
+ADR-039 left the first external adapter unspecified. ChatGPT is that adapter, and it is the primary place to ask what needs attention, continue a Matter, and submit work. Two shortcuts are not acceptable. A copied `openai/subject` string must not become the Wally owner. A model calling `record_decision` must not count as the owner confirming that decision.
+
+ChatGPT's custom MCP connectors expect OAuth 2.1 on a reachable HTTPS resource. This deployment is one person, one machine. The adapter therefore uses the strongest connection check that stays on that machine, and it leaves decision tools off when the live host cannot show an explicit confirmation.
+
+### Decision
+
+1. **Authenticated connection, then subject, then the fixed adapter.** `wally chatgpt serve` listens on `127.0.0.1` only. `POST /oauth/token` checks the owner secret and a PKCE S256 code verifier, then returns a random bearer. `initialize` may run without a token and returns no private state. `tools/list` and `tools/call` require `Authorization: Bearer`. The bearer digest is compared with `hmac.compare_digest`. The OpenAI subject is not accepted as the owner secret and cannot mint a token.
+2. **Why this is enough for the current single-user deployment.** The owner secret never leaves the operator's environment. The token endpoint is loopback, so a remote client cannot complete the grant by possessing a subject string. The Gateway credential is a third secret, checked by the Gateway, and the HMAC signing key stays inside `PrincipalAuthority`. The adapter registration fixes the channel at `chatgpt` with `approval_adapter` false. Together: authenticated localhost connection + pinned subject, when a decision is involved + the fixed adapter = the Wally owner context.
+3. **Fail closed when the host cannot authenticate.** ChatGPT cannot dial `127.0.0.1`, and its connector OAuth does not present the owner secret. Publishing `/oauth/token` through a Secure MCP Tunnel would turn the owner secret into a network credential. Until a connector can complete an authenticated grant without that shortcut, decision-capable tools stay unregistered. Reads and lower-risk writes still require the bearer when the local server is used.
+4. **`record_decision` is a separate confirmation.** It is registered only when writes are enabled, `WALLY_CHATGPT_DECISION_CONFIRMATION` is set, the subject allowlist is non-empty, and both secrets are set. The default is off, because the tool handler cannot see a distinct "the user clicked confirm" bit. The tool is annotated `destructiveHint=true` and `readOnlyHint=false`. When it is registered, the handler still requires the bearer, a subject in the allowlist, optional organization pin, `decide_proposal`, a proposal that exists and is still `proposed`, and an exact fingerprint. Host confirmation does not replace those checks. `submit_request`, session linking, and handle visibility stay ordinary writes.
+5. **Annotations match behavior.** Read tools use `readOnlyHint=true`. State-changing tools use `readOnlyHint=false`. There is no generic operation tool. `execute` and `verify` are not registered.
+6. **Wally builds the proposal.** A delivery request carries bounded untrusted evidence and title hints. Grounding requires one exact normalized document title and one exact recipient title from the operator's trusted catalog. The existing proposal path stores `deliver_document` at status `proposed`. The fingerprint covers matter id, intent, document id, and recipient id. The utterance is not hashed. Ambiguous, unknown, or invented ids write nothing. `deliver_document` is not in `SUPPORTED_EXECUTION_INTENTS`.
+7. **Continuity and schema.** Session refs come from host metadata (`openai/session`), not from the model. One session may link many Matters, and one Matter may link many sessions. No transcript is synced. No new tables. The subject is audit metadata.
+
+### Consequences
+
+**Positive:** Possession of a subject string does not read private state or record a decision. A model invocation of `record_decision` does not approve a proposal while the confirmation flag is off. Delivery proposals stay on the same reconcile and decide path as other proposals, and Act & Verify will not run them.
+
+**Negative:** ChatGPT's hosted connector cannot complete this grant. `record_decision` ships disabled. A later public OAuth resource, with its own login and no owner secret on the tunnel, is required before that tool is turned on. The trusted document catalog is a local list, not a live Notion query.
+
+### Alternatives considered
+
+| Alternative | Why rejected |
+|-------------|--------------|
+| Treat `openai/subject` as the credential | Anyone who learns the string could act as the owner |
+| Register `record_decision` because the model called a write tool | The call is not the owner's confirmation of that proposal |
+| Put the owner-secret grant on a public tunnel | The secret would travel to ChatGPT's OAuth client |
+| Hard-code a ChatGPT plan name | Availability is configuration, and plan docs disagree |
+| Add `execute` once a decision exists | Execution is a later, separate authorization |
+
+### Review trigger
+
+Revisit when a ChatGPT connector completes an authenticated grant without sending the owner secret, or when a live session shows the host confirming `record_decision` before that tool is enabled.
+
+---
+
 ```markdown
 ## ADR-NNN: Title
 

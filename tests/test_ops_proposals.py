@@ -99,8 +99,12 @@ def test_both_approved_intents_are_representable() -> None:
     assert _bill_proposal().intent is ProposalIntent.REVIEW_BILL
 
 
-def test_intents_are_limited_to_the_approved_two() -> None:
-    assert {i.value for i in ProposalIntent} == {"prepare_for_event", "review_bill"}
+def test_intents_are_the_allowlist() -> None:
+    assert {intent.value for intent in ProposalIntent} == {
+        "prepare_for_event",
+        "review_bill",
+        "deliver_document",
+    }
 
 
 def test_all_lifecycle_statuses_are_defined() -> None:
