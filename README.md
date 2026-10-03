@@ -6,7 +6,7 @@ Wally is not a chatbot. It is not a home automation platform.
 
 ## Status
 
-**Status:** **v0.17.0 — ChatGPT interface.** ChatGPT is the ad-hoc interface. It reaches Wally only through the Gateway, on a localhost bearer minted from the owner secret. A pinned OpenAI subject is an extra identity check for decisions, not the login. Wally turns a grounded request into a canonical proposal. `record_decision` stays unregistered until the host is known to confirm that exact call. Act & Verify is unchanged: only bill review runs, only when you ask, and it never pays. Nothing runs on a schedule.
+**Status:** **v0.17.0 — ChatGPT interface, implemented.** The local MCP adapter and its read/write/decide capability model are in place. A hosted ChatGPT connection has not been validated. `record_decision` stays disabled until that platform provides an authenticated connection and an explicit confirmation of the decision call. The loopback owner-secret grant is a local test harness. This is a platform and deployment limit. The Gateway architecture is unchanged. Act & Verify is unchanged: only bill review runs, only when you ask, and it never pays. Nothing runs on a schedule.
 
 Complete: v0.10 browser automation, v0.11.1 secrets hardening, v0.12 Observe & Brief, v0.13 Assess & Propose, v0.14 Approval Inbox, v0.15 Act & Verify, v0.16 Gateway, v0.17 ChatGPT interface.
 

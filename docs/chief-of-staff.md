@@ -3,7 +3,7 @@
 **Version:** 0.17.0  
 **Status:** Current milestone (not production v1.0)
 
-Wally is building persistent operational understanding: what is happening, what changed, what is still open, what can wait, and what the user might do next. Phases 1 and 2 are **read / assess / brief / propose only**. Phase 3 records an explicit decision and does not execute. Phase 4 executes one supported action type, only when the user asks, and verifies the result. Nothing runs on its own. v0.16 adds a local Gateway. v0.17 adds a ChatGPT adapter on that Gateway for ad-hoc requests and canonical proposals. It does not add remote execution, scheduling, or notifications.
+Wally is building persistent operational understanding: what is happening, what changed, what is still open, what can wait, and what the user might do next. Phases 1 and 2 are **read / assess / brief / propose only**. Phase 3 records an explicit decision and does not execute. Phase 4 executes one supported action type, only when the user asks, and verifies the result. Nothing runs on its own. v0.16 adds a local Gateway. v0.17 adds a ChatGPT adapter on that Gateway for ad-hoc requests and canonical proposals. The adapter is implemented. A hosted ChatGPT connection has not been validated, and `record_decision` stays disabled. v0.17 does not add remote execution, scheduling, or notifications.
 
 ## Loop
 

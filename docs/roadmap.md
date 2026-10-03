@@ -437,7 +437,7 @@ See ADR-039.
 
 ---
 
-## v0.17.0 — ChatGPT interface ✓
+## v0.17.0 — ChatGPT Interface — implemented ✓
 
 **Goal:** ChatGPT is the primary ad-hoc interface. It asks what needs attention, continues an ActiveMatter, and submits work. Wally builds the canonical proposal. A decision is recorded only for an authenticated owner, on an exact proposal fingerprint, when the host is known to confirm that call.
 
@@ -450,7 +450,9 @@ See ADR-039.
 - **Continuity:** the host session id links the handle. One session can hold many Matters. One Matter can hold many sessions. Archive changes handle visibility only. No transcript is stored.
 - **Schema:** no new tables.
 
-**Not in this milestone:** remote execution, Telegram, Home Assistant, scheduling, notifications, transcript sync, and a generic operation tool. `record_decision` stays disabled until a live ChatGPT host is observed confirming that call. The localhost owner-secret grant is not a public ChatGPT OAuth connector; do not publish `/oauth/token` through a tunnel.
+**Deployment:** The local MCP adapter and the read/write/decide capability model are implemented. A hosted ChatGPT connection has not been validated. `record_decision` remains disabled until that platform provides an authenticated connection and an explicit confirmation of the decision call. The loopback `/oauth/token` grant is a local test harness. A Secure MCP Tunnel can reach a private MCP server, and OAuth discovery can pass through it, but the authorization server itself is not tunneled. This is a platform and deployment limit. The Wally architecture is unchanged.
+
+**Not in this milestone:** remote execution, Telegram, Home Assistant, scheduling, notifications, transcript sync, and a generic operation tool.
 
 See ADR-040.
 

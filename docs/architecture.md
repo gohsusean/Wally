@@ -265,6 +265,8 @@ The adapter is registered as channel `chatgpt` with `approval_adapter` false, so
 
 An ad-hoc delivery request is grounded against exact trusted titles. A unique document and recipient become a `deliver_document` proposal through the existing proposal path. The utterance is not in the fingerprint. Zero or several matches write nothing. `deliver_document` is not an executable intent. See ADR-040.
 
+The adapter is implemented. A hosted ChatGPT connection has not been validated, so `record_decision` stays unregistered in the default configuration. That gap is platform access and transport setup. It does not change the Gateway trust boundary.
+
 #### Browser Automation Provider (v0.10)
 
 **`BrowserAutomationProvider`** executes deterministic browser interactions — open portals, navigate, fill forms, click, upload, download, read confirmation pages. It does **not** contain business logic, choose payment methods, or bypass approval.
