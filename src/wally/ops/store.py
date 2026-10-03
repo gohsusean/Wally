@@ -7,6 +7,14 @@ import sqlite3
 from pathlib import Path
 
 from wally.exceptions import ProposalTransitionError
+from wally.models.gateway import (
+    ActiveMatter,
+    ActiveSession,
+    EvidenceItem,
+    EvidenceKind,
+    GatewayRequestRecord,
+    HandleVisibility,
+)
 from wally.models.ops import (
     BLOCKING_EXECUTION_STATUSES,
     OPEN_PROPOSAL_STATUSES,
@@ -222,6 +230,60 @@ class OperationsStore:
                 CREATE UNIQUE INDEX IF NOT EXISTS idx_executions_blocking
                 ON executions (proposal_fingerprint)
                 WHERE status IN ('pending', 'running', 'executed_unverified', 'verified_success')
+                """
+            )
+            # v0.16: gateway envelopes and continuity handles. Existing rows stay put.
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS gateway_requests (
+                    id TEXT PRIMARY KEY,
+                    correlation_id TEXT NOT NULL,
+                    active_matter_id TEXT NOT NULL DEFAULT '',
+                    channel TEXT NOT NULL,
+                    principal TEXT NOT NULL,
+                    external_session_ref TEXT NOT NULL DEFAULT '',
+                    external_request_ref TEXT NOT NULL DEFAULT '',
+                    evidence TEXT NOT NULL DEFAULT '[]',
+                    created_at TEXT NOT NULL
+                )
+                """
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_gateway_requests_correlation "
+                "ON gateway_requests (correlation_id)"
+            )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS active_matters (
+                    id TEXT PRIMARY KEY,
+                    matter_id TEXT NOT NULL DEFAULT '',
+                    title TEXT NOT NULL,
+                    visibility TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                )
+                """
+            )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS active_matter_correlations (
+                    active_matter_id TEXT NOT NULL,
+                    correlation_id TEXT NOT NULL,
+                    linked_at TEXT NOT NULL,
+                    PRIMARY KEY (active_matter_id, correlation_id)
+                )
+                """
+            )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS active_matter_sessions (
+                    active_matter_id TEXT NOT NULL,
+                    channel TEXT NOT NULL,
+                    external_session_ref TEXT NOT NULL,
+                    first_seen_at TEXT NOT NULL,
+                    last_seen_at TEXT NOT NULL,
+                    PRIMARY KEY (active_matter_id, channel, external_session_ref)
+                )
                 """
             )
 
@@ -732,6 +794,181 @@ class OperationsStore:
             ).fetchone()
         return _execution_from_row(row) if row else None
 
+    def correlation_exists(self, correlation_id: str) -> bool:
+        """True when this id already names a request, proposal, or execution lineage."""
+        if not correlation_id:
+            return False
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT 1 FROM gateway_requests WHERE correlation_id = ? LIMIT 1",
+                (correlation_id,),
+            ).fetchone()
+        if row is not None:
+            return True
+        proposals, executions = self.correlated(correlation_id)
+        return bool(proposals or executions)
+
+    def save_gateway_request(self, request: GatewayRequestRecord) -> None:
+        evidence = [item.as_dict() for item in request.evidence]
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO gateway_requests (
+                    id, correlation_id, active_matter_id, channel, principal,
+                    external_session_ref, external_request_ref, evidence, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    request.id,
+                    request.correlation_id,
+                    request.active_matter_id,
+                    request.channel,
+                    request.principal,
+                    request.external_session_ref,
+                    request.external_request_ref,
+                    json.dumps(evidence, sort_keys=True),
+                    request.created_at,
+                ),
+            )
+
+    def list_gateway_requests(self, *, correlation_id: str) -> list[GatewayRequestRecord]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM gateway_requests WHERE correlation_id = ? ORDER BY created_at, id",
+                (correlation_id,),
+            ).fetchall()
+        return [_gateway_request_from_row(row) for row in rows]
+
+    def save_active_matter(self, handle: ActiveMatter) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO active_matters (
+                    id, matter_id, title, visibility, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    handle.id,
+                    handle.matter_id,
+                    handle.title,
+                    handle.visibility.value,
+                    handle.created_at,
+                    handle.updated_at,
+                ),
+            )
+
+    def set_handle_visibility(
+        self, active_matter_id: str, visibility: HandleVisibility, *, updated_at: str
+    ) -> bool:
+        with self._connect() as conn:
+            cursor = conn.execute(
+                "UPDATE active_matters SET visibility = ?, updated_at = ? WHERE id = ?",
+                (visibility.value, updated_at, active_matter_id),
+            )
+            return cursor.rowcount == 1
+
+    def get_active_matter(self, active_matter_id: str) -> ActiveMatter | None:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM active_matters WHERE id = ?", (active_matter_id,)
+            ).fetchone()
+            if row is None:
+                return None
+            correlations = conn.execute(
+                """
+                SELECT correlation_id FROM active_matter_correlations
+                WHERE active_matter_id = ? ORDER BY linked_at, correlation_id
+                """,
+                (active_matter_id,),
+            ).fetchall()
+            sessions = conn.execute(
+                """
+                SELECT * FROM active_matter_sessions
+                WHERE active_matter_id = ?
+                ORDER BY first_seen_at, channel, external_session_ref
+                """,
+                (active_matter_id,),
+            ).fetchall()
+        return _active_matter_from_row(row, correlations, sessions)
+
+    def list_active_matters(
+        self, *, visibility: HandleVisibility | None = None
+    ) -> list[ActiveMatter]:
+        handles: list[ActiveMatter] = []
+        with self._connect() as conn:
+            sql = "SELECT id FROM active_matters"
+            params: tuple = ()
+            if visibility is not None:
+                sql += " WHERE visibility = ?"
+                params = (visibility.value,)
+            sql += " ORDER BY updated_at DESC, id ASC"
+            ids = [row["id"] for row in conn.execute(sql, params).fetchall()]
+        for active_id in ids:
+            loaded = self.get_active_matter(active_id)
+            if loaded is not None:
+                handles.append(loaded)
+        return handles
+
+    def link_correlation(
+        self, active_matter_id: str, correlation_id: str, *, linked_at: str
+    ) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT OR IGNORE INTO active_matter_correlations (
+                    active_matter_id, correlation_id, linked_at
+                ) VALUES (?, ?, ?)
+                """,
+                (active_matter_id, correlation_id, linked_at),
+            )
+
+    def active_matter_ids_for_correlation(self, correlation_id: str) -> tuple[str, ...]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT active_matter_id FROM active_matter_correlations
+                WHERE correlation_id = ? ORDER BY linked_at, active_matter_id
+                """,
+                (correlation_id,),
+            ).fetchall()
+        return tuple(row["active_matter_id"] for row in rows)
+
+    def touch_session(
+        self,
+        active_matter_id: str,
+        *,
+        channel: str,
+        external_session_ref: str,
+        seen_at: str,
+    ) -> None:
+        """Record a session ref. A new ref does not remove an older one."""
+        with self._connect() as conn:
+            existing = conn.execute(
+                """
+                SELECT first_seen_at FROM active_matter_sessions
+                WHERE active_matter_id = ? AND channel = ? AND external_session_ref = ?
+                """,
+                (active_matter_id, channel, external_session_ref),
+            ).fetchone()
+            if existing is None:
+                conn.execute(
+                    """
+                    INSERT INTO active_matter_sessions (
+                        active_matter_id, channel, external_session_ref,
+                        first_seen_at, last_seen_at
+                    ) VALUES (?, ?, ?, ?, ?)
+                    """,
+                    (active_matter_id, channel, external_session_ref, seen_at, seen_at),
+                )
+                return
+            conn.execute(
+                """
+                UPDATE active_matter_sessions SET last_seen_at = ?
+                WHERE active_matter_id = ? AND channel = ? AND external_session_ref = ?
+                """,
+                (seen_at, active_matter_id, channel, external_session_ref),
+            )
+
     def get_checkpoint(self, source: str) -> dict:
         with self._connect() as conn:
             row = conn.execute(
@@ -1067,4 +1304,53 @@ def _ensure_open_proposal_index(conn: sqlite3.Connection) -> None:
         ON proposals (matter_id, intent)
         WHERE status IN ('proposed', 'approved', 'deferred')
         """
+    )
+
+
+def _gateway_request_from_row(row: sqlite3.Row) -> GatewayRequestRecord:
+    raw = json.loads(row["evidence"] or "[]")
+    items = tuple(
+        EvidenceItem(
+            kind=EvidenceKind(item["kind"]),
+            text=item["text"],
+            content_hash=item["content_hash"],
+            untrusted=True,
+        )
+        for item in raw
+    )
+    return GatewayRequestRecord(
+        id=row["id"],
+        correlation_id=row["correlation_id"],
+        active_matter_id=row["active_matter_id"],
+        channel=row["channel"],
+        principal=row["principal"],
+        external_session_ref=row["external_session_ref"],
+        external_request_ref=row["external_request_ref"],
+        created_at=row["created_at"],
+        evidence=items,
+    )
+
+
+def _active_matter_from_row(
+    row: sqlite3.Row,
+    correlations: list[sqlite3.Row],
+    sessions: list[sqlite3.Row],
+) -> ActiveMatter:
+    return ActiveMatter(
+        id=row["id"],
+        matter_id=row["matter_id"],
+        title=row["title"],
+        visibility=HandleVisibility(row["visibility"]),
+        created_at=row["created_at"],
+        updated_at=row["updated_at"],
+        correlation_ids=tuple(item["correlation_id"] for item in correlations),
+        sessions=tuple(
+            ActiveSession(
+                channel=item["channel"],
+                external_session_ref=item["external_session_ref"],
+                first_seen_at=item["first_seen_at"],
+                last_seen_at=item["last_seen_at"],
+            )
+            for item in sessions
+        ),
     )

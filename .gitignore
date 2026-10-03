@@ -64,6 +64,7 @@ data/
 *.db-journal
 *.db-wal
 *.db-shm
+*.sock
 *.sqlite
 *.sqlite3
 *.sqlite-journal

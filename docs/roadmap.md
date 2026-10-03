@@ -1,6 +1,6 @@
 # Wally — Roadmap
 
-**Version:** 0.15.0  
+**Version:** 0.16.0  
 **Last updated:** 2026-09-30
 
 Wally is a **personal Chief of Staff** and **personal AI operating system** — not a home automation platform.
@@ -78,6 +78,7 @@ Wally's primary responsibilities:
 | v0.13 | v1.0 Phase 2 Assess & Propose | Durable proposed actions surfaced in the brief (still no execution) |
 | v0.14 | v1.0 Phase 3 Approval Inbox | Durable review: approve, reject, or defer. Approval is not execution |
 | v0.15 | v1.0 Phase 4 Act & Verify | User-requested execution of the exact approved version, then independent verification |
+| v0.16 | Gateway | Local trust boundary so a future interface can call the runtime without choosing its own channel |
 | v1.0 later | Phase 5 | Scheduling, notifications, daily-driver hardening |
 | v1.0+ | Retrieval Router | Runtime-owned retrieval policy (see below) |
 | v1.x+ | Optional providers | Travel, property depth; HA read-only context |
@@ -414,6 +415,25 @@ See ADR-036 and [chief-of-staff.md](chief-of-staff.md).
 **Not in this milestone:** scheduling or proactive triggers, notifications, payment execution, and other action types.
 
 See ADR-037, ADR-038, and [chief-of-staff.md](chief-of-staff.md).
+
+---
+
+## v0.16.0 — Gateway ✓
+
+**Goal:** One local boundary a future external interface can call, without letting that interface mint a principal, choose a channel, or keep a second copy of Wally's state.
+
+- **Trust path:** external client → channel-specific adapter / authenticated ingress → Gateway → runtime. The adapter registration fixes the channel. Payload fields named `channel`, `principal`, `grant`, `capability`, `capabilities`, or `authentication` are rejected.
+- **Issuer:** only `PrincipalAuthority.issue()` inside the runtime. The HMAC key is not sent to the Gateway client. CLI and REPL stay in-process and are not Gateway adapters.
+- **Socket:** a local Unix socket, line-delimited JSON, started only by an explicit server. `create_app` attaches a Gateway with no adapters and does not listen.
+- **Requests:** `submit_request` mints a new correlation id unless the caller continues one that already exists. A request may also link to an ActiveMatter.
+- **Evidence:** up to eight typed items (`latest_user`, `prior_user`, `assistant_summary`, `external_ref`), each length-capped and untrusted. They do not approve, select an executor, inject a secret, claim verification, or change a proposal fingerprint.
+- **Reads and actions:** `get_context`, `list_proposals`, `list_active`, and `lifecycle` return ids and statuses. `decide`, `execute`, and `verify` call the v0.15 services. Execute fails closed when the adapter has no approval adapter, before those services run.
+- **Continuity:** an ActiveMatter is a cross-interface handle. It may hold many correlation ids and many `(channel, external_session_ref)` links. `active` / `archived` says whether Wally should keep offering the handle. The canonical Matter status stays authoritative.
+- **Audit:** adapter, channel, principal, correlation id, operation, and evidence hashes. No evidence text, grant, or credential.
+
+**Not in this milestone:** ChatGPT, MCP, Telegram, Home Assistant, a public network API, remote approval UX, scheduling, notifications, transcript sync, and a generic tool interface.
+
+See ADR-039.
 
 ---
 

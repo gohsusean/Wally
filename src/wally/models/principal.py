@@ -24,6 +24,9 @@ _CONTROL = re.compile(r"[\x00-\x1f\x7f]")
 class Capability(StrEnum):
     """What an authenticated principal on a channel may ask Wally to do."""
 
+    SUBMIT_REQUEST = "submit_request"
+    READ_CONTEXT = "read_context"
+    LINK_CHANNEL = "link_channel"
     DECIDE_PROPOSAL = "decide_proposal"
     EXECUTE_PROPOSAL = "execute_proposal"
     VERIFY_EXECUTION = "verify_execution"

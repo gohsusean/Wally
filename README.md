@@ -6,11 +6,11 @@ Wally is not a chatbot. It is not a home automation platform.
 
 ## Status
 
-**Status:** **v0.15.0 — Act & Verify.** An approved proposal can be executed on your explicit request, and the result is checked independently. Only bill review is supported: Wally logs in to the trusted portal from Knowledge, confirms the login, and stops. It never pays. Approval alone still runs nothing, and nothing runs on a schedule.
+**Status:** **v0.16.0 — Gateway.** A local Gateway can submit a request, read canonical state, and call the existing decide / execute / verify services. The runtime chooses the channel from the authenticated adapter. Conversational text is untrusted evidence. Wally remains the only durable source of truth. Act & Verify is unchanged: only bill review runs, only when you ask, and it never pays. Nothing runs on a schedule.
 
-Complete: v0.10 browser automation, v0.11.1 secrets hardening, v0.12 Observe & Brief, v0.13 Assess & Propose, v0.14 Approval Inbox, v0.15 Act & Verify.
+Complete: v0.10 browser automation, v0.11.1 secrets hardening, v0.12 Observe & Brief, v0.13 Assess & Propose, v0.14 Approval Inbox, v0.15 Act & Verify, v0.16 Gateway.
 
-Future: scheduling and proactive triggers, notifications, daily-driver hardening, more supported action types.
+Future: a ChatGPT adapter, scheduling and proactive triggers, notifications, daily-driver hardening, more supported action types.
 
 ## Getting started
 

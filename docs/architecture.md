@@ -1,10 +1,10 @@
 # Wally — Architecture
 
-**Version:** 0.1 design baseline; implementation shipped through v0.15.0  
+**Version:** 0.1 design baseline; implementation shipped through v0.16.0  
 **Status:** Living architecture. Act & Verify executes one action type on explicit user request. Scheduling and notifications are future work.  
 **Last updated:** 2026-09-30
 
-Shipped: v0.10 browser automation, v0.11.1 secrets hardening, v0.12 Observe & Brief, v0.13 Assess & Propose, v0.14 Approval Inbox, v0.15 Act & Verify. Historical sections below keep the design as it was written. They are not rewritten to look like the current milestone.
+Shipped: v0.10 browser automation, v0.11.1 secrets hardening, v0.12 Observe & Brief, v0.13 Assess & Propose, v0.14 Approval Inbox, v0.15 Act & Verify, v0.16 Gateway. Historical sections below keep the design as it was written. They are not rewritten to look like the current milestone.
 
 ---
 
@@ -246,6 +246,16 @@ Knowledge → ApprovalGate → ApprovalProvider prompt (always) → recheck + pl
 #### Authenticated principals (v0.15)
 
 `PrincipalAuthority` (`runtime/principals.py`) is the only issuer of request contexts. Local channels today: `cli` and `repl`, both with decide, execute, and verify. A future channel registers a policy; Act & Verify does not learn its name. Hand-built principals and unregistered channel names fail closed.
+
+#### Gateway (v0.16)
+
+`GatewayRuntime` (`gateway/service.py`) is the local boundary for an external adapter. The adapter authenticates with its own credential and is registered to one channel. The runtime then calls `PrincipalAuthority.issue()` for that channel. The HMAC key never leaves the authority. A payload cannot select `cli` or any other channel.
+
+CLI and REPL do not go through the Gateway. They still issue in-process. `create_app` builds a Gateway with no adapters and does not open a socket.
+
+An ActiveMatter is a continuity handle across interfaces: many correlation ids, and many session refs per channel. Its `active` / `archived` visibility is about whether Wally should keep offering the handle. Where a canonical Matter exists, that Matter's status remains the state of the bill or problem.
+
+Conversational items on a request are a short untrusted capsule. They are not stored as a transcript, not returned by `get_context`, and not part of a proposal fingerprint. See ADR-039.
 
 #### Browser Automation Provider (v0.10)
 
@@ -558,6 +568,7 @@ src/wally/
 ├── __init__.py
 ├── __main__.py              # Entry point: python -m wally
 ├── ops/                     # Observe → propose → Approval Inbox → Act & Verify (v0.12–v0.15)
+├── gateway/                 # Local adapter boundary (v0.16); no network listener
 ├── orchestrator/
 │   ├── core.py              # Main reasoning loop
 │   ├── context.py           # Context assembly

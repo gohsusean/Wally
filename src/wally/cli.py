@@ -28,7 +28,7 @@ from wally.ops.decisions import UserDecision
 CLI_CHANNEL = "cli"
 REPL_CHANNEL = "repl"
 
-BANNER = """Wally v0.15.0 — personal AI operating system
+BANNER = """Wally v0.16.0 — personal AI operating system
 Type a message to talk to Wally.
 Commands: /help /new /health /sessions /knowledge /brief /approvals /execute /exit
 """

@@ -1271,6 +1271,50 @@ Revisit when the first remote channel is added, and when that channel's authenti
 
 ---
 
+## ADR-039: Local Gateway, channel-bound and continuity-aware
+
+**Status:** Accepted — implemented in v0.16.0  
+**Date:** 2026-10-03  
+**Deciders:** Founding engineer + project owner
+
+### Context
+
+ADR-038 lets a channel adapter issue a request context and call the same decide / execute / verify services. The next interface, ChatGPT, must not sit inside the Wally process and must not be able to name its own channel. A single correlation id is also the wrong identity for an ongoing issue: one electricity problem can contain an investigation, a payment, a retry, and a verification, each with its own request lineage, and it can show up in more than one conversation.
+
+### Decision
+
+1. **One local boundary.** An external client talks to a channel-specific adapter. The adapter authenticates to the Gateway. The Gateway asks the runtime to issue a principal. Wally's database remains the only durable state. Interfaces do not sync with each other.
+2. **The channel is the registration.** `AdapterRegistration` binds an adapter id and credential to one channel that `PrincipalAuthority` already knows. `cli` and `repl` cannot be registered this way. Payload keys `channel`, `principal`, `grant`, `capability`, `capabilities`, and `authentication` are rejected, including when nested. The effective channel is the registration. Credentials are compared as SHA-256 digests with `hmac.compare_digest`. The HMAC signing key stays inside `PrincipalAuthority`.
+3. **Existing services.** `decide`, `execute`, and `verify` call `ObserveBriefService` and `ActVerifyService` with a runtime-issued context. There is no generic tool or executor interface. If the adapter is not an approval adapter, execute returns before Act & Verify and resolves nothing.
+4. **Correlation is a lineage. ActiveMatter is the issue.** `submit_request` mints a new correlation id unless `continue_correlation_id` names a lineage that already exists on a gateway request, proposal, or execution. A request may also carry `active_matter_id`. One ActiveMatter accumulates many correlation ids in `active_matter_correlations`. A correlation already linked to a different handle cannot be moved.
+5. **Many sessions.** `active_matter_sessions` is unique on `(active_matter_id, channel, external_session_ref)` and stores first-seen and last-seen. A new session updates nothing else. No transcript is copied between sessions.
+6. **Bounded untrusted evidence.** A request may carry at most eight items of kind `latest_user`, `prior_user`, `assistant_summary`, or `external_ref`. Each is length-capped, hashed, and stored `untrusted`. Evidence does not change approval, executor choice, secrets, verification, or the proposal fingerprint. `get_context` and the audit log omit the text.
+7. **No second Matter.** ActiveMatter visibility is `active` or `archived`, meaning whether Wally should keep offering the handle. The canonical Matter status is the state of the underlying issue.
+8. **Additive tables.** `gateway_requests`, `active_matters`, `active_matter_correlations`, and `active_matter_sessions` are created with `CREATE TABLE IF NOT EXISTS`. v0.15 rows stay. The Gateway does not listen unless a process calls `GatewaySocket`. `create_app` attaches an empty runtime.
+
+### Consequences
+
+**Positive:** A later adapter can be registered to a narrow channel without editing Act & Verify or exposing the signing key. One ongoing issue can keep every request lineage and every session ref. Forged channel claims write nothing.
+
+**Negative:** There is no remote approval UX, so a Gateway execute without an approval adapter cannot run. CLI and REPL remain a separate in-process path. Evidence text is stored on the request row for the capsule, but it is not a conversation history and it is not echoed by the read APIs.
+
+### Alternatives considered
+
+| Alternative | Why rejected |
+|-------------|--------------|
+| Let the payload choose `channel` | A client could claim `cli` and inherit the local operator |
+| Share the HMAC key with the Gateway process | A compromised adapter could mint principals |
+| Use one correlation id as the ActiveMatter id | A later payment or retry would look like a different issue, or overwrite the first lineage |
+| `UNIQUE(active_matter_id, channel)` | A second conversation on the same channel would erase the first session |
+| Store one excerpt only | A future adapter needs a small typed capsule, not a single truncated line |
+| Copy Matter status onto the handle | Two fields would disagree about whether the bill was resolved |
+
+### Review trigger
+
+Revisit when the first real adapter (ChatGPT) is registered, when that adapter needs an approval UX, or when evidence needs a retention limit shorter than the request row.
+
+---
+
 ```markdown
 ## ADR-NNN: Title
 

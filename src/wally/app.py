@@ -18,6 +18,7 @@ from wally.adapters.web.adapter import create_web_provider
 from wally.audit.logger import AuditLogger
 from wally.config.loader import Settings, load_settings
 from wally.exceptions import ProviderUnavailableError
+from wally.gateway.service import GatewayRuntime
 from wally.knowledge.registry import KnowledgeRegistry
 from wally.ops.act import ActVerifyService
 from wally.ops.service import ObserveBriefService
@@ -57,6 +58,7 @@ class App:
     ops: ObserveBriefService | None
     act: ActVerifyService | None = None
     authority: PrincipalAuthority = field(default_factory=PrincipalAuthority)
+    gateway: GatewayRuntime | None = None
 
 
 class _UnavailableLLM:
@@ -216,6 +218,7 @@ def create_app(
     authority = PrincipalAuthority()
     ops = None
     act = None
+    gateway = None
     if settings.ops_enabled:
         ops_store = OperationsStore(settings.ops_database)
         ops = ObserveBriefService(
@@ -241,6 +244,16 @@ def create_app(
             audit=audit,
             bills_role=settings.finance_bills_role,
         )
+        # Present, registered to nothing, and not listening. CLI and REPL stay
+        # in-process. An external adapter is a later registration.
+        gateway = GatewayRuntime(
+            ops_store,
+            authority,
+            adapters=(),
+            ops=ops,
+            act=act,
+            audit=audit,
+        )
     return App(
         settings=settings,
         orchestrator=orchestrator,
@@ -257,4 +270,5 @@ def create_app(
         ops=ops,
         act=act,
         authority=authority,
+        gateway=gateway,
     )

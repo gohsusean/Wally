@@ -60,6 +60,7 @@ Application source. Organised by responsibility, not by technology.
 ```
 src/wally/
 ├── ops/              # Observe, Matters, proposals, Approval Inbox, Act & Verify (not n8n)
+├── gateway/          # Local Gateway boundary (v0.16); channel comes from the adapter
 ├── orchestrator/     # Reasoning loop — knows capabilities, not implementations
 ├── providers/        # Protocol definitions (interfaces)
 ├── adapters/         # Concrete integrations (OpenAI, Notion, HA, n8n)

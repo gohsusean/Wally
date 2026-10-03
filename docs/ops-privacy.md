@@ -22,6 +22,14 @@ A decision stores the proposal id, the decision, timestamps, the channel (`cli` 
 
 Proposals and executions may carry `RequestProvenance`: channel, principal, optional external session/request refs, and a correlation id. This is audit metadata so a later interface can trace request → proposal → approval → execution → verification. It is not part of the proposal fingerprint and it does not authorize anything. Conversation transcripts are not stored on the proposal.
 
+## Gateway records (v0.16)
+
+A gateway request stores its id, correlation id, optional active-matter id, the channel and principal the runtime assigned, optional external session and request refs, and up to eight evidence items. Each item stores a kind, length-capped text, and content hash, and is marked untrusted. The audit event stores the count and the hashes, not the text.
+
+An ActiveMatter stores an id, an optional canonical Matter id, a short title, and `active` or `archived`. That flag means whether Wally should keep offering the continuity handle. It is not a copy of Matter status. Correlation links and session refs `(channel, external_session_ref)` with first-seen and last-seen timestamps are separate rows. A new session does not delete an older one.
+
+Gateway responses and audit events do not include the HMAC grant, the adapter credential, or evidence text. `get_context` returns Matter status, proposal and execution ids and statuses, and the handle. It does not return the evidence capsule.
+
 ## Execution records (v0.15)
 
 An execution record stores these fields and nothing else:
