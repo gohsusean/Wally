@@ -276,6 +276,16 @@ class OperationsStore:
             )
             conn.execute(
                 """
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_gateway_requests_ingress
+                ON gateway_requests (channel, external_request_ref)
+                WHERE external_request_ref != ''
+                """
+            )
+            from wally.telegram.schema import ensure_telegram_schema
+
+            ensure_telegram_schema(conn)
+            conn.execute(
+                """
                 CREATE TABLE IF NOT EXISTS active_matter_sessions (
                     active_matter_id TEXT NOT NULL,
                     channel TEXT NOT NULL,
@@ -830,6 +840,21 @@ class OperationsStore:
                     request.created_at,
                 ),
             )
+
+    def get_gateway_request_by_external(
+        self, channel: str, external_request_ref: str
+    ) -> GatewayRequestRecord | None:
+        if not channel or not external_request_ref:
+            return None
+        with self._connect() as conn:
+            row = conn.execute(
+                """
+                SELECT * FROM gateway_requests
+                WHERE channel = ? AND external_request_ref = ?
+                """,
+                (channel, external_request_ref),
+            ).fetchone()
+        return _gateway_request_from_row(row) if row else None
 
     def list_gateway_requests(self, *, correlation_id: str) -> list[GatewayRequestRecord]:
         with self._connect() as conn:

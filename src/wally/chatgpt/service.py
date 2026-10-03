@@ -166,7 +166,7 @@ class ChatGPTAdapter:
                 {
                     "protocolVersion": "2025-06-18",
                     "capabilities": {"tools": {}},
-                    "serverInfo": {"name": "wally", "version": "0.17.0"},
+                    "serverInfo": {"name": "wally", "version": "0.18.0"},
                 },
             )
         if not self._connection.authenticated(authorization):

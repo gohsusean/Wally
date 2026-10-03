@@ -34,6 +34,12 @@ Gateway responses and audit events do not include the HMAC grant, the adapter cr
 
 The owner secret, the Gateway credential, and the bearer token are process memory. They are not written to `operations.db` or the audit log. An OpenAI subject, when the host supplies one, is stored as audit metadata on a Gateway call. It is not part of a proposal fingerprint and it is not a credential. Decision notes stay the short note the decide path already stores.
 
+## Telegram outbox (v0.18)
+
+`notification_outbox` stores the dedupe key, kind, Matter and correlation ids when known, proposal or execution id, fingerprint, callback nonce, allowed actions, owner user id, chat id, status, attempt count, lease and retry timestamps, a short last error, the Telegram message id after a known delivery, and created, delivered, and dismissed timestamps. It does not store the bot token, the Gateway credential, or a grant.
+
+`telegram_updates` stores the update id and an outcome. `telegram_cursor` stores the next offset and the last private chat id. `telegram_lease` stores the poller holder and expiry. Message text stays in the existing bounded evidence capsule. Audit events store ids and hashes.
+
 ## Execution records (v0.15)
 
 An execution record stores these fields and nothing else:

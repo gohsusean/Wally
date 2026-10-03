@@ -28,7 +28,7 @@ from wally.ops.decisions import UserDecision
 CLI_CHANNEL = "cli"
 REPL_CHANNEL = "repl"
 
-BANNER = """Wally v0.17.0 — personal AI operating system
+BANNER = """Wally v0.18.0 — personal AI operating system
 Type a message to talk to Wally.
 Commands: /help /new /health /sessions /knowledge /brief /approvals /execute /exit
 """
@@ -122,6 +122,9 @@ def build_parser() -> argparse.ArgumentParser:
         "serve", help="Listen on localhost for an authenticated MCP client"
     )
     serve.add_argument("--port", type=int, default=8765)
+    telegram = sub.add_parser("telegram", help="Run the local Telegram adapter")
+    telegram_sub = telegram.add_subparsers(dest="telegram_command")
+    telegram_sub.add_parser("poll", help="Long-poll the owner's private chat")
     return parser
 
 
@@ -458,6 +461,18 @@ def _run_repl_ops(app, user_input: str, *, session_id: str = "") -> bool:
     return True
 
 
+def _run_telegram(app, args) -> int:
+    from wally.telegram.poll import serve_from_env
+
+    if getattr(args, "telegram_command", None) != "poll":
+        print("Usage: wally telegram poll", file=sys.stderr)
+        return 2
+    if app.ops is None:
+        print("Operations storage is disabled.", file=sys.stderr)
+        return 1
+    return serve_from_env(app.settings)
+
+
 def _run_chatgpt(app, args) -> int:
     import os
 
@@ -511,6 +526,8 @@ def run_cli(argv: list[str] | None = None) -> int:
         return _run_execution(app, args.execution_id)
     if command == "chatgpt":
         return _run_chatgpt(app, args)
+    if command == "telegram":
+        return _run_telegram(app, args)
     if command == "verify":
         return _run_verify(
             app,

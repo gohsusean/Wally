@@ -6,9 +6,9 @@ Wally is not a chatbot. It is not a home automation platform.
 
 ## Status
 
-**Status:** **v0.17.0 — ChatGPT interface, implemented.** The local MCP adapter and its read/write/decide capability model are in place. A hosted ChatGPT connection has not been validated. `record_decision` stays disabled until that platform provides an authenticated connection and an explicit confirmation of the decision call. The loopback owner-secret grant is a local test harness. This is a platform and deployment limit. The Gateway architecture is unchanged. Act & Verify is unchanged: only bill review runs, only when you ask, and it never pays. Nothing runs on a schedule.
+**Status:** **v0.18.0 — Telegram inbox.** Telegram long-polls from this Mac and reaches Wally through the Gateway. The owner is one numeric Telegram user id in a private chat. Approval buttons carry a server-side nonce. `Not now` dismisses that card and leaves the proposal pending. Approve records a decision and does not execute. ChatGPT v0.17 stays implemented, with `record_decision` still disabled until a hosted connection can authenticate and confirm that call. Act & Verify is unchanged: only bill review runs, only when you ask, and it never pays. Nothing runs on a schedule.
 
-Complete: v0.10 browser automation, v0.11.1 secrets hardening, v0.12 Observe & Brief, v0.13 Assess & Propose, v0.14 Approval Inbox, v0.15 Act & Verify, v0.16 Gateway, v0.17 ChatGPT interface.
+Complete: v0.10 browser automation, v0.11.1 secrets hardening, v0.12 Observe & Brief, v0.13 Assess & Propose, v0.14 Approval Inbox, v0.15 Act & Verify, v0.16 Gateway, v0.17 ChatGPT interface, v0.18 Telegram inbox.
 
 Future: scheduling and proactive triggers, notifications, daily-driver hardening, more supported action types. Remote execution from ChatGPT is not part of this release.
 

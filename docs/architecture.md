@@ -1,6 +1,6 @@
 # Wally — Architecture
 
-**Version:** 0.1 design baseline; implementation shipped through v0.17.0  
+**Version:** 0.1 design baseline; implementation shipped through v0.18.0  
 **Status:** Living architecture. Act & Verify executes one action type on explicit user request. Scheduling and notifications are future work.  
 **Last updated:** 2026-09-30
 
@@ -266,6 +266,14 @@ The adapter is registered as channel `chatgpt` with `approval_adapter` false, so
 An ad-hoc delivery request is grounded against exact trusted titles. A unique document and recipient become a `deliver_document` proposal through the existing proposal path. The utterance is not in the fingerprint. Zero or several matches write nothing. `deliver_document` is not an executable intent. See ADR-040.
 
 The adapter is implemented. A hosted ChatGPT connection has not been validated, so `record_decision` stays unregistered in the default configuration. That gap is platform access and transport setup. It does not change the Gateway trust boundary.
+
+#### Telegram inbox (v0.18)
+
+`wally telegram poll` long-polls the Bot API from this Mac. There is no public webhook. The adapter is registered as channel `telegram` with `approval_adapter` false. The owner is `WALLY_TELEGRAM_OWNER_USER_ID` in a private chat. Display name, username, groups, edits, and message text do not authorize.
+
+Callback data is a short random nonce plus `a`, `r`, or `n`. The outbox row binds that nonce to the proposal id, fingerprint, chat, and allowed actions. The handler loads that row and then runs the existing decide path. `Not now` dismisses the notification and leaves the proposal `proposed`. It does not schedule a reminder.
+
+A proposal that needs a decision has one outbox row and one delivery path, whether the owner just asked in Telegram or Observe created the proposal. Outbound delivery is at-least-once with best-effort duplicate suppression. A crash in the window after Telegram accepts `sendMessage` can show a second card. A replayed `update_id` does not create a second request, proposal, or decision. One poller holds a local lease. See ADR-041.
 
 #### Browser Automation Provider (v0.10)
 

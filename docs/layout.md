@@ -62,6 +62,7 @@ src/wally/
 ├── ops/              # Observe, Matters, proposals, Approval Inbox, Act & Verify (not n8n)
 ├── gateway/          # Local Gateway boundary (v0.16); channel comes from the adapter
 ├── chatgpt/          # ChatGPT MCP adapter (v0.17); bearer auth, then Gateway
+├── telegram/         # Telegram long-poll adapter (v0.18); owner id, then Gateway
 ├── orchestrator/     # Reasoning loop — knows capabilities, not implementations
 ├── providers/        # Protocol definitions (interfaces)
 ├── adapters/         # Concrete integrations (OpenAI, Notion, HA, n8n)

@@ -1359,6 +1359,47 @@ Revisit when a ChatGPT connector completes an authenticated grant without sendin
 
 ---
 
+## ADR-041: Telegram decides through a server-side nonce
+
+**Status:** Accepted — implemented in v0.18.0  
+**Date:** 2026-10-04  
+**Deciders:** Founding engineer + project owner
+
+### Context
+
+ChatGPT remains the ad-hoc place to think with Wally. Telegram is the private chat Wally can open. A button payload is size-capped and untrusted. Long polling redelivers updates until the offset advances. A send can succeed at Telegram and still be lost locally if the process dies before it stores the message id.
+
+### Decision
+
+1. **Owner pin.** Channel `telegram`, `approval_adapter` false. The owner is one numeric user id in a private chat. Groups, other users, edits, display names, and message text do not authorize. The bot token stays in the environment.
+2. **Opaque callback.** `callback_data` is a random nonce plus `a`, `r`, or `n`. `notification_outbox` binds the nonce to the proposal id, fingerprint, chat, owner, and allowed actions. The handler authenticates the user, loads the nonce, and only then calls the existing decide path with the stored fingerprint.
+3. **Ingress.** `telegram_updates` records each `update_id` before `telegram_cursor` advances. Gateway submit is idempotent on `(channel, external_request_ref)`. A replay does not open a second request or proposal. A repeated decision finds the proposal no longer `proposed` and does not write a second one.
+4. **Delivery.** One `decision_required` row per proposal fingerprint. Reactive and proactive proposals share that path. Semantics are at-least-once with best-effort duplicate suppression. `sending` rows carry a lease. Durable `delivered` rows are not resent. Attempt count, retry time, and a terminal `failed` state cover the rest. A rare second card after an ambiguous crash is accepted. A second decision is not.
+5. **Not now.** The button dismisses that notification. The proposal stays `proposed`. The reply says no reminder is scheduled. "approve it" may show the card again and does not decide.
+6. **One poller.** `telegram_lease` is a single-row lock for this Mac. There is no webhook and no reasoner. Execute and verify stay off the channel.
+
+### Consequences
+
+**Positive:** A copied callback cannot name a different proposal. A redelivered update cannot mint a second proposal. Approve still ends at the v0.15 decision service.
+
+**Negative:** An ambiguous `sendMessage` can show two cards. `Not now` does not come back on its own. Proactive cards wait until this process is polling and a private chat id is known.
+
+### Alternatives considered
+
+| Alternative | Why rejected |
+|-------------|--------------|
+| Put the proposal id and fingerprint in `callback_data` | The field is small and untrusted |
+| Advance the offset before the update is stored | A crash would drop the update |
+| Claim exactly-once Telegram delivery | The crash window after `sendMessage` cannot be closed |
+| Send a direct card and an outbox card | The owner would see two prompts for one proposal |
+| Treat Later as a scheduled snooze | This release has no scheduler |
+
+### Review trigger
+
+Revisit when a reminder should be scheduled, or when Telegram should hold a second fingerprint-bound execution authorization.
+
+---
+
 ```markdown
 ## ADR-NNN: Title
 

@@ -1,6 +1,6 @@
 # Wally — Roadmap
 
-**Version:** 0.17.0  
+**Version:** 0.18.0  
 **Last updated:** 2026-10-04
 
 Wally is a **personal Chief of Staff** and **personal AI operating system** — not a home automation platform.
@@ -455,6 +455,25 @@ See ADR-039.
 **Not in this milestone:** remote execution, Telegram, Home Assistant, scheduling, notifications, transcript sync, and a generic operation tool.
 
 See ADR-040.
+
+---
+
+## v0.18.0 — Telegram inbox ✓
+
+**Goal:** Telegram is the private place Wally can open a conversation. The owner sees one approval card, decides with a button, and can ask what is going on in the same chat. Approve records a decision. It does not execute.
+
+- **Path:** long poll → fixed `telegram` Gateway adapter → existing submit, read, link, and decide services. One numeric user id in a private chat. A local lease keeps a single poller.
+- **Callbacks:** `callback_data` is a random nonce plus a compact action. The outbox row binds the nonce to the proposal id, fingerprint, chat, and allowed actions. The payload is not trusted because Telegram delivered it.
+- **Ingress:** each `update_id` is stored before the long-poll offset moves. A redelivery does not open a second request, Matter, proposal, or decision.
+- **Outbox:** one row per dedupe key. Delivery is at-least-once with best-effort duplicate suppression. A stale `sending` lease can be retried. A durably delivered row is not sent again. A second card after an ambiguous crash is acceptable. A second decision is not.
+- **One card:** a `decision_required` proposal is delivered only through the outbox, for a Telegram request and for a proposal Observe already stored.
+- **Not now:** dismisses that notification. The proposal stays `proposed`. No reminder is scheduled.
+- **Text:** "approve it" can show the card again. The text does not record the decision. Utterances stay untrusted evidence and use the existing grounding path. There is no reasoner in this release.
+- **Schema:** `notification_outbox`, `telegram_updates`, `telegram_cursor`, and `telegram_lease`.
+
+**Not in this milestone:** Home Assistant, a general scheduler, remote execution from Telegram, a Wally Reasoner, group chats, transcript sync, and a public webhook.
+
+See ADR-041.
 
 ---
 

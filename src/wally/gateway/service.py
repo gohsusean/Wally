@@ -48,6 +48,7 @@ _CLAIM_FAILURE = (
     "External payloads cannot set channel, principal, subject, grant, or capabilities."
 )
 CHATGPT_CHANNEL = "chatgpt"
+TELEGRAM_CHANNEL = "telegram"
 _NO_APPROVAL = "Execution requires an approval adapter for this channel. Nothing ran."
 
 _OPS: dict[str, Capability] = {
@@ -215,6 +216,10 @@ class GatewayRuntime:
         host = _HOST.get()
         if host is not None and host.session:
             session_ref = clean_ref(host.session)
+        if request_ref:
+            prior = self._store.get_gateway_request_by_external(adapter.channel, request_ref)
+            if prior is not None:
+                return self._replayed_submit(prior)
         correlation_id = self._correlation(continued, active_id)
         if active_id and self._store.get_active_matter(active_id) is None:
             raise GatewayError(f"Unknown active matter: {active_id}")
@@ -273,6 +278,28 @@ class GatewayRuntime:
                 "evidence_count": len(evidence),
                 "evidence_hashes": [item.content_hash for item in evidence],
                 "proposal": _public_proposal(proposal) if proposal is not None else None,
+            },
+        )
+
+    def _replayed_submit(self, prior: GatewayRequestRecord) -> GatewayResult:
+        """Return the request already stored for this ingress id.
+
+        Long polling can redeliver an update. The second pass must not open
+        another request, Matter, or proposal.
+        """
+        proposals, _executions = self._store.correlated(prior.correlation_id)
+        proposal = proposals[-1] if proposals else None
+        return GatewayResult(
+            ok=True,
+            data={
+                "request_id": prior.id,
+                "correlation_id": prior.correlation_id,
+                "active_matter_id": prior.active_matter_id,
+                "channel": prior.channel,
+                "evidence_count": len(prior.evidence),
+                "evidence_hashes": [item.content_hash for item in prior.evidence],
+                "proposal": _public_proposal(proposal) if proposal is not None else None,
+                "replayed": True,
             },
         )
 
