@@ -6,6 +6,7 @@ import os
 import re
 import secrets
 import sys
+import time
 from datetime import UTC, datetime
 from uuid import uuid4
 
@@ -19,7 +20,7 @@ from wally.ops.store import OperationsStore
 from wally.providers.secrets import SecretsProvider
 from wally.runtime.principals import LOCAL_OPERATOR_CHANNELS, PrincipalAuthority
 from wally.runtime.secrets_safety import evaluate_secret_reference
-from wally.telegram.client import BotClient, TelegramTransport
+from wally.telegram.client import BotClient, TelegramTransientError, TelegramTransport
 from wally.telegram.outbox import OUTBOUND_SEMANTICS
 from wally.telegram.service import TelegramConfig, TelegramService, telegram_policy
 
@@ -118,9 +119,15 @@ def poll_forever(service: TelegramService, transport: TelegramTransport) -> None
     print("Telegram long poll started. Decisions stay on the approval card.")
     print(OUTBOUND_SEMANTICS)
     while True:
-        if not poll_once(service, transport, holder):
-            print("Another Telegram poller holds the lease.", flush=True)
-            return
+        try:
+            acquired = poll_once(service, transport, holder)
+        except TelegramTransientError as exc:
+            print(_public(str(exc)), flush=True)
+            time.sleep(5)
+            continue
+        if not acquired:
+            print("Telegram lease is held. Waiting.", flush=True)
+            time.sleep(5)
 
 
 def serve(

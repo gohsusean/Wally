@@ -125,6 +125,12 @@ def build_parser() -> argparse.ArgumentParser:
     telegram = sub.add_parser("telegram", help="Run the local Telegram adapter")
     telegram_sub = telegram.add_subparsers(dest="telegram_command")
     telegram_sub.add_parser("poll", help="Long-poll the owner's private chat")
+    telegram_sub.add_parser("install", help="Register the per-user LaunchAgent and start it")
+    telegram_sub.add_parser("start", help="Start the Telegram LaunchAgent")
+    telegram_sub.add_parser("status", help="Show the Telegram LaunchAgent status")
+    telegram_sub.add_parser("stop", help="Stop the Telegram LaunchAgent until start")
+    telegram_sub.add_parser("restart", help="Restart the Telegram LaunchAgent")
+    telegram_sub.add_parser("uninstall", help="Unload and remove the Telegram LaunchAgent")
     return parser
 
 
@@ -462,10 +468,41 @@ def _run_repl_ops(app, user_input: str, *, session_id: str = "") -> bool:
 
 
 def _run_telegram(app, args) -> int:
+    from wally.telegram.launchd import (
+        install_agent,
+        restart_agent,
+        start_agent,
+        status_agent,
+        stop_agent,
+        uninstall_agent,
+    )
     from wally.telegram.poll import serve
 
-    if getattr(args, "telegram_command", None) != "poll":
-        print("Usage: wally telegram poll", file=sys.stderr)
+    command = getattr(args, "telegram_command", None)
+    root = app.settings.project_root
+    if command == "install":
+        install_agent(root)
+        return 0
+    if command == "start":
+        start_agent(root)
+        return 0
+    if command == "status":
+        status_agent()
+        return 0
+    if command == "stop":
+        stop_agent()
+        return 0
+    if command == "restart":
+        restart_agent(root)
+        return 0
+    if command == "uninstall":
+        uninstall_agent()
+        return 0
+    if command != "poll":
+        print(
+            "Usage: wally telegram poll|install|start|status|stop|restart|uninstall",
+            file=sys.stderr,
+        )
         return 2
     if app.ops is None:
         print("Operations storage is disabled.", file=sys.stderr)

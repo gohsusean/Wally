@@ -464,6 +464,7 @@ See ADR-040.
 
 - **Path:** long poll → fixed `telegram` Gateway adapter → existing submit, read, link, and decide services. One numeric user id in a private chat. A local lease keeps a single poller.
 - **Bot token:** `telegram.bot_token_ref` is an `op://` pointer resolved by the existing secrets provider. The owner user id stays ordinary configuration. `WALLY_TELEGRAM_BOT_TOKEN` is the test injection path.
+- **LaunchAgent:** `wally telegram install` registers `com.wally.telegram-poll` for the logged-in user. It starts after login, restarts after a crash or a configuration exit, and waits 30 seconds between those restarts. The plist has no secret. The poller stays up across a Telegram timeout.
 - **Callbacks:** `callback_data` is a random nonce plus a compact action. The outbox row binds the nonce to the proposal id, fingerprint, chat, and allowed actions. The payload is not trusted because Telegram delivered it.
 - **Ingress:** each `update_id` is stored before the long-poll offset moves. A redelivery does not open a second request, Matter, proposal, or decision.
 - **Outbox:** one row per dedupe key. Delivery is at-least-once with best-effort duplicate suppression. A stale `sending` lease can be retried. A durably delivered row is not sent again. A second card after an ambiguous crash is acceptable. A second decision is not.

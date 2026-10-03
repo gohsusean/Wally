@@ -4,8 +4,12 @@ from __future__ import annotations
 
 import json
 from typing import Protocol
-from urllib.error import URLError
+from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
+
+
+class TelegramTransientError(TimeoutError):
+    """Network, timeout, or Telegram 5xx. The poller retries without exiting."""
 
 
 class TelegramTransport(Protocol):
@@ -35,11 +39,15 @@ class BotClient:
         self._post("answerCallbackQuery", {"callback_query_id": callback_id, "text": text[:180]})
 
     def get_updates(self, offset: int) -> list[dict]:
-        body = self._post("getUpdates", {"offset": offset, "timeout": 0})
+        body = self._post(
+            "getUpdates",
+            {"offset": offset, "timeout": 25},
+            timeout=40,
+        )
         result = body.get("result")
         return result if isinstance(result, list) else []
 
-    def _post(self, method: str, payload: dict) -> dict:
+    def _post(self, method: str, payload: dict, timeout: float = 30) -> dict:
         if not self._token:
             raise RuntimeError("Telegram bot token is missing.")
         request = Request(
@@ -49,10 +57,22 @@ class BotClient:
             method="POST",
         )
         try:
-            with urlopen(request, timeout=30) as response:  # noqa: S310
+            with urlopen(request, timeout=timeout) as response:  # noqa: S310
+                status = getattr(response, "status", 200)
                 parsed = json.loads(response.read().decode())
-        except URLError as exc:
-            raise TimeoutError("Telegram network error") from exc
-        if not isinstance(parsed, dict) or not parsed.get("ok"):
-            raise TimeoutError("Telegram rejected the call")
+        except HTTPError as exc:
+            status = exc.code
+            parsed = {}
+        except (URLError, TimeoutError) as exc:
+            raise TelegramTransientError("Telegram network error") from exc
+        if not isinstance(parsed, dict):
+            raise TelegramTransientError("Telegram returned an unreadable response.")
+        error_code = parsed.get("error_code")
+        unavailable = status == 429 or status >= 500
+        if isinstance(error_code, int) and (error_code == 429 or error_code >= 500):
+            unavailable = True
+        if unavailable:
+            raise TelegramTransientError("Telegram is unavailable.")
+        if status >= 400 or not parsed.get("ok"):
+            raise RuntimeError("Telegram rejected the call.")
         return parsed

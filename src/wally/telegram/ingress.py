@@ -12,7 +12,8 @@ from datetime import UTC, datetime, timedelta
 
 from wally.ops.store import OperationsStore
 
-LEASE = timedelta(seconds=20)
+# Longer than one Bot API long poll, so a restart can wait out a dead holder.
+LEASE = timedelta(seconds=90)
 
 
 class TelegramIngress:

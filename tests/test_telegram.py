@@ -14,6 +14,7 @@ from wally.ops.request_propose import TrustedRecord
 from wally.ops.service import ObserveBriefService
 from wally.ops.store import OperationsStore
 from wally.runtime.principals import LOCAL_OPERATOR_CHANNELS, PrincipalAuthority
+from wally.telegram.ingress import LEASE
 from wally.telegram.outbox import OUTBOUND_SEMANTICS
 from wally.telegram.poll import resolve_bot_token, telegram_registration
 from wally.telegram.service import TelegramConfig, TelegramService, telegram_policy
@@ -283,7 +284,7 @@ def test_second_poller_does_not_take_the_lease(tmp_path: Path) -> None:
     _store, service, _transport = _world(tmp_path)
     assert service.ingress.try_acquire("poll-a", NOW) is True
     assert service.ingress.try_acquire("poll-b", NOW) is False
-    assert service.ingress.try_acquire("poll-b", NOW + timedelta(seconds=21)) is True
+    assert service.ingress.try_acquire("poll-b", NOW + LEASE + timedelta(seconds=1)) is True
 
 
 def test_rate_limit_rejects_instead_of_dropping(tmp_path: Path) -> None:
