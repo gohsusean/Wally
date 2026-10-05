@@ -64,7 +64,7 @@ providers:
     bills_role: finance
   secrets:
     adapter: op_cli
-    enabled: false  # set true after `op signin`; never store credentials in Notion
+    enabled: true  # session comes from the 1Password app integration; config stores op:// pointers only
   browser:
     adapter: playwright
     enabled: true
@@ -85,11 +85,12 @@ providers:
     enabled: true
     calendar_id: primary
 
-# Deployed Telegram bot token is an op:// pointer, resolved at poll startup.
-# owner_user_id is configuration. WALLY_TELEGRAM_BOT_TOKEN is the test injection.
-# telegram:
-#   bot_token_ref: op://vault/item/credential
-#   owner_user_id: "123456789"
+# Runtime credential is the login keychain. 1Password remains the source copy.
+# owner_user_id is configuration and is set after the owner messages the bot.
+telegram:
+  bot_token_ref: keychain://com.wally.telegram/bot-token
+  bot_token_source_ref: "op://Private/Wally Telegram Bot/password"
+  owner_user_id: "79539710"
 
 ops:
   enabled: true

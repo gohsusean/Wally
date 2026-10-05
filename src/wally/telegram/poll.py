@@ -62,10 +62,10 @@ def resolve_bot_token(
     policy = evaluate_secret_reference(ref)
     if not policy.allowed:
         raise ProviderUnavailableError("secrets", policy.reason or "Invalid secret reference.")
-    if provider is None or not provider.is_healthy():
+    if provider is None:
         raise ProviderUnavailableError(
             "secrets",
-            "Enable providers.secrets and sign in to 1Password to read the Telegram bot token.",
+            "Enable providers.secrets to resolve the Telegram bot token.",
         )
     value = provider.resolve(ref)
     if audit is not None:
@@ -116,8 +116,8 @@ def poll_once(service: TelegramService, transport: TelegramTransport, holder: st
 
 def poll_forever(service: TelegramService, transport: TelegramTransport) -> None:
     holder = f"telegram-{uuid4().hex[:8]}"
-    print("Telegram long poll started. Decisions stay on the approval card.")
-    print(OUTBOUND_SEMANTICS)
+    print("Telegram long poll started. Decisions stay on the approval card.", flush=True)
+    print(OUTBOUND_SEMANTICS, flush=True)
     while True:
         try:
             acquired = poll_once(service, transport, holder)
@@ -145,14 +145,15 @@ def serve(
             env=env,
         )
     except ProviderUnavailableError as exc:
-        print(_public(str(exc)), file=sys.stderr)
+        print(_public(str(exc)), file=sys.stderr, flush=True)
         return 1
     owner = settings.telegram_owner_user_id or env.get("WALLY_TELEGRAM_OWNER_USER_ID", "").strip()
     if not token or not owner:
         print(
-            "Configure telegram.bot_token_ref (an op:// pointer) and "
-            "telegram.owner_user_id. WALLY_TELEGRAM_BOT_TOKEN remains a local test injection.",
+            "Configure telegram.bot_token_ref and telegram.owner_user_id. "
+            "WALLY_TELEGRAM_BOT_TOKEN remains a local test injection.",
             file=sys.stderr,
+            flush=True,
         )
         return 1
     credential = env.get("WALLY_TELEGRAM_GATEWAY_CREDENTIAL", "") or secrets.token_urlsafe(32)

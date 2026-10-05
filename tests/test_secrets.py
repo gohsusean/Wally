@@ -28,7 +28,11 @@ PASSWORD_REF = "op://Personal/Streaming/password"
 
 def test_secret_reference_policy_allows_op_pointers() -> None:
     assert evaluate_secret_reference(USERNAME_REF).allowed is True
+    assert evaluate_secret_reference("op://Private/Wally Telegram Bot/password").allowed is True
+    assert evaluate_secret_reference("keychain://com.wally.telegram/bot-token").allowed is True
+    assert evaluate_secret_reference("keychain://com.wally.telegram").allowed is False
     assert evaluate_secret_reference("hunter2").allowed is False
+    assert evaluate_secret_reference("123456:abcdefghijklmnopqrstuvwxyz").allowed is False
     assert evaluate_secret_reference("op://only-vault").allowed is False
     assert evaluate_secret_reference("").allowed is False
 
@@ -162,5 +166,10 @@ def test_load_settings_secrets_defaults(project_root: Path) -> None:
     from wally.config.loader import load_settings
 
     settings = load_settings(project_root=project_root, config_name="macbook")
-    assert settings.secrets_enabled is False
+    assert settings.secrets_enabled is True
     assert settings.secrets_adapter == "op_cli"
+    assert settings.telegram_bot_token_ref == "keychain://com.wally.telegram/bot-token"
+    assert (
+        settings.telegram_bot_token_source_ref == "op://Private/Wally Telegram Bot/password"
+    )
+    assert settings.telegram_owner_user_id == "79539710"

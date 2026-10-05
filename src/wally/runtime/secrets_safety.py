@@ -8,7 +8,10 @@ from typing import Any
 from wally.runtime.policy import PolicyDecision
 
 # 1Password secret references: op://vault/item/field[ /section...]
-_OP_REFERENCE = re.compile(r"^op://[^/\s]+/[^/\s]+/.+$")
+# Item titles may contain spaces. The value is still a pointer, not a credential.
+_OP_REFERENCE = re.compile(r"^op://[^/\s]+/[^/]+/.+$")
+# Login-keychain references: keychain://service/account
+_KEYCHAIN_REFERENCE = re.compile(r"^keychain://[^/\s]+/[^/\s]+$")
 
 USERNAME_REF_KEYS = ("portal_username_ref", "login_username_ref")
 PASSWORD_REF_KEYS = ("portal_password_ref", "login_password_ref")
@@ -21,21 +24,21 @@ WORKFLOW_SECRET_REFS_KEY = "workflow_secret_refs"
 
 
 def evaluate_secret_reference(reference: str) -> PolicyDecision:
-    """Allow only 1Password secret references — never raw credential values."""
+    """Allow 1Password and login-keychain pointers — never raw credential values."""
     value = (reference or "").strip()
     if not value:
         return PolicyDecision(allowed=False, reason="Secret reference is empty.")
     if "\n" in value or "\r" in value:
         return PolicyDecision(allowed=False, reason="Secret reference must be a single line.")
-    if not _OP_REFERENCE.match(value):
-        return PolicyDecision(
-            allowed=False,
-            reason=(
-                "Secret reference must be a 1Password pointer "
-                "(op://vault/item/field). Raw credentials are not allowed."
-            ),
-        )
-    return PolicyDecision(allowed=True)
+    if _OP_REFERENCE.match(value) or _KEYCHAIN_REFERENCE.match(value):
+        return PolicyDecision(allowed=True)
+    return PolicyDecision(
+        allowed=False,
+        reason=(
+            "Secret reference must be an op:// or keychain:// pointer. "
+            "Raw credentials are not allowed."
+        ),
+    )
 
 
 def evaluate_secret_access(*, reference: str, authorized: bool) -> PolicyDecision:

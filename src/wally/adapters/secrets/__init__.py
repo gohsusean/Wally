@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from wally.adapters.secrets.dispatch import DispatchSecretsProvider
+from wally.adapters.secrets.keychain_macos import MacKeychainSecretsProvider
 from wally.adapters.secrets.op_cli import OnePasswordCliAdapter
 from wally.adapters.secrets.stub import UnconfiguredSecretsProvider
 from wally.exceptions import ProviderUnavailableError
@@ -12,7 +14,7 @@ def create_secrets_provider(settings):
         return None
     adapter = getattr(settings, "secrets_adapter", "op_cli")
     if adapter == "op_cli":
-        return OnePasswordCliAdapter()
+        return DispatchSecretsProvider(OnePasswordCliAdapter(), MacKeychainSecretsProvider())
     if adapter == "stub":
         return UnconfiguredSecretsProvider()
     if adapter == "memory":

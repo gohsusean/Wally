@@ -152,6 +152,7 @@ class Settings:
     notion: NotionPlatformConfig
     log_level: str
     telegram_bot_token_ref: str
+    telegram_bot_token_source_ref: str
     telegram_owner_user_id: str
 
 
@@ -554,6 +555,11 @@ def load_settings(
         telegram_bot_token_ref=str(
             telegram_cfg.get("bot_token_ref")
             or os.environ.get("WALLY_TELEGRAM_BOT_TOKEN_REF")
+            or ""
+        ).strip(),
+        telegram_bot_token_source_ref=str(
+            telegram_cfg.get("bot_token_source_ref")
+            or os.environ.get("WALLY_TELEGRAM_BOT_TOKEN_SOURCE_REF")
             or ""
         ).strip(),
         telegram_owner_user_id=str(

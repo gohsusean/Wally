@@ -345,6 +345,36 @@ def test_env_token_remains_for_local_injection() -> None:
     assert token == "local-test-token"
 
 
+def test_get_updates_requests_button_callbacks(monkeypatch) -> None:
+    import json
+
+    from wally.telegram.client import BotClient
+
+    captured: dict = {}
+
+    class _Response:
+        status = 200
+
+        def read(self) -> bytes:
+            return b'{"ok": true, "result": []}'
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args) -> bool:
+            return False
+
+    def _urlopen(request, timeout):  # noqa: ARG001
+        captured["body"] = json.loads(request.data.decode())
+        return _Response()
+
+    monkeypatch.setattr("wally.telegram.client.urlopen", _urlopen)
+    assert BotClient("local-test-token").get_updates(4) == []
+    assert captured["body"]["allowed_updates"] == ["message", "callback_query"]
+    assert captured["body"]["offset"] == 4
+    assert "local-test-token" not in json.dumps(captured["body"])
+
+
 def test_telegram_poll_command_parses() -> None:
     args = build_parser().parse_args(["telegram", "poll"])
     assert args.cli_command == "telegram"

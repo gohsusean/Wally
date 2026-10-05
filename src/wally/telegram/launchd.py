@@ -137,6 +137,10 @@ def uninstall_agent() -> None:
     if path.is_file():
         path.unlink()
     print("Uninstalled com.wally.telegram-poll")
+    print(
+        "The login-keychain bot token is still there. "
+        "Remove it with `wally telegram credential remove`."
+    )
 
 
 def status_agent() -> None:

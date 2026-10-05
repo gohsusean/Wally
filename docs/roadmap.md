@@ -463,7 +463,7 @@ See ADR-040.
 **Goal:** Telegram is the private place Wally can open a conversation. The owner sees one approval card, decides with a button, and can ask what is going on in the same chat. Approve records a decision. It does not execute.
 
 - **Path:** long poll → fixed `telegram` Gateway adapter → existing submit, read, link, and decide services. One numeric user id in a private chat. A local lease keeps a single poller.
-- **Bot token:** `telegram.bot_token_ref` is an `op://` pointer resolved by the existing secrets provider. The owner user id stays ordinary configuration. `WALLY_TELEGRAM_BOT_TOKEN` is the test injection path.
+- **Bot token:** `telegram.bot_token_ref` is a `keychain://` pointer resolved by the secrets provider. `wally telegram credential install` copies it from the 1Password source reference. The owner user id stays ordinary configuration. `WALLY_TELEGRAM_BOT_TOKEN` is the test injection path.
 - **LaunchAgent:** `wally telegram install` registers `com.wally.telegram-poll` for the logged-in user. It starts after login, restarts after a crash or a configuration exit, and waits 30 seconds between those restarts. The plist has no secret. The poller stays up across a Telegram timeout.
 - **Callbacks:** `callback_data` is a random nonce plus a compact action. The outbox row binds the nonce to the proposal id, fingerprint, chat, and allowed actions. The payload is not trusted because Telegram delivered it.
 - **Ingress:** each `update_id` is stored before the long-poll offset moves. A redelivery does not open a second request, Matter, proposal, or decision.
@@ -473,7 +473,11 @@ See ADR-040.
 - **Text:** "approve it" can show the card again. The text does not record the decision. Utterances stay untrusted evidence and use the existing grounding path. There is no reasoner in this release.
 - **Schema:** `notification_outbox`, `telegram_updates`, `telegram_cursor`, and `telegram_lease`.
 
-**Deployment:** The credential path is in place. A live Bot API smoke test has not been run. This machine has no `op` CLI on `PATH`, no `telegram.bot_token_ref`, and no owner user id. Until those are set, `wally telegram poll` cannot reach Telegram. The fake-client suite covers callbacks, replay, Not now, and the lease.
+**Deployment:** Live-checked on this Mac on 5 October 2026. The runtime credential is `keychain://com.wally.telegram/bot-token` in the login keychain. `wally telegram credential install` copied it from `op://Private/Wally Telegram Bot/password` and printed only success. A LaunchAgent with the poller’s `HOME` and `PATH`, no terminal, and no `OP_SESSION` resolved that item. `com.wally.telegram-poll` is installed and running for owner `79539710` in a private chat with `@SeanWallyBot`.
+
+The owner’s “What needs my attention?” was a read. The exact titles “DBKL — Casaman assessment” and “DBKL” produced one `deliver_document` proposal and one delivered card. Two earlier messages that did not contain that exact document title were ignored and created nothing. Not now dismissed the notification and left the proposal `proposed`. “approve it” showed the card again and did not decide. Approve recorded one decision, origin `telegram`, principal `owner`, and executed nothing. Tapping Approve again left that same decision in place. After restart the LaunchAgent came back, the stored updates and the decision timestamp were unchanged, and the outbox stayed at one attempt and the same Telegram message id. A second poller saw the lease held and did not take it. The plist environment is `HOME` and `PATH`. Config, the plist, the poller logs, and the audit log contained no bot-token shape.
+
+A second Telegram account was not available. A full logout and login was not performed. The poller asks Telegram for `message` and `callback_query` updates, because Telegram remembers an earlier `allowed_updates` filter. The fake-client suite still covers forged callbacks, stale fingerprints, and the ambiguous crash window.
 
 **Not in this milestone:** Home Assistant, a general scheduler, remote execution from Telegram, a Wally Reasoner, group chats, transcript sync, and a public webhook.
 

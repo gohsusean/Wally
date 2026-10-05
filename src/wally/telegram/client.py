@@ -41,7 +41,11 @@ class BotClient:
     def get_updates(self, offset: int) -> list[dict]:
         body = self._post(
             "getUpdates",
-            {"offset": offset, "timeout": 25},
+            {
+                "offset": offset,
+                "timeout": 25,
+                "allowed_updates": ["message", "callback_query"],
+            },
             timeout=40,
         )
         result = body.get("result")

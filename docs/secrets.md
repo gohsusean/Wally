@@ -50,7 +50,7 @@ Default post-login behaviour with `auth_success_selector` or `auth_success_url_c
 ## Runtime rules
 
 1. Access requires `authorized=True` (set only after the approval gate).
-2. Only `op://…` references are accepted — raw passwords are rejected.
+2. Only `op://…` and `keychain://service/account` references are accepted — raw passwords are rejected.
 3. Audit events record the **reference and purpose**, never the secret value.
 4. Model-facing tool results, exceptions, and CLI errors must not contain resolved values.
 5. Browser automation remains usable without secrets (ADR-030).
@@ -59,11 +59,15 @@ Policy: `runtime/secrets_safety.py`. Resolver: `runtime/secret_resolver.py`.
 
 ## Telegram bot token (v0.18)
 
-The deployed poller reads `telegram.bot_token_ref` from config, or `WALLY_TELEGRAM_BOT_TOKEN_REF`. The value must be an `op://` pointer. `wally telegram poll` resolves it through `SecretsProvider` at startup and writes a `secrets_resolve` audit event with the reference and purpose `telegram_bot`. The token value is not stored.
+The deployed poller reads `telegram.bot_token_ref`. On this Mac that pointer is `keychain://com.wally.telegram/bot-token`, a generic password in the login keychain. `wally telegram poll` resolves it through `SecretsProvider` at startup and writes a `secrets_resolve` audit event with the reference and purpose `telegram_bot`. The token value is not stored.
+
+`telegram.bot_token_source_ref` stays the 1Password item, `op://Private/Wally Telegram Bot/password`. `wally telegram credential install` reads that item with the 1Password provider and writes the value into the keychain item. The command prints success or failure only. `wally telegram credential check` resolves the keychain item the same way and does not print it. `wally telegram credential remove` deletes the keychain copy and leaves the 1Password item. `wally telegram uninstall` removes the LaunchAgent and leaves the keychain item.
+
+The keychain access list trusts the Wally virtualenv's Python executable. macOS binds that trust to the binary's code signature, which is uv's ad-hoc-signed CPython, so another script run with that same interpreter can also read the item while the login keychain is unlocked. `/usr/bin/security` is not on the list. A different binary is prompted, and the LaunchAgent cannot answer a prompt. After the Python binary changes, run `credential install` again. Rotation is: update the token, update 1Password, run `credential install`, restart the poller.
 
 `WALLY_TELEGRAM_BOT_TOKEN` remains an injection path for tests and local development when no reference is set. `telegram.owner_user_id` / `WALLY_TELEGRAM_OWNER_USER_ID` is configuration, not a secret.
 
-This startup read is not an execution approval. Proposal execution still requires `authorized=True` after the approval gate.
+This startup read is not an execution approval. Proposal execution still requires `authorized=True` after the approval gate. The 1Password provider remains the interactive path for `op://` references.
 
 ## Playwright artifacts (privacy default)
 

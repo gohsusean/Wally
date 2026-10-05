@@ -131,6 +131,23 @@ def build_parser() -> argparse.ArgumentParser:
     telegram_sub.add_parser("stop", help="Stop the Telegram LaunchAgent until start")
     telegram_sub.add_parser("restart", help="Restart the Telegram LaunchAgent")
     telegram_sub.add_parser("uninstall", help="Unload and remove the Telegram LaunchAgent")
+    credential = telegram_sub.add_parser(
+        "credential",
+        help="Copy, check, or remove the login-keychain bot token",
+    )
+    credential_sub = credential.add_subparsers(dest="credential_command")
+    credential_sub.add_parser(
+        "install",
+        help="Copy the 1Password bot token into the login keychain",
+    )
+    credential_sub.add_parser(
+        "check",
+        help="Resolve the keychain bot token without printing it",
+    )
+    credential_sub.add_parser(
+        "remove",
+        help="Delete the login-keychain copy; the 1Password item stays",
+    )
     return parser
 
 
@@ -480,6 +497,8 @@ def _run_telegram(app, args) -> int:
 
     command = getattr(args, "telegram_command", None)
     root = app.settings.project_root
+    if command == "credential":
+        return _run_telegram_credential(app, args)
     if command == "install":
         install_agent(root)
         return 0
@@ -500,15 +519,36 @@ def _run_telegram(app, args) -> int:
         return 0
     if command != "poll":
         print(
-            "Usage: wally telegram poll|install|start|status|stop|restart|uninstall",
+            "Usage: wally telegram poll|install|start|status|stop|restart|uninstall|credential",
             file=sys.stderr,
         )
         return 2
     if app.ops is None:
         print("Operations storage is disabled.", file=sys.stderr)
         return 1
-    provider = getattr(app.secrets, "provider", None)
-    return serve(app.settings, secrets_provider=provider, audit=app.audit)
+    return serve(app.settings, secrets_provider=app.secrets, audit=app.audit)
+
+
+def _run_telegram_credential(app, args) -> int:
+    from wally.telegram.credential import (
+        check_bot_credential,
+        install_bot_credential,
+        remove_bot_credential,
+    )
+
+    provider = app.secrets
+    action = getattr(args, "credential_command", None)
+    if action == "install":
+        return install_bot_credential(app.settings, provider, app.audit)
+    if action == "check":
+        return check_bot_credential(app.settings, provider, app.audit)
+    if action == "remove":
+        return remove_bot_credential(app.settings, provider)
+    print(
+        "Usage: wally telegram credential install|check|remove",
+        file=sys.stderr,
+    )
+    return 2
 
 
 def _run_chatgpt(app, args) -> int:
