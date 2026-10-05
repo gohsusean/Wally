@@ -1,5 +1,11 @@
 # Chief of Staff — Observe, Brief & Propose
 
+**Scope:** Operational loop and milestone history, not the legacy conversational
+ToolRegistry action path. See [current architecture](current-architecture.md) for
+both paths and [engineering debt](engineering-debt.md) for current exceptions.
+The implemented service phases below do not establish live Notion metadata or
+portal readiness.
+
 **Version:** 0.18.0  
 **Status:** Current milestone (not production v1.0)
 
@@ -59,11 +65,11 @@ uv run wally verify <execution-id> [--confirm success|failure]
 
 In the REPL: `/brief` (add `--no-refresh` to skip a new observe pass), `/approvals`, `/approve <id>`, `/reject <id>`, `/defer <id> --until <date>`, `/execute <id>`, `/executions`, `/execution <id>`, `/verify <id> [--confirm success|failure]`.
 
-`approvals` reconciles stored proposals and does not observe external sources unless `--refresh` is set. Approving does not execute. Only `execute` acts, and it asks again first.
+`approvals` reconciles stored proposals and does not observe external sources unless `--refresh` is set. Approving does not execute. Within the operational proposal path, only `execute` acts, and it asks again first. Legacy conversational provider actions remain separate.
 
 Brief timestamps use `ops.timezone` when set, otherwise the system local timezone. Stored values remain ISO.
 
-Google Calendar auto-event boilerplate (and google.com/calendar / g.co/calendar URLs) is stripped from descriptions. Email snippets are length-capped; receipts use a shorter cap. Unmatched receipts appear under FYI, not Recently resolved.
+Google Calendar auto-event boilerplate (and google.com/calendar / g.co/calendar URLs) is stripped from descriptions. Email snippets are length-capped; receipts use a shorter cap. Unmatched receipts are intended to appear under FYI. Current reconciliation has a sole-open-knowledge-finance fallback that can resolve an unmatched obligation; D04 records this exception and the required matching decision.
 
 Live Gmail/Calendar/Notion is optional. CI uses fake providers. Do not treat a live mailbox run as a required gate.
 
@@ -77,7 +83,10 @@ Implemented. Full rationale in ADR-035. This phase adds no execution path.
 
 Phase 2 turns Matters into **ProposedActions**: durable, explainable advice addressed to the user. A proposal is never an authorization. `ProposedAction` belongs to the operational domain and is defined in `src/wally/models/ops.py` beside `Observation` and `Matter`, deliberately separate from the executable types in `models/actions.py`, so no proposal can reach the tool registry by accident. Generation, persistence, and lifecycle logic live in `wally/ops/`.
 
-### Initial intents
+### Initial intents (Phase 2 history)
+
+Current interfaces also create non-executable `DELIVER_DOCUMENT` proposals from
+exact static catalog matches; see [current architecture](current-architecture.md).
 
 Two, both grounded in Matter types the loop actually produces:
 

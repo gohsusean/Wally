@@ -1,6 +1,12 @@
 # Observe & Brief — data minimization
 
-Phase 1 persistence lives in `data/operations.db` (SQLite). The audit directory is unchanged (`data/audit/`).
+Operational persistence lives in `data/operations.db` (SQLite). The audit directory is `data/audit/`.
+
+**Scope:** These minimization guarantees describe operational/Gateway records,
+not all Wally persistence. `data/sessions.db` stores full conversational messages.
+Legacy tool audit may contain call arguments and has known attribution/outcome
+limitations. See [current architecture](current-architecture.md), [operations](operations.md)
+and D12/D13 in [engineering debt](engineering-debt.md).
 
 ## Stored
 

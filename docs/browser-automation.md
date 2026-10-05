@@ -2,6 +2,8 @@
 
 `BrowserAutomationProvider` executes deterministic browser actions after runtime governance. Business logic stays in Wally; Playwright is an adapter only.
 
+**Scope:** the trusted-target rule below is the required invariant. Operational Act & Verify re-fetches canonical knowledge; the legacy conversational finance path accepts a model-supplied bill dictionary and cannot establish that same provenance (D01). Live Notion metadata mapping is absent (D03). See [current architecture](current-architecture.md) and [engineering debt](engineering-debt.md) before treating these flows as deployable. The current scripts log in/read/verify; they do not click payment controls.
+
 ## Trusted portal URL rule (mandatory)
 
 **Browser automation may only navigate to portal URLs retrieved from approved Knowledge Assets.**
@@ -52,7 +54,7 @@ Policy: `runtime/browser_executor.py` — `resume_card_portal_session`, `cancel_
 
 ## Related docs
 
-- [architecture.md](architecture.md) — Browser Automation Provider
+- [current-architecture.md](current-architecture.md) — both action paths and trust boundaries
 - [roadmap.md](roadmap.md) — v0.10 milestone
 - [secrets.md](secrets.md) — 1Password CLI, credential injection, auth-only runbook
 - ADR-030, ADR-031, ADR-033 in [decisions.md](decisions.md)

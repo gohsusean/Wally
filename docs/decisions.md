@@ -2,7 +2,30 @@
 
 This document records significant architectural decisions. Each ADR follows a consistent format so future you can understand *why*, not just *what*.
 
-**Statuses:** `proposed` → `accepted` → `deprecated` → `superseded`
+**Statuses:** `proposed` → `accepted` → `deprecated` → `superseded`.
+Accepted means accepted at that decision's date/scope, not fully implemented or
+still current in every detail. Partial supersession keeps the remaining rationale;
+read each current-scope note before treating an older decision as an instruction.
+[Current architecture](current-architecture.md), [operations](operations.md) and
+[engineering debt](engineering-debt.md) distinguish behavior, intent and gaps.
+
+## Supersession and extension guide
+
+- ADR-008 HA aliases/control: superseded in product scope by ADR-022.
+- ADR-009: Notion storage survives; MCP transport/semantic-search assumptions do
+  not describe the REST adapter/FTS5 implementation. ADR-019/020/021/023 refine it.
+- ADR-012/016: remote delivery/timing superseded by ADR-036–041, not a shipped
+  public API or HA approval system.
+- ADR-014/032: secret separation survives; implemented 1Password and Telegram
+  Keychain mechanisms extend the original future/sole-backend assumptions.
+- ADR-017: original v0.8 cron/HA delivery was not implemented; ADR-022 removes HA
+  control scope and future Phase 5 owns proactive scheduling.
+- ADR-034 -> ADR-035 -> ADR-036 -> ADR-037 adds operational phases without
+  collapsing observation, proposal, decision and execution.
+- ADR-036/037 literal-origin authorization is superseded by ADR-038.
+- ADR-038 is extended by ADR-039 registration and ADR-040/041 interfaces.
+- ADR-042 records the preferred direction for new capabilities; it does not
+  retroactively remove the legacy provider/tool path or fix its defects.
 
 ---
 
@@ -47,6 +70,8 @@ Use Python 3.12+.
 
 **Status:** Accepted  
 **Date:** 2026-06-27
+
+**Current scope / supersession:** Single-node simplicity remains the rationale, not a guarantee of one OS process. Current Telegram and ChatGPT entry points create separate restricted processes sharing local operations SQLite; see [ADR-039](#adr-039-local-gateway-channel-bound-and-continuity-aware) and [current architecture](current-architecture.md).
 
 ### Context
 
@@ -259,8 +284,10 @@ Use YAML configuration profiles in `config/` (e.g. `macbook.yaml`, `macmini.yaml
 
 ## ADR-008: Entity aliases for home automation
 
-**Status:** Accepted  
+**Status:** Superseded in product scope by ADR-022
 **Date:** 2026-06-27
+
+**Current scope / supersession:** The alias/control design below is historical and unimplemented. [ADR-022](#adr-022-product-scope--chief-of-staff-not-home-automation) supersedes the home-control product scope; only optional future read-only HA context remains.
 
 ### Context
 
@@ -293,9 +320,11 @@ Maintain an alias mapping in `config/entities.yaml`. Wally's `HomeAutomationProv
 
 ## ADR-009: Notion as initial memory provider via MCP
 
-**Status:** Accepted  
+**Status:** Partially superseded — storage choice retained; original transport/retrieval assumptions historical
 **Date:** 2026-06-27  
 **Updated:** 2026-06-27 — REST adapter shipped in v0.3
+
+**Current scope / supersession:** Notion remains the knowledge backend, but the implemented adapter uses REST, not Cursor MCP. Vocabulary/policy/registry and contextual recall are refined by [ADR-019](#adr-019-knowledge-layer-vocabulary), [ADR-020](#adr-020-runtime-governance-policy-layer-1), [ADR-021](#adr-021-pending-classification-and-knowledge-registry) and [ADR-023](#adr-023-conversation-recall-is-contextual-memory-not-authoritative-knowledge). The MCP and semantic/vector-search claims below are historical assumptions, not implementation prerequisites.
 
 ### Context
 
@@ -373,8 +402,10 @@ Persist sessions in SQLite from v0.2. Store session ID, messages, and timestamps
 
 ## ADR-012: CLI approval now; messaging channels later
 
-**Status:** Accepted  
+**Status:** Partially superseded — original channel timing replaced by ADR-036–041
 **Date:** 2026-06-27
+
+**Current scope / supersession:** CLI tool prompts remain on the legacy path. The HA/Telegram delivery dates below are superseded by operational decisions/execution in [ADR-036](#adr-036-proposal-approval-is-not-execution-chief-of-staff-phase-3), [ADR-037](#adr-037-guarded-execution-of-the-exact-approved-version-chief-of-staff-phase-4), [ADR-038](#adr-038-authenticated-principals-not-channel-name-literals) and interfaces [ADR-040](#adr-040-chatgpt-authenticates-the-connection-then-the-subject)/[ADR-041](#adr-041-telegram-decides-through-a-server-side-nonce). Telegram decides but cannot execute; HA approval was not delivered.
 
 ### Context
 
@@ -402,6 +433,8 @@ Post-v1.0: Telegram and WhatsApp as additional approval/messaging channels.
 **Status:** Accepted  
 **Date:** 2026-06-27
 
+**Current scope / supersession:** Ownership/reproducibility remains the goal. The current registry contains webhook paths, `workflows/` has no exports, and the deploy helper does not push definitions. These claims below are unfulfilled deployment intent; [D08](engineering-debt.md#d08--n8n-definitionsdeployment-not-reproducible-high-deployment-gap) defines acceptance. Do not infer real backup/payment effects from a registry name.
+
 ### Context
 
 Workflows could trigger ad-hoc n8n workflows by name, or Wally could own version-controlled definitions.
@@ -425,8 +458,10 @@ Workflow definitions live in `workflows/` in the repository. A deploy script pus
 
 ## ADR-014: Notion for memory; 1Password for secrets
 
-**Status:** Accepted  
+**Status:** Accepted separation — future timing superseded; mechanisms extended by ADR-032/033/041
 **Date:** 2026-06-27
+
+**Current scope / supersession:** The separation remains. The future timing is superseded by implemented [ADR-032](#adr-032-secretsprovider-via-1password-cli) and [ADR-033](#adr-033-secret-safe-execution-artifacts-and-auth-verification); Telegram additionally uses a login-Keychain runtime copy under [ADR-041](#adr-041-telegram-decides-through-a-server-side-nonce) and [operations](operations.md). API/OAuth keys can still be local environment/ignored .env secrets.
 
 ### Context
 
@@ -481,8 +516,10 @@ Wally must explicitly tell the user when a required provider is unreachable. It 
 
 ## ADR-016: Remote access required (v0.9)
 
-**Status:** Accepted  
+**Status:** Original delivery plan superseded by ADR-039–041
 **Date:** 2026-06-27
+
+**Current scope / supersession:** The original v0.9 public HTTP/TLS API and Mac Mini deployment were not delivered. Current access is a local Gateway ([ADR-039](#adr-039-local-gateway-channel-bound-and-continuity-aware)), loopback ChatGPT adapter with hosted deployment gated ([ADR-040](#adr-040-chatgpt-authenticates-the-connection-then-the-subject)), and private Telegram polling ([ADR-041](#adr-041-telegram-decides-through-a-server-side-nonce)). These supersede this implementation schedule, not authentication requirements.
 
 ### Context
 
@@ -505,8 +542,10 @@ v0.9 delivers a minimal authenticated HTTP API on the Mac Mini. TLS required. AP
 
 ## ADR-017: Proactive intelligence — both triggers, conservative default
 
-**Status:** Accepted  
+**Status:** Historical unimplemented delivery plan — scope refined by ADR-022; scheduling future
 **Date:** 2026-06-27
+
+**Current scope / supersession:** The v0.8 cron/event delivery below was not implemented; config/proactive.yaml is dormant. HA control/event scope is superseded by [ADR-022](#adr-022-product-scope--chief-of-staff-not-home-automation). Scheduling and preferences belong to future Phase 5 in [roadmap](roadmap.md); the current outbox does not provide scheduled reminders.
 
 ### Context
 
@@ -529,8 +568,10 @@ v0.8 implements both cron-based and HA event triggers. Default aggressiveness: *
 
 ## ADR-010: No implementation in v0.1
 
-**Status:** Accepted  
+**Status:** Accepted historical scope — v0.1 only
 **Date:** 2026-06-27
+
+**Current scope / supersession:** This prohibition applied only to the original v0.1 scaffold task. It is not a current no-code instruction. See the implemented phases and [ADR-042](#adr-042-new-capabilities-converge-on-the-operational-architecture).
 
 ### Context
 
@@ -883,6 +924,8 @@ v0.9 finance payments need evidence checks before approval — comparing bill st
 **Status:** Accepted  
 **Date:** 2026-06-27
 
+**Current scope / supersession:** Legacy conversational routing is still callable. Structured Notion metadata remains unmapped, and canonical provenance/parameter-equality is weaker than the trusted-input language below. [D01/D02/D03](engineering-debt.md) capture those defects. [ADR-042](#adr-042-new-capabilities-converge-on-the-operational-architecture) supersedes this legacy tool pattern as the preferred extension point, not the existing implementation.
+
 ### Context
 
 `config/workflows.yaml` registered business-specific workflows (e.g. per-vendor payment flows). Business logic should live in Wally; n8n should execute generic capabilities. Users should say *"Pay my TM110 bill"* without knowing workflow names.
@@ -980,6 +1023,8 @@ Browser automation (v0.10) opens payment portals. URLs in emails, web pages, PDF
 **Status:** Accepted  
 **Date:** 2026-08-15
 
+**Current scope / supersession:** 1Password action-secret handling remains. The provider now dispatches Keychain references too; Telegram startup authentication and credential copying are separate purposes documented in [ADR-041](#adr-041-telegram-decides-through-a-server-side-nonce), [secrets](secrets.md) and [operations](operations.md). The original sole-backend/execution-only description is extended, not a removal of authorization for action credentials.
+
 ### Context
 
 Finance and browser automation need credentials at execution time. Storing passwords in Notion or config would violate the knowledge-layer security model. v0.10 supports manual portal login; v0.11 must resolve secrets without giving the LLM a secrets tool.
@@ -1040,6 +1085,8 @@ v0.11 resolves passwords into Playwright FILL actions and n8n payloads. Secondar
 **Date:** 2026-08-16  
 **Deciders:** Founding engineer + project owner
 
+**Current scope / supersession:** The Observation/Matter/read-only ingestion boundary remains. [ADR-035](#adr-035-durable-proposed-actions-chief-of-staff-phase-2), [ADR-036](#adr-036-proposal-approval-is-not-execution-chief-of-staff-phase-3) and [ADR-037](#adr-037-guarded-execution-of-the-exact-approved-version-chief-of-staff-phase-4) extend the loop separately. The unmatched-receipt FYI rule has a current sole-open-Matter exception requiring resolution under D04; live metadata is missing under D03 in [engineering debt](engineering-debt.md).
+
 ### Context
 
 v1.0 should make Wally a proactive Chief of Staff. The first increment must persist operational understanding (what changed, what is still open) without autonomous writes. Email, calendar, and Notion already exist as providers. n8n must not become the brain.
@@ -1080,6 +1127,8 @@ Revisit when Phase 2 proposals need a durable Proposed Action model.
 **Status:** Accepted — implemented in v0.13.0  
 **Date:** 2026-08-16  
 **Deciders:** Founding engineer + project owner
+
+**Current scope / supersession:** The non-executable advice/reference model remains. Item 5/no approval and initial two-intent limits are superseded by [ADR-036](#adr-036-proposal-approval-is-not-execution-chief-of-staff-phase-3) and document-delivery support in [ADR-040](#adr-040-chatgpt-authenticates-the-connection-then-the-subject). [ADR-037](#adr-037-guarded-execution-of-the-exact-approved-version-chief-of-staff-phase-4) adds separate execution; it does not make proposals dispatchable. Live counts below are historical checkpoint evidence.
 
 ### Context
 
@@ -1134,6 +1183,8 @@ Revisit when Phase 3 introduces the approval inbox and needs an `approved` trans
 **Date:** 2026-09-30  
 **Deciders:** Founding engineer + project owner
 
+**Current scope / supersession:** Inert approval/version semantics remain. The always-false helper/no executor boundary is superseded by [ADR-037](#adr-037-guarded-execution-of-the-exact-approved-version-chief-of-staff-phase-4). Literal user_cli/user_repl authorization is superseded by [ADR-038](#adr-038-authenticated-principals-not-channel-name-literals). Telegram notification dismissal is not proposal dismissal. Delivery defer release is a current defect, D06 in [engineering debt](engineering-debt.md).
+
 ### Context
 
 Phase 2 persists `ProposedAction` rows and states that none of them is an authorization (ADR-035). The runtime already has a separate execution-time gate: `ApprovalProvider.request_approval` plus `ApprovalGate`, used when a tool call is about to run. Phase 3 needs a durable decision on a proposal — approve, reject, or defer — without creating a path from `status == approved` to Gmail, Calendar, browser automation, n8n, payment, secret resolution, or a shell.
@@ -1179,6 +1230,8 @@ Revisit when Act & Verify needs to translate an approved fingerprint into a `Pla
 **Status:** Accepted — implemented in v0.15.0  
 **Date:** 2026-09-30  
 **Deciders:** Founding engineer + project owner
+
+**Current scope / supersession:** Guarded review-only execution, fresh confirmation and uncertainty handling remain. Literal-origin checks in the original decision are superseded by [ADR-038](#adr-038-authenticated-principals-not-channel-name-literals). Live Notion plan prerequisites are not yet mapped (D03); synthetic service coverage does not prove portal readiness. This no-payment guarantee applies to Act & Verify, not every legacy conversational provider action.
 
 ### Context
 
@@ -1234,6 +1287,8 @@ Revisit when a second action type is proposed, when scheduling or notifications 
 **Status:** Accepted — implemented in v0.15.0  
 **Date:** 2026-09-30  
 **Deciders:** Founding engineer + project owner
+
+**Current scope / supersession:** Authority/provenance separation remains. The initial local-channel set is extended by [ADR-039](#adr-039-local-gateway-channel-bound-and-continuity-aware) registration and [ADR-040](#adr-040-chatgpt-authenticates-the-connection-then-the-subject)/[ADR-041](#adr-041-telegram-decides-through-a-server-side-nonce) restricted interfaces. This architecture does not retroactively wrap all legacy ToolRegistry actions; see [ADR-042](#adr-042-new-capabilities-converge-on-the-operational-architecture).
 
 ### Context
 
@@ -1321,6 +1376,8 @@ Revisit when the first real adapter (ChatGPT) is registered, when that adapter n
 **Date:** 2026-10-04  
 **Deciders:** Founding engineer + project owner
 
+**Current scope / supersession:** Hosted authentication/confirmation remains unvalidated. Subject/org metadata is supplied by the bearer caller, not an independently authenticated OpenAI assertion, and the confirmation flag is operator attestation rather than per-call proof. Keep decisions disabled pending D15 in [engineering debt](engineering-debt.md). Execute/verify remain absent.
+
 ### Context
 
 ADR-039 left the first external adapter unspecified. ChatGPT is that adapter, and it is the primary place to ask what needs attention, continue a Matter, and submit work. Two shortcuts are not acceptable. A copied `openai/subject` string must not become the Wally owner. A model calling `record_decision` must not count as the owner confirming that decision.
@@ -1365,13 +1422,15 @@ Revisit when a ChatGPT connector completes an authenticated grant without sendin
 **Date:** 2026-10-04  
 **Deciders:** Founding engineer + project owner
 
+**Current scope / supersession:** Owner/button/no-execution rules remain. Since the initial release, SecretsProvider resolution and login-Keychain deployment replaced the environment-only bot-token mechanism (commits 8200e33/ce47fcd). [Operations](operations.md) records LaunchAgent and interpreter access scope. D05/D10/D11 track recovery/reliability gaps; at-least-once send duplication remains an accepted limitation.
+
 ### Context
 
 ChatGPT remains the ad-hoc place to think with Wally. Telegram is the private chat Wally can open. A button payload is size-capped and untrusted. Long polling redelivers updates until the offset advances. A send can succeed at Telegram and still be lost locally if the process dies before it stores the message id.
 
 ### Decision
 
-1. **Owner pin.** Channel `telegram`, `approval_adapter` false. The owner is one numeric user id in a private chat. Groups, other users, edits, display names, and message text do not authorize. The bot token stays in the environment.
+1. **Owner pin.** Channel `telegram`, `approval_adapter` false. The owner is one numeric user id in a private chat. Groups, other users, edits, display names, and message text do not authorize. The deployed bot token is resolved from its configured Keychain reference at startup; 1Password remains the source copy. Environment injection is only the local/test fallback when no reference is set.
 2. **Opaque callback.** `callback_data` is a random nonce plus `a`, `r`, or `n`. `notification_outbox` binds the nonce to the proposal id, fingerprint, chat, owner, and allowed actions. The handler authenticates the user, loads the nonce, and only then calls the existing decide path with the stored fingerprint.
 3. **Ingress.** `telegram_updates` records each `update_id` before `telegram_cursor` advances. Gateway submit is idempotent on `(channel, external_request_ref)`. A replay does not open a second request or proposal. A repeated decision finds the proposal no longer `proposed` and does not write a second one.
 4. **Delivery.** One `decision_required` row per proposal fingerprint. Reactive and proactive proposals share that path. Semantics are at-least-once with best-effort duplicate suppression. `sending` rows carry a lease. Durable `delivered` rows are not resent. Attempt count, retry time, and a terminal `failed` state cover the rest. A rare second card after an ambiguous crash is accepted. A second decision is not.
@@ -1392,11 +1451,70 @@ ChatGPT remains the ad-hoc place to think with Wally. Telegram is the private ch
 | Advance the offset before the update is stored | A crash would drop the update |
 | Claim exactly-once Telegram delivery | The crash window after `sendMessage` cannot be closed |
 | Send a direct card and an outbox card | The owner would see two prompts for one proposal |
-| Treat Later as a scheduled snooze | This release has no scheduler |
+| Treat Not now as a scheduled snooze | No scheduler; no Later/defer button is implemented |
 
 ### Review trigger
 
 Revisit when a reminder should be scheduled, or when Telegram should hold a second fingerprint-bound execution authorization.
+
+---
+
+## ADR-042: New capabilities converge on the operational architecture
+
+**Status:** Accepted engineering direction — documentation only; no path migration implemented
+**Date:** 2026-10-06
+**Deciders:** Project owner, following the engineering handover audit
+
+### Context
+
+Wally has both a current conversational ToolRegistry/provider action path and an
+operational proposal/decision/Act & Verify path. The latter adds authenticated
+capabilities, canonical version binding, authority-free provenance, durable
+attempts and uncertainty handling. The legacy path remains callable with its own
+risk/approval gates and weaker financial input/evidence provenance. Documentation
+must not present them as equally governed or silently remove existing behavior.
+
+### Decision
+
+1. New capability development converges on the operational proposal/capability/
+   provenance architecture rather than adding privileged behavior through legacy
+   conversational tools. Provider backends may be reused behind reviewed boundaries.
+2. Keep proposal advice, authenticated decision, fresh execution authorization,
+   execution and independent verification separate. Bind action to the reviewed
+   fingerprint/canonical target and revalidate after the prompt.
+3. Preserve Telegram/current ChatGPT execute/verify restrictions. Intentional
+   trust-boundary changes need explicit rationale and updated/new ADRs.
+4. Maintain current behavior in this handover. Migration/retirement, new executors,
+   defects, schemas, service/credential operations and dependency changes require
+   separate implementation work; this decision claims none of those fixes.
+5. Root AGENTS.md owns concise durable instructions. Current architecture owns
+   both flows, operations owns deployment/recovery, engineering debt owns findings
+   with acceptance criteria, and roadmap owns future delivery. Historical designs
+   remain clearly marked with scoped supersession.
+
+### Consequences
+
+**Positive:** new work has one preferred authority/lifecycle foundation, while
+readers can still understand the actual legacy behavior and deployment limits.
+Important reasoning survives without recovering whole chat histories.
+
+**Negative:** existing paths retain their current limitations. Live metadata,
+n8n reproducibility and recovery still need external artifacts/operator decisions.
+The direction is not a certification of financial safety or a completed migration.
+
+### Alternatives considered
+
+- Add more privileged model-callable tools: duplicates weaker trust/provenance
+  handling and permits model tool choice to steer safety boundaries.
+- Remove legacy tools in the handover: changes behavior outside documentation scope.
+- Treat historical Accepted ADRs as the current specification: obscures superseded
+  assumptions and unmet deployment criteria.
+
+### Review trigger
+
+Revisit when planning path migration, a new consequential executor, or a change to
+interface authority. Verify the design against actual code/tests and current
+external prerequisites before claiming readiness.
 
 ---
 

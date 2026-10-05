@@ -1,10 +1,17 @@
-# Wally — Architecture
+# Wally — Architecture history and design notes
 
-**Version:** 0.1 design baseline; implementation shipped through v0.18.0  
-**Status:** Living architecture. Act & Verify executes one action type on explicit user request. Scheduling and notifications are future work.  
-**Last updated:** 2026-09-30
+**Status:** Historical notebook, including later milestone notes; superseded as
+an implementation reference by [current architecture](current-architecture.md).
+**Documentation classification updated:** 2026-10-06.
 
-Shipped: v0.10 browser automation, v0.11.1 secrets hardening, v0.12 Observe & Brief, v0.13 Assess & Propose, v0.14 Approval Inbox, v0.15 Act & Verify, v0.16 Gateway. Historical sections below keep the design as it was written. They are not rewritten to look like the current milestone.
+Read [current architecture](current-architecture.md), [operations](operations.md),
+[engineering debt](engineering-debt.md) and the relevant [ADRs](decisions.md) first.
+The sections below preserve earlier designs and their rationale; Accepted/planned
+language is not proof of implementation. In particular, the Memory/Notion-MCP/HA
+model, scheduler/event-bus timing, Mac Mini cutover, missing health scripts and
+pre-commit scanning are historical proposals. Current Notion uses REST; scheduling
+and HA are not implemented. Later sections describe individual milestones, not
+uniform authorization across both current action paths.
 
 ---
 
@@ -23,7 +30,7 @@ The architecture optimises for:
 
 ---
 
-## 2. Conceptual model
+## 2. Conceptual model (historical baseline)
 
 Wally separates **reasoning** from **execution**.
 
@@ -66,7 +73,7 @@ Wally separates **reasoning** from **execution**.
 
 ---
 
-## 3. Core components
+## 3. Core components (historical and milestone-specific notes)
 
 ### 3.1 Orchestrator
 
@@ -143,7 +150,7 @@ Examples of what it removes or normalises:
 External source → Web Provider → Content Sanitizer → Reasoning Provider
 ```
 
-Internal sources (Notion, Gmail, conversation recall) are trusted enough not to require this layer today; they remain governed by the authority hierarchy and runtime policy.
+The web sanitizer described here is not authentication. Gmail/calendar and arbitrary Notion/conversation text remain untrusted data; designated structured Knowledge fields have a different role. No source text can issue a principal grant or authorize a decision. See ADR-023, ADR-034 and [current architecture](current-architecture.md).
 
 **Security note:** The Content Sanitizer is **defense in depth**, not the primary security boundary. Primary controls remain:
 - Runtime policy (`runtime/policy.py`)
@@ -160,7 +167,7 @@ Malicious instructions that survive sanitization must still be unable to influen
 Abstracts language model interaction.
 
 ```python
-# Conceptual interface — not yet implemented
+# Historical sketch; current protocol is src/wally/providers/llm.py
 class LLMProvider(Protocol):
   def complete(
     self,
@@ -204,6 +211,8 @@ Each external domain has a provider interface. Providers expose *tools* that the
 
 #### Finance safety (`runtime/finance_safety.py`)
 
+**Legacy path scope:** the claims below describe intended checks, not proven canonical input provenance. Current bill dictionaries can be model-supplied, parameters can override verified fields, and paid evidence is self-asserted. See D01/D02 in [engineering debt](engineering-debt.md). Do not use this path as the template for new privileged capabilities (ADR-042).
+
 - **Payment initiation** — `finance_trigger_payment` is approval-gated (`ActionClass.FINANCIAL`). The **ExecutionCapabilityRouter** (`runtime/execution_router.py`) selects the workflow from provider `payment_method` in the trusted `bill` object — the LLM does not choose workflow names. Approval prompts include verification summary, payment method, and runtime-selected capability.
 - **Verification Engine** (`runtime/verification_engine.py`) — deterministic, **payment-method-aware** comparison of statement evidence against trusted Knowledge Asset fields. Bank transfer: payee, amount, due date, bank account. Card portal: portal URL, provider, amount, account reference (no bank account). LLM may extract `statement` fields; comparison and block decisions are runtime-only.
 - **Marking bills paid** — Triggering a workflow does **not** update knowledge. A bill may be recorded as paid in Notion only with `payment_evidence`:
@@ -212,7 +221,9 @@ Each external domain has a provider interface. Providers expose *tools* that the
   3. `verification_provider` — future read-only financial verification
 - Without valid evidence, `knowledge_update` / `knowledge_create` that marks a finance-role bill as paid is rejected by `evaluate_bill_paid_write_policy`.
 
-#### Proposal approval versus execution approval (v0.14)
+#### Proposal approval versus execution approval (v0.14 history)
+
+The always-false helper below was a Phase 3 boundary. ADR-037 adds separately authorized execution; ADR-038 replaces literal-origin authorization. Approval remains inert.
 
 These are different stages.
 
@@ -622,11 +633,11 @@ src/wally/
     └── loader.py            # Config and secrets loading
 ```
 
-No implementation files exist yet. This layout is the target for v0.2 onward.
+This is a historical target sketch, not the current tree. Implementation exists; see [repository layout](layout.md).
 
 ---
 
-## 9. Deployment model
+## 9. Deployment model (historical plan, not a runbook)
 
 ### Phase 1: MacBook (development)
 
@@ -677,7 +688,7 @@ Test fixtures and mock providers live in `tests/`.
 **Decision:** Single process.  
 **Rationale:** Solo maintainer, single-machine deployment, low operational overhead. Providers are modular *within* the process. Split only if a component needs independent scaling or isolation (unlikely for a personal OS).
 
-### MCP as integration layer vs custom adapters
+### MCP as integration layer vs custom adapters (historical choice)
 
 **Decision:** MCP where available (Notion); custom HTTP adapters elsewhere (HA, n8n).  
 **Rationale:** MCP is valuable when the ecosystem supports it, but Wally should not depend on MCP for all integrations. Custom adapters are simpler for REST APIs with stable contracts.
@@ -699,7 +710,7 @@ Test fixtures and mock providers live in `tests/`.
 
 ---
 
-## 12. Known risks
+## 12. Known risks (historical assessment; mitigations not all implemented)
 
 | Risk | Impact | Mitigation |
 |------|--------|------------|
@@ -735,7 +746,7 @@ Entity aliases for Home Assistant are **deferred** until an optional read-only H
 
 If implemented later: aliases in `config/entities.yaml` map human names (`study_lights`) to HA entity IDs. Wally would read state only — control remains with Alexa and Home Assistant.
 
-### 13.2 Proactive intelligence (v0.9) explained
+### 13.2 Proactive intelligence (historical future design)
 
 **Proactive** means Wally initiates contact — you don't ask first.
 
@@ -758,7 +769,7 @@ Home Assistant device events are **not** proactive triggers unless an optional H
 
 **Quiet hours:** No proactive notifications between configurable times (e.g. 22:00–07:00), except security-class events.
 
-**v0.9 implementation:** Event bus + cron runner + preference config in `config/proactive.yaml`. All suggestions logged; user can approve/dismiss/never-again per suggestion type.
+**Unimplemented historical proposal:** event bus + cron runner + preference config in `config/proactive.yaml`. That file is dormant; there is no current scheduler or implemented quiet-hours/never-again preference engine. See future Phase 5 in [roadmap](roadmap.md).
 
 ### 13.3 Remaining open items
 
@@ -770,7 +781,7 @@ These need detail during implementation, not architectural approval:
 
 ---
 
-## 14. Recommended improvements
+## 14. Recommended improvements (historical proposals, not installed tooling)
 
 Before writing code, consider adopting these practices:
 

@@ -6,11 +6,17 @@ Wally is not a chatbot. It is not a home automation platform.
 
 ## Status
 
-**Status:** **v0.18.0 — Telegram inbox.** Telegram long-polls from this Mac and reaches Wally through the Gateway. The owner is one numeric Telegram user id in a private chat. Approval buttons carry a server-side nonce. `Not now` dismisses that card and leaves the proposal pending. Approve records a decision and does not execute. ChatGPT v0.17 stays implemented, with `record_decision` still disabled until a hosted connection can authenticate and confirm that call. Act & Verify is unchanged: only bill review runs, only when you ask, and it never pays. Nothing runs on a schedule.
+**Status:** **v0.18.0 — Telegram inbox.** Telegram long-polls from this Mac and reaches Wally through the Gateway. The owner is one numeric Telegram user id in a private chat. Approval buttons carry a server-side nonce. `Not now` dismisses that card and leaves the proposal pending. Approve records a decision and does not execute. ChatGPT v0.17 stays implemented, with `record_decision` still disabled until a hosted connection can authenticate and confirm that call. Act & Verify supports bill portal login/review only, on a separate authorized request, and never pays. The older conversational ToolRegistry path is still callable and can trigger financial n8n workflows under its own approval gates; the Act & Verify limit is not a system-wide no-payment guarantee. Nothing runs on a schedule.
 
 Complete: v0.10 browser automation, v0.11.1 secrets hardening, v0.12 Observe & Brief, v0.13 Assess & Propose, v0.14 Approval Inbox, v0.15 Act & Verify, v0.16 Gateway, v0.17 ChatGPT interface, v0.18 Telegram inbox.
 
-Future: scheduling and proactive triggers, notifications, daily-driver hardening, more supported action types. Remote execution from ChatGPT is not part of this release.
+Future: scheduling and proactive triggers, notification UX hardening, more supported action types, and a validated hosted ChatGPT connection. Current service implementations are not proof of live provider readiness; the Notion structured metadata/finance-role mapping and other acceptance gaps are recorded in [engineering debt](docs/engineering-debt.md). Remote execution from ChatGPT is not part of this release.
+
+## Engineering handover
+
+Read [AGENTS.md](AGENTS.md), [current architecture](docs/current-architecture.md), [runtime operations](docs/operations.md), the relevant [ADRs](docs/decisions.md), and affected tests. Check [active engineering debt](docs/engineering-debt.md) before feature work; [roadmap](docs/roadmap.md) owns future delivery.
+
+**New capabilities should converge on the operational proposal/capability/provenance architecture, rather than add privileged behavior through the legacy conversational tools.** [ADR-042](docs/decisions.md#adr-042-new-capabilities-converge-on-the-operational-architecture) records this direction; this handover does not change either application path.
 
 ## Getting started
 
@@ -126,7 +132,7 @@ Legacy `databases:` blocks are imported once via `scripts/migrate_notion_yaml.py
 3. Enable workflows in `config/macbook.yaml`: `providers.workflow.enabled: true`
 4. List configured workflows: `uv run python scripts/deploy_workflows.py`
 
-Example: "Run the weekly backup" triggers the `weekly-backup` webhook. Bill payments use execution capabilities (e.g. `pay-bill-bank-transfer`) selected at runtime and require CLI approval.
+The registry can route "Run the weekly backup" to a `weekly-backup` webhook, but no exports or proven backup procedure are in the repo. The helper lists configuration; it does not deploy. Actual downstream behavior must be verified separately. Legacy conversational bill-payment routing requires CLI approval and has known verification/provenance limitations; see [workflow scope](docs/workflows.md) and D01/D02/D08/D09 in the backlog.
 
 ### Communications setup (v0.6)
 
@@ -141,15 +147,18 @@ Example: "Summarise unread email from the property manager" searches Gmail. Send
 
 | Document | Purpose |
 |----------|---------|
-| [Architecture](docs/architecture.md) | System design, components, data flows, and boundaries |
+| [Current architecture](docs/current-architecture.md) | Both current action paths, authority and preferred engineering direction |
+| [Operations](docs/operations.md) | Local state, LaunchAgent, credentials, prerequisites and recovery gaps |
+| [Engineering debt](docs/engineering-debt.md) | Active defects/deployment gaps with acceptance criteria |
+| [Architecture history](docs/architecture.md) | Historical baseline and milestone notes; not the current specification |
 | [Principles](docs/principles.md) | Engineering values and non-negotiables |
 | [Roadmap](docs/roadmap.md) | Versioned delivery plan from scaffold to v1.0 |
 | [Decisions](docs/decisions.md) | Architectural decision records (ADRs) |
 | [Layout](docs/layout.md) | Repository structure and rationale |
 | [Browser automation](docs/browser-automation.md) | Trusted portal URLs and Playwright execution |
-| [Secrets](docs/secrets.md) | 1Password CLI, runtime authorization, credential injection |
+| [Secrets](docs/secrets.md) | 1Password, login Keychain, runtime authorization and credential safety |
 | [Knowledge layer](docs/knowledge-layer.md) | Earlier draft — superseded by [Architecture Review v2](docs/architecture-review-v2.md) |
-| [Architecture Review v2](docs/architecture-review-v2.md) | Platform governance philosophy and minimal refactor plan |
+| [Architecture Review v2](docs/architecture-review-v2.md) | Historical review; vocabulary/policy adopted, broader proposals deferred |
 
 Read these before writing code.
 
@@ -178,9 +187,9 @@ wally/
 | Workflows | n8n |
 | Communications | Google Workspace (Gmail + Calendar) |
 | Browser | Playwright (local) |
-| Secrets | 1Password CLI (`op`) |
+| Secrets | 1Password CLI (`op`) plus macOS login Keychain dispatch |
 | Dev machine | MacBook |
-| Future runtime | Mac Mini (Apple Silicon) |
+| Future runtime | Mac Mini (Apple Silicon), not a verified deployment |
 
 ## Principles (summary)
 

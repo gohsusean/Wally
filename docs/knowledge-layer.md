@@ -1,9 +1,14 @@
 # Wally — Knowledge Layer Architecture Proposal
 
 **Version:** 0.1 (proposal)  
-**Status:** Awaiting review  
+**Status:** Historical proposal — superseded by Architecture Review v2 and later ADRs
 **Date:** 2026-06-27  
 **Context:** Pre-v0.4 architectural review — refactor `MemoryProvider` → `KnowledgeProvider`
+
+Retained as history. See [Architecture Review v2](architecture-review-v2.md),
+ADR-019/020/021/023 in [decisions](decisions.md), and [current architecture](current-architecture.md).
+Embeddings, federation and retriever/store extraction below are proposals, not
+current implementations; no review of this old plan is required before routine work.
 
 ---
 

@@ -1,5 +1,7 @@
 # Wally — Engineering Principles
 
+These principles state the engineering direction, not a claim that every current path fully enforces them. [Current architecture](current-architecture.md) and [engineering debt](engineering-debt.md) distinguish implementation from intent. New privileged capabilities follow ADR-042.
+
 These principles govern every design and implementation decision. When two options conflict, the higher-numbered principle does not automatically win — but any violation must be documented in [decisions.md](decisions.md) with explicit rationale.
 
 ---
@@ -28,7 +30,7 @@ Wally is a set of cooperating components with clear boundaries, not a single god
 
 ## 3. Every capability should be replaceable
 
-No subsystem is permanent. Notion, OpenAI, Home Assistant, and n8n are *current* choices, not architectural commitments.
+No subsystem is permanent. Notion, OpenAI, and n8n are current adapters, not permanent commitments. Home Assistant is an unimplemented optional future source, not a current Wally provider.
 
 **In practice:**
 - Define provider interfaces before writing adapters.
@@ -50,7 +52,7 @@ The orchestrator reasons about *what* to do. The LLM is one implementation of *h
 
 ## 5. External systems should be abstracted behind interfaces
 
-Wally never imports Home Assistant SDK calls in the orchestrator. It calls `HomeAutomationProvider.turn_off("study_lights")`.
+The orchestrator depends on provider contracts rather than external SDK calls. For example, Google API details belong in the communications adapter. No HomeAutomationProvider implementation currently exists.
 
 **In practice:**
 - One interface per external domain.
@@ -118,7 +120,7 @@ The founding engineer does not guess on matters that shape the product for years
 
 ## Safety principles (operational)
 
-These are non-negotiable runtime rules, enforced in code once implemented:
+These are required invariants. The table names intended enforcement; it is not a certification that legacy finance provenance, audit outcomes or structured response metadata are complete (D01/D02/D12):
 
 | Rule | Enforcement |
 |------|-------------|

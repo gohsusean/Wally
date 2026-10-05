@@ -1,6 +1,8 @@
 # Execution capability registry
 
-`config/workflows.yaml` registers **how** Wally executes actions — not **what** is being paid, emailed, or processed.
+`config/workflows.yaml` registers execution capability names/webhook paths. This document describes the **legacy conversational workflow/finance path**, not the operational Act & Verify executor. New privileged capabilities follow [ADR-042](decisions.md#adr-042-new-capabilities-converge-on-the-operational-architecture) and [current architecture](current-architecture.md).
+
+**Current limitations:** Notion structured metadata is not mapped; the legacy bill dictionary can be model-supplied; extra parameters can override verified fields; generic workflow triggering does not enforce the finance verification pipeline. D01/D02/D03 in [engineering debt](engineering-debt.md) record these gaps. No deployed exports are present, and `scripts/deploy_workflows.py` only lists configuration/export presence. Actual n8n effects, authentication and backup behavior are unknown (D08/D09).
 
 ## Philosophy
 
@@ -65,11 +67,11 @@ User: "Pay my TM110 maintenance bill"
   → card_portal: BrowserAutomationProvider (v0.10+)
 ```
 
-The LLM does **not** choose workflow names for payments.
+The router maps the supplied payment method to a registered capability. That does not establish canonical input provenance: current callers can supply bill fields/overrides. A configured webhook or `triggered` result is not independently verified payment completion.
 
 ## Provider knowledge fields (bills / providers)
 
-Store on Knowledge assets (Notion properties → `bill` object):
+Required design inputs are listed below. Current Notion conversion does not map these properties into metadata; ADR-029 documents the interim model-supplied `bill` fields. Do not describe this table as a completed live schema mapping:
 
 | Field | Used for |
 |-------|----------|
@@ -82,15 +84,12 @@ Store on Knowledge assets (Notion properties → `bill` object):
 
 Default `payment_method` when omitted: `bank_transfer`.
 
-## Adding a new payment method
+## New payment/action development
 
-1. Add workflow entry with `capability.domain: payment` and `capability.method`.
-2. Implement generic n8n workflow (no provider-specific logic).
-3. Add verification rules in `VerificationEngine` if checks differ from bank transfer.
-4. Store `payment_method` on provider Knowledge assets.
+The old pattern of adding a model-callable workflow is not the preferred extension point. Define canonical typed inputs, proposal intent/version binding, capabilities, execution-time authorization, verification and uncertain-outcome handling through the operational architecture first. An approved design may then reuse a provider/execution backend; a registry entry alone cannot supply those boundaries. No new payment executor is authorized or implemented by this documentation.
 
 ## Non-payment workflows
 
 Operational workflows (`weekly-backup`) omit `capability` metadata. They remain available via `workflow_list` / `workflow_trigger` for explicit user requests.
 
-Financial payments should use `finance_trigger_payment` — not `workflow_trigger` — so routing, verification, and finance policy apply.
+The legacy intended convention is to use `finance_trigger_payment` for financial checks. It is guidance, not an enforced prohibition on `workflow_trigger`; D02 requires equivalent checks on every reachable financial route. A new consequential capability must not depend on the model choosing the safer tool.

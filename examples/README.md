@@ -1,10 +1,10 @@
-# Examples
+# Examples (historical placeholder)
 
-Usage examples and integration sketches. Not runnable until v0.2+.
+This directory contains no runnable integration examples. Earlier plans for
+`cli_conversation.py`, `memory_search.py`, `home_control.py` and
+`workflow_trigger.py` were never added here. Home control is outside current
+Wally scope (ADR-022).
 
-## Planned examples
-
-- `cli_conversation.py` — Basic text interaction (v0.2)
-- `memory_search.py` — Query Notion memory (v0.3)
-- `home_control.py` — Control HA devices (v0.4)
-- `workflow_trigger.py` — Trigger n8n workflow with approval (v0.5)
+Use [README commands](../README.md), [current architecture](../docs/current-architecture.md)
+and fake-provider tests for current examples. Live integrations remain explicit
+operator actions, not a prerequisite for ordinary development checks.

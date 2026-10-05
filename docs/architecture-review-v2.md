@@ -1,8 +1,13 @@
 # Wally — Architecture Review v2
 
-**Status:** Proposal — implemented in v0.3.1  
+**Status:** Historical review — vocabulary/governance adopted, broader proposals deferred
 **Date:** 2026-06-27  
-**Scope:** Align v0.3 codebase with platform governance philosophy before v0.4
+**Scope:** Historical pre-v0.4 review. Read [current architecture](current-architecture.md) for current behavior.
+
+Vocabulary/runtime policy landed via ADR-019/020; unknown database classification
+is pending under [ADR-021](decisions.md#adr-021-pending-classification-and-knowledge-registry), superseding this review's operational-default recommendation. Execution identities, HA, embeddings and
+retriever/store extraction were not all implemented. This document is rationale,
+not an engineering checklist to execute today.
 
 ---
 

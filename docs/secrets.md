@@ -1,14 +1,14 @@
 # Secrets provider
 
-`SecretsProvider` resolves credentials at **execution time**. Secrets never live in Notion, YAML config, prompts, or the audit log.
+`SecretsProvider` resolves action credentials after execution authorization. Telegram separately resolves bot authentication at startup. Secret values must not live in Notion, tracked YAML, prompts, databases or logs; environment/ignored `.env` and credential stores remain local secret sources. See [operations](operations.md) for their lifecycle.
 
 Wally does not expose a `secrets_resolve` tool to the LLM. The runtime requests secrets only after approval-gated execution (`authorized=True`).
 
-Secrets stay **disabled by default**. Manual portal login remains the fallback.
+The tracked MacBook profile enables secrets/browser providers; inspect the selected profile rather than assuming a disabled default. Legacy card-portal flows may fall back to manual login when refs are absent; canonical Act & Verify requires its configured refs/success conditions and fails preflight when missing. Notion metadata mapping remains unresolved (D03).
 
 ## 1Password CLI (`op_cli`)
 
-Default adapter. Requires the [1Password CLI](https://developer.1password.com/docs/cli/) and an active session (`op signin`).
+The configured `op_cli` factory dispatches `op://` to [1Password CLI](https://developer.1password.com/docs/cli/) and `keychain://` to macOS Keychain. Interactive 1Password resolution needs CLI/app authorization; the deployed Telegram Keychain read does not depend on a terminal `OP_SESSION`.
 
 Enable in config (`config/macbook.yaml`):
 
@@ -49,7 +49,7 @@ Default post-login behaviour with `auth_success_selector` or `auth_success_url_c
 
 ## Runtime rules
 
-1. Access requires `authorized=True` (set only after the approval gate).
+1. Action credential access requires `authorized=True` after the execution approval gate. Telegram startup authentication and explicit credential lifecycle commands are separate documented purposes, not action approval.
 2. Only `op://…` and `keychain://service/account` references are accepted — raw passwords are rejected.
 3. Audit events record the **reference and purpose**, never the secret value.
 4. Model-facing tool results, exceptions, and CLI errors must not contain resolved values.
@@ -77,7 +77,7 @@ Authenticated pages and filled password fields must not land on disk. Do not ena
 
 ## User-initiated auth-only portal test
 
-This is **not** a CI test. Do not store a real password in any file or command.
+This is **not** a CI test and must be separately operator-authorized. Do not store a real password in any file or command. This legacy runbook assumes a grounded bill object; the current Notion adapter does not populate these fields and the conversational path cannot prove their canonical origin (D01/D03). It is not a validated live Notion or Act & Verify acceptance procedure.
 
 ### 1. 1Password
 
@@ -88,12 +88,7 @@ op://Personal/YourPortal/username
 op://Personal/YourPortal/password
 ```
 
-Confirm locally (the CLI prints the secret to your terminal — do not paste it into Wally, Notion, or chat):
-
-```bash
-op signin
-op read "op://Personal/YourPortal/username"
-```
+Authorize the CLI/app locally without displaying credential values. Do not use `op read` output as handover evidence; the runtime resolver and canary-secret tests cover the mechanism without printing real values.
 
 ### 2. Knowledge fields
 
@@ -147,13 +142,7 @@ If selectors are missing, Wally waits for **manual login** instead (`waiting_for
 
 ### 7. Confirm no secret leak
 
-```bash
-rg -F 'your-password-here' data/audit
-```
-
-Do not put the real password in the repo. Search the audit JSONL for the **value** you know from 1Password. You should find **only** the `op://` reference in `secrets_resolve` events (`reference` + `purpose`), never the value.
-
-Also check the Wally reply and `/health` output.
+Use existing synthetic canary-secret tests to verify that records/results/audit omit values and retain only references/purpose. For an explicitly authorized live leak review, compare values privately in memory and report aggregate matches only. Never put a real secret in `rg` arguments, shell history, terminal output or a transcript. `/health` can contact providers; it is not a default read-only audit command.
 
 ## Related docs
 

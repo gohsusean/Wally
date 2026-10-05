@@ -1,11 +1,15 @@
 # Wally — Roadmap
 
 **Version:** 0.18.0  
-**Last updated:** 2026-10-04
+**Last updated:** 2026-10-06
 
 Wally is a **personal Chief of Staff** and **personal AI operating system** — not a home automation platform.
 
-This roadmap delivers Wally incrementally. Each version produces a working, testable increment. No version ships half-finished capabilities.
+This roadmap records milestone intent and implementation history, not a certificate of live deployment. Current behavior and engineering direction live in [current architecture](current-architecture.md); current defects and unmet acceptance conditions live in [engineering debt](engineering-debt.md), with deployment/recovery in [operations](operations.md). Historical completion checks describe their original scope. The recovered Git baseline predates the available implementation history for early milestones.
+
+## Current engineering priorities
+
+New capabilities converge on the operational proposal/capability/provenance path (ADR-042). Before expanding privileged behavior, resolve or explicitly contain legacy finance trust/provenance gaps, ambiguous receipt matching, Telegram recovery/lifecycle defects and live metadata/deployment prerequisites. The active backlog is maintained only in `engineering-debt.md`; this roadmap links to it rather than duplicating issue status.
 
 ## Product scope
 
@@ -24,7 +28,7 @@ Wally's primary responsibilities:
 | Travel | Itineraries, planning, reminders |
 | Property management | Tenants, maintenance, documents |
 | Bills & finance | Read-first; controlled write with approval |
-| Long-term memory | Session intelligence, semantic recall |
+| Long-term memory | Session intelligence, SQLite FTS5 recall; embeddings are future |
 | Decision support | Reasoning over knowledge + context |
 
 **Out of scope for the foreseeable future:**
@@ -68,7 +72,7 @@ Wally's primary responsibilities:
 | v0.3.2 | Knowledge registry | Auto-discovery, pending classification, registry |
 | v0.5 | Workflows | n8n workflow provider + multi-provider runtime |
 | v0.6 | Communications | Email read-first; calendar read; Gmail + Calendar only |
-| v0.7 | Conversation intelligence | Semantic recall, session consolidation |
+| v0.7 | Conversation intelligence | SQLite FTS5 recall, session consolidation |
 | v0.8 | Web provider | External web search and fetch; Content Sanitizer |
 | v0.9 | Finance | Bills, verification, approval, execution-capability routing |
 | v0.10 | Browser automation | Playwright-backed portal execution; manual auth |
@@ -79,7 +83,9 @@ Wally's primary responsibilities:
 | v0.14 | v1.0 Phase 3 Approval Inbox | Durable review: approve, reject, or defer. Approval is not execution |
 | v0.15 | v1.0 Phase 4 Act & Verify | User-requested execution of the exact approved version, then independent verification |
 | v0.16 | Gateway | Local trust boundary so a future interface can call the runtime without choosing its own channel |
-| v1.0 later | Phase 5 | Scheduling, notifications, daily-driver hardening |
+| v0.17 | ChatGPT interface | Local authenticated MCP adapter; hosted deployment gated |
+| v0.18 | Telegram inbox | Owner/private-chat polling, decisions, outbox, login LaunchAgent/Keychain |
+| v1.0 later | Phase 5 | Scheduling, proactive triggers, notification UX and daily-driver hardening |
 | v1.0+ | Retrieval Router | Runtime-owned retrieval policy (see below) |
 | v1.x+ | Optional providers | Travel, property depth; HA read-only context |
 
@@ -190,7 +196,7 @@ Multi-provider `ToolRegistry` shipped as part of v0.5 workflow work. Further run
 
 ---
 
-## v0.7 — Conversation intelligence (original plan)
+## v0.7 — Conversation intelligence (historical original plan, not current scope)
 
 The implemented milestone is the checked v0.7 section above. This is the original wording. It is not the current milestone.
 
@@ -382,7 +388,7 @@ See ADR-035 and [chief-of-staff.md](chief-of-staff.md).
 
 **Commands:** `wally approvals`, `wally approve`, `wally reject`, `wally defer --until`. REPL: `/approvals`, `/approve`, `/reject`, `/defer`.
 
-**Boundary:** `execution_allowed` always returns false. Orchestrator, runtime, and adapters do not read proposal status. n8n does not own approval. Secret references are not resolved.
+**Historical Phase 3 boundary:** `execution_allowed` always returned false. ADR-037 added separately authorized Act & Verify; ADR-038 replaced literal-origin authorization. Proposal approval remains inert. n8n does not own approval, and the decision step does not resolve action credentials. The legacy tool path remains separately callable.
 
 **Not in this milestone:** executing an approved proposal, scheduling, notifications.
 
@@ -500,7 +506,7 @@ Do not treat n8n as the Chief-of-Staff state machine. Live mailbox tests remain 
 **Deliverables:**
 - Comprehensive documentation (user guide, operator guide)
 - Mac Mini deployment guide and launchd service
-- Backup and recovery procedures (sessions, registry, audit)
+- Proven backup and recovery procedures (sessions, registry, operations, audit and credential sources); currently unresolved under D09
 - Health monitoring script
 - All v0.2–v0.9 capabilities stable
 - Performance baseline established
@@ -522,8 +528,8 @@ These enter the roadmap when v1.0 is stable and a specific need arises.
 | Voice interface (Wally-native) | Low | Text-first; Alexa handles home |
 | Home Assistant (read-only) | Low | Optional context: "is anyone home?" |
 | Local LLM | Low | Apple Silicon inference for privacy |
-| Telegram / WhatsApp | Medium | Remote approval and messaging |
-| 1Password integration | Medium | See v0.11 `SecretsProvider` |
+| WhatsApp | Medium | Future messaging surface; Telegram inbox already implemented |
+| Additional secret backends | As needed | 1Password and login Keychain already implemented |
 
 **Home automation control** (lights, climate, blinds) remains out of scope unless product direction changes with a documented ADR.
 
@@ -542,6 +548,8 @@ These enter the roadmap when v1.0 is stable and a specific need arises.
 ---
 
 ## Versioning and releases
+
+**Policy below, not audit evidence:** no Git tags or `docs/releases/` existed at the handover baseline. Installed metadata reconciliation and a verified release record are tracked in D14.
 
 - **Version tags:** `v0.1.0`, `v0.2.0`, etc. Patch versions for fixes only.
 - **Branches:** `main` is always deployable. Feature branches per version.
