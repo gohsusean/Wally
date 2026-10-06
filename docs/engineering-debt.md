@@ -95,6 +95,14 @@ certification or chain enablement was performed during implementation. Restricte
 account serialization suppresses customer IDs. Receipts remain FYI under D04;
 D03 provides no payment or settlement path.
 
+The initial implementation coupled every record parse failure to whole-catalog
+invalidation. The focused D03 follow-up resolves that implementation limitation:
+complete enumeration retains hashed partial identity constraints for malformed
+rows, blocks possible collisions/dependencies, and allows provably unrelated
+certified chains to remain usable. Source/schema failures remain fail-closed.
+Blank rows with no usable identity proof can still block the affected record kind;
+there is no owner-checkbox bypass. No live data cleanup or pilot was performed.
+
 Evidence: [typed catalog](../src/wally/finance/service.py),
 [Notion reader](../src/wally/finance/notion.py),
 [Notion-shaped and boundary tests](../tests/test_finance_catalog.py),

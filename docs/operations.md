@@ -209,3 +209,10 @@ restriction applies before designation. Never print raw typed catalog records
 or put restricted intake/proof files into Git. Existing state remains untouched
 by development verification. Configure/review one live property/utility chain only
 under separate owner authorization; code tests are not live readiness evidence.
+
+`finance status` also reports source/record Needs Attention diagnostics by locator.
+Malformed legacy rows do not block a provably disjoint certified chain, but unknown
+or overlapping identity coordinates block affected namespaces and dependencies.
+Never skip such rows to claim uniqueness. Fixing an observed ambiguity does not
+restore certificates or enablement; recertify affected records and enable the exact
+new binding. See the guide's incremental-certification rules before preparing data.

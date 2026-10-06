@@ -225,6 +225,12 @@ Seven gates separate ordinary knowledge from financial authority. Identity and
 portal scopes are independent; portal enablement needs exact-version governed
 auth-only acceptance. Reviewed runtime profiles own browser configuration.
 
+Complete enumeration retains malformed rows as Needs Attention diagnostics with
+hashed partial identity constraints. Unknown coordinates never prove uniqueness.
+Potential collisions and unavailable dependencies invalidate affected certificates
+and chains; provably disjoint certified chains remain usable. Source/schema failures
+block the affected source and any uniqueness proof that needs its complete inventory.
+
 Additive `finance_*` tables reside in the operational database. No rows or live
 classifications are migrated automatically. Generic knowledge metadata cannot
 drive canonical obligations or portal plans. Manual primary-evidence intake keeps

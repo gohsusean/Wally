@@ -6,6 +6,7 @@ certifies rows and never interprets titles, prose, formulas or Runtime Action.
 
 from __future__ import annotations
 
+from contextlib import suppress
 from dataclasses import asdict, dataclass, field
 from typing import Any
 from urllib.parse import quote, unquote
@@ -13,7 +14,18 @@ from uuid import UUID
 
 import httpx
 
-from wally.finance.models import TYPES, Candidate, FinanceError, Kind, Locator, digest, parse_facts
+from wally.finance.models import (
+    IDENTITY_FIELDS,
+    TYPES,
+    Candidate,
+    FinanceError,
+    Kind,
+    Locator,
+    ReadIssue,
+    digest,
+    identity_constraints,
+    parse_facts,
+)
 
 VERSION = "2025-09-03"
 SUPPORTED = {"rich_text", "checkbox", "select", "multi_select", "date", "number", "url", "relation"}
@@ -85,6 +97,12 @@ class SourceMapping:
             raise FinanceError("Ambiguous stable property mapping.")
         if any(m.type not in SUPPORTED for m in self.fields.values()):
             raise FinanceError("Unsupported finance property type.")
+
+
+@dataclass(frozen=True)
+class ReadSnapshot:
+    candidates: list[Candidate]
+    issues: list[ReadIssue]
 
 
 class NotionFinanceReader:
@@ -173,60 +191,146 @@ class NotionFinanceReader:
             seen.add(cursor)
         raise FinanceError("Finance pagination limit exceeded.")
 
-    def read_all(self, sources: tuple[SourceMapping, ...]) -> list[Candidate]:
+    def read_all(
+        self, sources: tuple[SourceMapping, ...], rejected: set[str] | None = None
+    ) -> ReadSnapshot:
         if len({s.key for s in sources}) != len(sources) or len(
             {notion_id(s.data_source_id) for s in sources}
         ) != len(sources):
             raise FinanceError("Ambiguous finance sources.")
+        issues = []
+        by_source = {notion_id(s.data_source_id): s for s in sources}
         pages: dict[str, tuple[SourceMapping, dict]] = {}
         for source in sources:
-            self.validate_schema(source)
-            rows = self.paginated("POST", f"/data_sources/{notion_id(source.data_source_id)}/query")
-            for page in rows:
-                self.check_page(page, source)
-                page_id = notion_id(page.get("id"))
-                if page_id in pages:
-                    raise FinanceError("Duplicate source page.")
-                pages[page_id] = (source, page)
-        candidates = []
-        for source, page in pages.values():
-            raw = dict(source.constants)
-            for name, mapping in source.fields.items():
-                value = self.value(page, mapping)
-                if mapping.type == "relation" and value:
-                    if value not in pages:
-                        # Even a successful GET cannot make an unenumerated/undesigned row trusted.
-                        self.request("GET", f"/pages/{value}")
-                        raise FinanceError(
-                            "Relation target is inaccessible or outside the complete catalog."
-                        )
-                    target_source, target = pages[value]
-                    if notion_id(target_source.data_source_id) != notion_id(
-                        mapping.target_data_source
-                    ):
-                        raise FinanceError("Relation target outside mapped data source.")
-                    self.check_page(self.request("GET", f"/pages/{value}"), target_source)
-                    value = Locator(
-                        "notion",
-                        notion_id(target_source.database_id),
-                        notion_id(target_source.data_source_id),
-                        notion_id(target["id"]),
-                    ).key
-                raw[name] = value
-            candidates.append(
-                Candidate(
-                    source.kind,
-                    Locator(
-                        "notion",
-                        notion_id(source.database_id),
-                        notion_id(source.data_source_id),
-                        notion_id(page["id"]),
-                    ),
-                    parse_facts(source.kind, raw),
-                    str(page.get("last_edited_time", "")),
+            try:
+                source.validate()
+                allowed = {
+                    Kind.ACCOUNT: {
+                        "provider": {Kind.PROVIDER},
+                        "subject": {Kind.PROPERTY, Kind.ENTITY},
+                    },
+                    Kind.DEFINITION: {
+                        "account": {Kind.ACCOUNT},
+                        "redundant_property": {Kind.PROPERTY},
+                    },
+                }.get(source.kind, {})
+                for name, kinds in allowed.items():
+                    if name in source.fields:
+                        target = by_source.get(notion_id(source.fields[name].target_data_source))
+                        if target is None or target.kind not in kinds:
+                            raise FinanceError("Relation mapping targets the wrong record kind.")
+                if source.key in (rejected or set()):
+                    raise FinanceError("Source authority unavailable.")
+                self.validate_schema(source)
+                rows = self.paginated(
+                    "POST", f"/data_sources/{notion_id(source.data_source_id)}/query"
                 )
+                complete = {}
+                for page in rows:
+                    self.check_page(page, source)
+                    page_id = notion_id(page.get("id"))
+                    if page_id in complete or page_id in pages:
+                        raise FinanceError("Duplicate source page.")
+                    complete[page_id] = (source, page)
+                pages.update(complete)
+            except (FinanceError, TypeError, AttributeError, KeyError):
+                # No rows from a failed source are published. Its unknown identity
+                # space blocks this kind across sources, but not independent kinds.
+                issues.append(ReadIssue(source.kind, source.key, reason="source_invalid"))
+        raw_rows = {}
+        invalid: set[str] = set()
+        for page_id, (source, page) in pages.items():
+            raw = dict(source.constants)
+            if source.kind == Kind.PROPERTY and "unit" not in source.fields:
+                raw.setdefault("unit", "")
+            for name, mapping in source.fields.items():
+                try:
+                    value = self.value(page, mapping)
+                    if mapping.type == "relation" and value:
+                        if value not in pages:
+                            raise FinanceError("Relation target outside complete catalog.")
+                        target_source, _ = pages[value]
+                        if notion_id(target_source.data_source_id) != notion_id(
+                            mapping.target_data_source
+                        ):
+                            raise FinanceError("Relation target outside mapped data source.")
+                        raw[name] = self.locator(target_source, value).key
+                        try:
+                            fetched = self.request("GET", f"/pages/{value}")
+                            self.check_page(fetched, target_source)
+                            if notion_id(fetched.get("id")) != value:
+                                raise FinanceError("Relation response identity changed.")
+                        except (FinanceError, TypeError, AttributeError, KeyError):
+                            invalid.add(value)
+                            raise FinanceError("Relation target unavailable.") from None
+                    else:
+                        raw[name] = value
+                except (FinanceError, TypeError, AttributeError, KeyError):
+                    # Independently readable identity fields survive other failures.
+                    # Complete multi-relations are invalid facts, but their full
+                    # possibility set can prove disjointness from a third chain.
+                    if (
+                        mapping.type == "relation"
+                        and name in IDENTITY_FIELDS[source.kind]
+                        and name not in raw
+                    ):
+                        with suppress(FinanceError, TypeError, AttributeError, KeyError):
+                            ids = self.value(page, mapping, allow_multiple=True)
+                            if ids and all(
+                                i in pages
+                                and notion_id(pages[i][0].data_source_id)
+                                == notion_id(mapping.target_data_source)
+                                for i in ids
+                            ):
+                                raw[name] = tuple(self.locator(pages[i][0], i).key for i in ids)
+                    invalid.add(page_id)
+            if source.kind == Kind.ACCOUNT and "subject" in source.fields:
+                target = by_source[notion_id(source.fields["subject"].target_data_source)]
+                expected = {"property"} if target.kind == Kind.PROPERTY else {"personal", "entity"}
+                if (
+                    not isinstance(raw.get("subject_kind"), str)
+                    or raw["subject_kind"] not in expected
+                ):
+                    # Contradictory scope is not reliable disjointness evidence.
+                    raw.pop("subject", None)
+                    invalid.add(page_id)
+            raw_rows[page_id] = raw
+        candidates = []
+        for page_id, (source, page) in pages.items():
+            raw = raw_rows[page_id]
+            locator = self.locator(source, page_id)
+            try:
+                facts = parse_facts(source.kind, raw)
+                if page_id in invalid:
+                    raise FinanceError("Financial row unavailable.")
+            except (FinanceError, TypeError, AttributeError, KeyError):
+                identity_raw = dict(raw)
+                for name in ("provider", "subject", "account"):
+                    if name not in source.fields:
+                        # Unresolved canonical constants are not locator coordinates.
+                        identity_raw.pop(name, None)
+                issues.append(
+                    ReadIssue(
+                        source.kind,
+                        source.key,
+                        locator,
+                        identity_constraints(source.kind, identity_raw),
+                    )
+                )
+                continue
+            candidates.append(
+                Candidate(source.kind, locator, facts, str(page.get("last_edited_time", "")))
             )
-        return candidates
+        return ReadSnapshot(candidates, issues)
+
+    @staticmethod
+    def locator(source: SourceMapping, page_id: str) -> Locator:
+        return Locator(
+            "notion",
+            notion_id(source.database_id),
+            notion_id(source.data_source_id),
+            notion_id(page_id),
+        )
 
     @staticmethod
     def check_page(page: dict, source: SourceMapping) -> None:
@@ -239,7 +343,7 @@ class NotionFinanceReader:
         ):
             raise FinanceError("Invalid finance page or source parent.")
 
-    def value(self, page: dict, mapping: FieldMapping) -> Any:
+    def value(self, page: dict, mapping: FieldMapping, *, allow_multiple: bool = False) -> Any:
         props = page.get("properties", {})
         matches = [
             v
@@ -263,6 +367,8 @@ class NotionFinanceReader:
                     raise FinanceError("Malformed relation hydration.")
                 value = [i.get("relation") for i in items]
             ids = [notion_id(i.get("id")) for i in value]
+            if allow_multiple:
+                return ids
             if len(ids) > 1 or len(ids) != len(set(ids)) or (not ids and not mapping.optional):
                 raise FinanceError("Relation must have exactly one designated target.")
             return ids[0] if ids else ""
@@ -271,9 +377,16 @@ class NotionFinanceReader:
                 raise FinanceError("Missing or potentially truncated text property.")
             if any(i.get("type") != "text" for i in value):
                 raise FinanceError("Only plain finance text is supported.")
-            return "".join(i.get("plain_text", i.get("text", {}).get("content", "")) for i in value)
+            parts = [i.get("plain_text", i.get("text", {}).get("content")) for i in value]
+            if any(not isinstance(part, str) for part in parts):
+                raise FinanceError("Malformed finance text property.")
+            return "".join(parts)
         if mapping.type == "select":
-            return value.get("name", "") if isinstance(value, dict) else ""
+            if value is None:
+                return ""
+            if not isinstance(value, dict) or not isinstance(value.get("name"), str):
+                raise FinanceError("Malformed finance select property.")
+            return value["name"]
         if mapping.type == "multi_select":
             if not isinstance(value, list):
                 raise FinanceError("Malformed multi-select.")

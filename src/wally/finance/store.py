@@ -15,6 +15,7 @@ from wally.finance.models import (
     Instance,
     Kind,
     Locator,
+    ReadIssue,
     Scope,
     digest,
     parse_facts,
@@ -73,6 +74,8 @@ class FinanceStore:
             CREATE TABLE IF NOT EXISTS finance_reference_aliases (
                 instance_id TEXT NOT NULL, account_id TEXT NOT NULL,
                 reference_hash TEXT NOT NULL, PRIMARY KEY(instance_id,reference_hash));
+            CREATE TABLE IF NOT EXISTS finance_read_issues (
+                issue_key TEXT PRIMARY KEY, issue TEXT NOT NULL);
             """)
 
     def connect(self):
@@ -159,10 +162,57 @@ class FinanceStore:
     def duplicates(self, record: Record) -> bool:
         with self.connect() as c:
             count = c.execute(
-                "SELECT COUNT(*) FROM finance_objects WHERE semantic_key=?",
+                "SELECT COUNT(*) FROM finance_objects WHERE semantic_key=? AND invalid=0",
                 (semantic_key(record.candidate.kind, record.candidate.facts),),
             ).fetchone()[0]
         return count != 1
+
+    def set_read_issues(self, issues: list[ReadIssue]) -> None:
+        """Replace current read diagnostics, preserving transitions in audit history.
+
+        Diagnostics contain locators and hashed partial identities, never raw
+        malformed values. Clearing an issue cannot resurrect an invalidated cert.
+        """
+        with self.connect() as c:
+            previous = {r[0] for r in c.execute("SELECT issue_key FROM finance_read_issues")}
+            current = set()
+            for issue in issues:
+                key = digest(
+                    (issue.kind, issue.source, asdict(issue.locator) if issue.locator else {})
+                )
+                current.add(key)
+                raw = json.dumps(asdict(issue), sort_keys=True)
+                old = c.execute(
+                    "SELECT issue FROM finance_read_issues WHERE issue_key=?", (key,)
+                ).fetchone()
+                if old is None or old[0] != raw:
+                    self._event(
+                        c,
+                        key,
+                        "read_needs_attention",
+                        {"kind": issue.kind, "source": issue.source, "reason": issue.reason},
+                    )
+                c.execute(
+                    "INSERT INTO finance_read_issues VALUES (?,?) ON CONFLICT DO UPDATE "
+                    "SET issue=excluded.issue",
+                    (key, raw),
+                )
+            for key in previous - current:
+                c.execute("DELETE FROM finance_read_issues WHERE issue_key=?", (key,))
+                self._event(c, key, "read_issue_cleared", {})
+
+    def read_issues(self) -> list[ReadIssue]:
+        with self.connect() as c:
+            rows = c.execute("SELECT issue FROM finance_read_issues ORDER BY issue_key").fetchall()
+        result = []
+        for row in rows:
+            raw = json.loads(row[0])
+            raw["kind"] = Kind(raw["kind"])
+            raw["constraints"] = {k: tuple(v) for k, v in raw["constraints"].items()}
+            if raw["locator"] is not None:
+                raw["locator"] = Locator(**raw["locator"])
+            result.append(ReadIssue(**raw))
+        return result
 
     def certificate(self, object_id: str, scope: Scope) -> dict | None:
         with self.connect() as c:

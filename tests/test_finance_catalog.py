@@ -233,8 +233,9 @@ def test_all_source_trust_gates_fail_closed(tmp_path, classification, role, desi
     catalog = fixture.catalog(
         tmp_path, classification=classification, role=role, designated=designated
     )
-    with pytest.raises(FinanceError):
-        catalog.refresh()
+    assert catalog.refresh() == []
+    assert all(row["state"] == "needs_attention" for row in catalog.status())
+    assert catalog.tracked_instances() == []
     assert not fixture.calls
 
 
@@ -258,8 +259,10 @@ def test_property_rename_is_not_material_but_recreation_invalidates(tmp_path):
     assert catalog.store.get(prop.id).version == 1
     catalog.binding(prop.id)
     schema["Renamed"]["id"] = "recreated-id"
+    catalog.refresh()
+    assert catalog.store.get(prop.id).invalid
     with pytest.raises(FinanceError):
-        catalog.refresh()
+        catalog.binding(prop.id)
     schema["Renamed"]["id"] = "id-address"
     catalog.refresh()
     with pytest.raises(FinanceError):
@@ -298,8 +301,10 @@ def test_malformed_or_incomplete_graph_is_rejected(tmp_path, failure):
     else:
         fixture.sources[2] = replace(source, role="general")
     catalog = fixture.catalog(tmp_path)
-    with pytest.raises(FinanceError):
-        catalog.refresh()
+    records = catalog.refresh()
+    assert not any(r.candidate.kind in {Kind.ACCOUNT, Kind.DEFINITION} for r in records)
+    assert catalog.tracked_instances() == []
+    assert catalog.store.read_issues()
 
 
 def test_query_pagination_and_duplicate_identity(tmp_path):
@@ -322,8 +327,11 @@ def test_query_pagination_and_duplicate_identity(tmp_path):
                     context=catalog.authority.issue("cli"),
                 )
     fixture.bad_cursor = True
-    with pytest.raises(FinanceError):
-        catalog.refresh()
+    catalog.refresh()
+    assert all(
+        catalog.store.get(r.id).invalid for r in records if r.candidate.kind == Kind.PROPERTY
+    )
+    assert any(i.reason == "source_invalid" for i in catalog.store.read_issues())
 
 
 def test_relation_hydration_uses_full_property_items(tmp_path):

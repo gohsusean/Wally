@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable
+from contextlib import suppress
 from dataclasses import asdict, replace
 from uuid import uuid4
 
@@ -22,14 +23,16 @@ from wally.finance.models import (
     Instance,
     Kind,
     Locator,
+    ReadIssue,
     ReviewProfile,
     Scope,
     dependencies,
     digest,
+    identity_constraints,
     origin,
     parse_facts,
 )
-from wally.finance.notion import NotionFinanceReader, SourceMapping
+from wally.finance.notion import NotionFinanceReader, ReadSnapshot, SourceMapping
 from wally.finance.store import FinanceStore, Record
 from wally.knowledge.registry import KnowledgeRegistry
 from wally.models.knowledge import KnowledgeClass
@@ -126,15 +129,42 @@ class FinanceService:
         self.store.designate(source.key, mapping_fingerprint, ctx.provenance().as_dict())
 
     def refresh(self) -> list[Record]:
-        """Completely enumerate before publishing anything; invalidate on any partial read."""
+        """Enumerate completely; isolate bad rows without losing uniqueness evidence."""
         previous = [r for r in self.store.records() if r.candidate.locator.system == "notion"]
         try:
             sources = self.sources()
+            rejected = set()
             for source in sources:
-                self._source_gate(source)
+                if not isinstance(source.kind, Kind) or source.kind == Kind.INSTANCE:
+                    raise FinanceError("Unknown finance source record kind.")
+                try:
+                    self._source_gate(source)
+                except FinanceError:
+                    rejected.add(source.key)
             if sources and self.reader is None:
                 raise FinanceError("Finance source reader unavailable.")
-            candidates = self.reader.read_all(sources) if sources else []
+            snapshot = self.reader.read_all(sources, rejected) if sources else ReadSnapshot([], [])
+            candidates = snapshot.candidates
+            issues = list(snapshot.issues)
+            for index, issue in enumerate(issues):
+                source = next(s for s in sources if s.key == issue.source)
+                if (
+                    issue.locator is not None
+                    and issue.kind == Kind.ACCOUNT
+                    and "subject" in source.constants
+                ):
+                    try:
+                        subject = self.store.get(source.constants["subject"])
+                        if subject.candidate.kind == Kind.ENTITY:
+                            issues[index] = replace(
+                                issue,
+                                constraints={
+                                    **issue.constraints,
+                                    "subject": (digest(subject.candidate.locator.key),),
+                                },
+                            )
+                    except FinanceError:
+                        pass
             by_locator = {c.locator.key: c for c in candidates}
             if len(by_locator) != len(candidates):
                 raise FinanceError("Ambiguous financial locators.")
@@ -147,45 +177,55 @@ class FinanceService:
             canonical: dict[str, str] = {}
             records = []
             for candidate in sorted(candidates, key=lambda c: order[c.kind]):
-                facts = asdict(candidate.facts)
-                relation_fields = {
-                    Kind.ACCOUNT: ("provider", "subject"),
-                    Kind.DEFINITION: ("account", "redundant_property"),
-                }.get(candidate.kind, ())
-                for name in relation_fields:
-                    if facts.get(name):
-                        if (
-                            name
-                            not in next(
-                                s
-                                for s in sources
-                                if s.key
-                                == (
-                                    f"notion:{candidate.locator.database}:"
-                                    + candidate.locator.data_source
-                                )
-                            ).fields
-                        ):
-                            if (
-                                name != "subject"
-                                or self.store.get(facts[name]).candidate.kind != Kind.ENTITY
-                            ):
-                                raise FinanceError(
-                                    "Only explicit local entity subjects may be constant relations."
-                                )
+                try:
+                    resolved = self._resolve(candidate, sources, canonical)
+                    self._graph(resolved)
+                    record = self.store.register(resolved)
+                except FinanceError:
+                    raw = asdict(candidate.facts)
+                    # Explicit local entity constants use the same locator coordinate
+                    # as canonical records, rather than incomparable fin IDs.
+                    source = next(
+                        s
+                        for s in sources
+                        if s.key
+                        == f"notion:{candidate.locator.database}:{candidate.locator.data_source}"
+                    )
+                    for name in ("provider", "subject", "account"):
+                        if name not in raw or name in source.fields:
                             continue
-                        if facts[name] not in canonical:
-                            raise FinanceError("Missing or incorrectly ordered finance dependency.")
-                        facts[name] = canonical[facts[name]]
-                candidate = replace(candidate, facts=parse_facts(candidate.kind, facts))
-                self._graph(candidate)
-                record = self.store.register(candidate)
+                        value = raw.pop(name)
+                        if name == "subject":
+                            try:
+                                subject = self.store.get(value)
+                                if subject.candidate.kind == Kind.ENTITY:
+                                    raw[name] = subject.candidate.locator.key
+                            except FinanceError:
+                                pass
+                    issues.append(
+                        ReadIssue(
+                            candidate.kind,
+                            f"notion:{candidate.locator.database}:{candidate.locator.data_source}",
+                            candidate.locator,
+                            identity_constraints(candidate.kind, raw),
+                            "dependency_invalid",
+                        )
+                    )
+                    continue
                 canonical[candidate.locator.key] = record.id
                 records.append(record)
             seen = set(canonical)
             for old in previous:
                 if old.candidate.locator.key not in seen:
                     self.store.invalidate(old.id, "source_missing")
+            self.store.set_read_issues(issues)
+            # Newly observed ambiguity or unavailable dependencies permanently
+            # invalidate affected certificates, even without a subsequent use.
+            for record in self.store.records():
+                for scope in Scope:
+                    if self.store.certificate(record.id, scope) is not None:
+                        with suppress(FinanceError):
+                            self._certificate(record, scope)
             return records
         except Exception:
             for old in previous:
@@ -196,6 +236,45 @@ class FinanceService:
                         record.id, Scope.PORTAL_REVIEW, "catalog_contract_invalid"
                     )
             raise FinanceError("Finance catalog incomplete or source contract invalid.") from None
+
+    def _resolve(
+        self, candidate: Candidate, sources: tuple[SourceMapping, ...], canonical: dict[str, str]
+    ) -> Candidate:
+        facts = asdict(candidate.facts)
+        source = next(
+            s
+            for s in sources
+            if s.key == f"notion:{candidate.locator.database}:{candidate.locator.data_source}"
+        )
+        for name in {
+            Kind.ACCOUNT: ("provider", "subject"),
+            Kind.DEFINITION: ("account", "redundant_property"),
+        }.get(candidate.kind, ()):
+            if not facts.get(name):
+                continue
+            if name not in source.fields:
+                if name != "subject" or self.store.get(facts[name]).candidate.kind != Kind.ENTITY:
+                    raise FinanceError(
+                        "Only explicit local entity subjects may be constant relations."
+                    )
+                continue
+            if facts[name] not in canonical:
+                raise FinanceError("Missing or incorrectly ordered finance dependency.")
+            facts[name] = canonical[facts[name]]
+        return replace(candidate, facts=parse_facts(candidate.kind, facts))
+
+    def _identity_constraints(self, record: Record) -> dict[str, tuple[str, ...]]:
+        raw = asdict(record.candidate.facts)
+        for name in {
+            Kind.ACCOUNT: ("provider", "subject"),
+            Kind.DEFINITION: ("account",),
+            Kind.INSTANCE: ("definition",),
+        }.get(record.candidate.kind, ()):
+            try:
+                raw[name] = self.store.get(raw[name]).candidate.locator.key
+            except FinanceError:
+                raw.pop(name)
+        return identity_constraints(record.candidate.kind, raw)
 
     def _graph(self, candidate: Candidate) -> None:
         facts = candidate.facts
@@ -238,6 +317,12 @@ class FinanceService:
             raise FinanceError("Financial record needs attention.")
         if self.store.duplicates(record):
             raise FinanceError("Duplicate canonical financial identity.")
+        constraints = self._identity_constraints(record)
+        if any(
+            issue.could_conflict(record.candidate.kind, constraints)
+            for issue in self.store.read_issues()
+        ):
+            raise FinanceError("Financial identity namespace needs attention.")
         if record.candidate.locator.system == "notion":
             matches = [
                 s
@@ -548,4 +633,16 @@ class FinanceService:
                 if record.version > 1 or record.invalid or self.store.has_history(record.id):
                     state = "needs_attention"
             result.append({**self.reviewed_summary(record), "state": state})
+        existing = {r.candidate.locator.key for r in self.store.records()}
+        for issue in self.store.read_issues():
+            if issue.locator is not None and issue.locator.key in existing:
+                continue
+            result.append(
+                {
+                    "kind": issue.kind.value,
+                    "state": "needs_attention",
+                    "source": asdict(issue.locator) if issue.locator else issue.source,
+                    "reason": issue.reason,
+                }
+            )
         return result

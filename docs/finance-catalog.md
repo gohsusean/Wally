@@ -21,7 +21,8 @@ facts without allocating another occurrence. A correction with a different invoi
 reference must explicitly replace the old reference. Historical reference aliases
 prevent another occurrence from claiming an earlier reference. A duplicate source
 locator cannot allocate another ID; duplicate semantic identities block certification.
-Ambiguous historical duplicates require future owner reconciliation, not automatic merging.
+Concurrent source identities are never merged automatically. Removing an observed
+duplicate preserves its history and cannot restore the affected certificates.
 
 Definitions support monthly, quarterly, semiannual, annual, irregular,
 statement-driven and one-off streams in the existing Recurring Bills catalog.
@@ -64,8 +65,62 @@ A source must pass approved operational classification, explicit local designati
 known kind, valid typed mapping, current record certification, certified dependencies
 and explicit definition-chain enablement. Governance/pending/general sources fail
 closed. Designation changes the registry role to `finance` but certifies no rows.
-An unreadable/partial catalog invalidates its existing Notion certificates. Recovery
-and reverting edits require fresh certification; neither restores old authority.
+Unreadable/partial sources invalidate affected certificates and dependency chains.
+Record-local failures are isolated using the identity proof below. Recovery and
+reverting edits require fresh certification; neither restores old authority.
+
+### Incremental certification in a partially dirty database
+
+Every designated source is enumerated completely. Every row participates in the
+identity/ambiguity proof, including rows that cannot become typed candidates.
+No enrollment checkbox, title filter or owner-declared quarantine removes a row
+from that proof. Wally separates three failure levels:
+
+- **Source/schema failure:** missing/recreated properties, incompatible mapping
+  types, wrong relation schema targets, invalid classification/designation,
+  ambiguous source identity or incomplete query pagination prevent use of that
+  source. With no complete identity inventory, its entire record kind may conflict
+  across designated sources. Records of that kind and dependent chains fail
+  closed; independent kinds can remain usable. An unreadable/ambiguous global
+  configuration still blocks the catalog.
+- **Record Needs Attention:** missing fields, unsupported values, invalid recurrence
+  or unavailable dependencies prevent registration/use of that row. Existing
+  versions are retained as history and marked invalid. New malformed rows appear
+  in `finance status` by source locator, without a canonical ID or raw source values.
+  They never enter the trusted projection.
+- **Chain-local ambiguity:** independently readable identity coordinates use the
+  same normalization as canonical identities. A malformed row is proven disjoint
+  only when at least one known identity coordinate cannot match the candidate.
+  Otherwise it blocks that identity namespace and all dependent chains. Unknown
+  identifiers or relations are wildcards, never evidence of uniqueness.
+
+For example, an account with malformed responsibility can still expose its exact
+provider, subject, namespace and customer identity. It blocks a matching account,
+but not a different property/account chain. An unreadable customer identifier
+still blocks all matching provider/subject/namespace accounts; a known different
+subject can prove disjointness. Definitions use account + charge-stream key.
+Properties/entities/providers must themselves pass uniqueness before their
+dependent accounts can become ready. A complete multi-target relation remains
+invalid, but its full target set can prove disjointness from a third chain.
+An incomplete, wrongly scoped or unhydrated relation cannot do so.
+Mappings must target the correct record kinds as well as the pinned data-source
+IDs. A contradictory account subject kind contributes no subject disjointness
+evidence; it cannot evade a potential cross-property/entity collision.
+
+Current diagnostics persist only locators, bounded reasons and hashes of partial
+identity coordinates in `finance_read_issues`; audit history records issue changes
+and clearance. These hashes are conflict evidence, not certification. Full
+identifiers and malformed source values are absent from diagnostics/status.
+Trusted candidates still require every D03 gate and explicit owner certification.
+No extra enrollment/quarantine authority or Notion schema changes are introduced.
+
+When a new malformed row appears, a provably disjoint enabled chain retains its
+exact certificates and enablement. A possible collision permanently invalidates
+affected certificates and dependent certificates on refresh. Fixing/removing the
+row clears the diagnostic but does not restore authority: explicitly recertify
+affected records/dependencies and renew chain enablement. Source failures likewise
+require complete reads and fresh certification after recovery. Existing rows and
+audit/certification history are preserved; this refinement performs no data cleanup.
 
 Example mapping shape (use real property IDs from schema preview):
 
@@ -207,18 +262,19 @@ repair and unrelated calendar D07 work remain outside this milestone.
 Notion reads are snapshots, not remote transactions. Changes observed before or
 during confirmation invalidate readiness; polling cannot detect an edit reverted
 between reads. Live portal compatibility, primary-document truth and first-chain
-acceptance remain owner/operator work. Broad source failures deliberately block
-finance until complete reads and explicit recertification restore readiness.
+acceptance remain owner/operator work. Source failures deliberately block affected
+identity proofs and chains until complete reads and explicit recertification restore readiness.
 
 The typed adapter follows the official [data-source query API](https://developers.notion.com/reference/query-a-data-source),
 [relation property pagination](https://developers.notion.com/reference/retrieve-a-page-property)
 and [additive data-source update API](https://developers.notion.com/reference/update-a-data-source).
 
-Complete catalog validation includes every row of each designated source. Blank or
-malformed typed fields in unrelated legacy rows can block the pilot even when the
-chosen chain is prepared. D03 does not silently skip those rows or clean them up.
-Resolving that availability limit needs separately authorized owner data work or a
-reviewed quarantine/selection design. This milestone authorizes neither.
+Blank legacy rows with no readable identity coordinates can still block an entire
+record kind: Wally cannot prove they are unrelated. Prepare enough identity fields
+to establish disjointness, or resolve the ambiguity through separately authorized
+owner data work. Complete queries and source/schema contracts remain prerequisites;
+preparing one chosen chain cannot bypass either. Malformed unrelated non-identity
+fields no longer require database-wide cleanup before incremental certification.
 Recording/simulation adapters cannot establish portal acceptance or execute D03
 portal reviews; live browser evidence is a runtime provider capability. Browser
 origin routes are installed before navigation, service workers are blocked and

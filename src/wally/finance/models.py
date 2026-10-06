@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+from contextlib import suppress
 from dataclasses import asdict, dataclass, field
 from datetime import date
 from decimal import Decimal, InvalidOperation
@@ -392,6 +393,54 @@ def semantic_key(kind: Kind, facts: Facts) -> str:
     else:
         values = (facts.definition, facts.occurrence)
     return digest((kind, values))
+
+
+IDENTITY_FIELDS = {
+    Kind.PROPERTY: ("address", "unit"),
+    Kind.ENTITY: ("entity_key",),
+    Kind.PROVIDER: ("issuer",),
+    Kind.ACCOUNT: ("provider", "subject", "namespace", "identifier"),
+    Kind.DEFINITION: ("account", "charge_key"),
+    Kind.INSTANCE: ("definition", "occurrence"),
+}
+
+
+def identity_constraints(kind: Kind, raw: dict) -> dict[str, tuple[str, ...]]:
+    """Partial uniqueness evidence, never authority. Omitted coordinates are unknown.
+
+    Use exactly the canonical text normalization. Relations must already be stable
+    locator keys, including for canonical records. Store only hashes of values.
+    """
+    result = {}
+    for name in IDENTITY_FIELDS[kind]:
+        if name not in raw:
+            continue
+        with suppress(FinanceError):
+            values = raw[name]
+            if name not in {"provider", "subject", "account", "definition"} or not isinstance(
+                values, (list, tuple)
+            ):
+                values = (values,)
+            if values:
+                result[name] = tuple(
+                    sorted({digest(text(v, optional=name == "unit")) for v in values})
+                )
+    return result
+
+
+@dataclass(frozen=True)
+class ReadIssue:
+    kind: Kind
+    source: str
+    locator: Locator | None = None
+    constraints: dict[str, tuple[str, ...]] = field(default_factory=dict, repr=False)
+    reason: str = "record_invalid"
+
+    def could_conflict(self, kind: Kind, constraints: dict[str, tuple[str, ...]]) -> bool:
+        return self.kind == kind and not any(
+            not (set(self.constraints[name]) & set(constraints[name]))
+            for name in self.constraints.keys() & constraints.keys()
+        )
 
 
 def origin(url: str) -> str:
