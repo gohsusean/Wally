@@ -2,6 +2,7 @@
 
 **Status:** Current implementation reference, checked against `ce47fcd` during
 the 5 October 2026 handover audit. Documentation updated 6 October 2026.
+The D01/D02 stabilization updates the legacy finance boundary under ADR-043.
 
 Code and tests take precedence over this description. Runtime observations are
 point-in-time evidence, not deployment guarantees. See [operations](operations.md)
@@ -57,17 +58,29 @@ and irreversible actions are approval-gated in the tracked MacBook profile;
 ordinary reversible writes are not necessarily prompted. It does not require a
 canonical proposal or use RequestContext for every tool action.
 
-The finance tool has deterministic routing and preflight checks, but accepts
-model-supplied bill fields as interim trusted inputs. Extra parameters can differ
-from verified fields, and payment-evidence claims are not bound to authenticated
-records. Generic workflow triggering does not receive the finance tool's
-verification path. These are current limitations, not permission to copy that
-design: see D01/D02 in [engineering debt](engineering-debt.md).
+Finance requests now name a canonical bill asset ID. Runtime fetches approved
+operational finance metadata, rejects conflicting/unknown assertions, verifies
+the canonical dispatch against statement evidence, and binds a digest to the
+bill, payload and registered workflow target. An authenticated execute capability
+and fresh prompt are mandatory. After the prompt, canonical inputs and routing
+must still match before credentials resolve or the exact dispatch runs. Generic
+financial workflow calls/aliases are blocked. Missing live metadata fails closed
+(D03); model dictionaries are no longer the fallback.
+
+Tool-supplied `payment_evidence` never establishes completion. All finance
+knowledge create/update calls require an authenticated verify capability and a
+fresh human check of the exact record/write, followed by revalidation. Recognized
+paid claims/evidence on other targets also require this check. Audit binds human
+verification to target/write fingerprint and authority-free provenance. No new
+payment-completion provider/record or Matter-resolution route is introduced.
+Dispatch and portal login remain insufficient evidence; see
+[ADR-043](decisions.md#adr-043-canonical-legacy-finance-dispatch-and-authenticated-human-evidence).
 
 Implementation: [orchestrator](../src/wally/orchestrator/core.py),
 [ToolRegistry](../src/wally/orchestrator/tools.py),
 [finance routing](../src/wally/runtime/execution_router.py). ADR-029 documents the
-interim missing-metadata compromise. Act & Verify's no-payment restriction must
+historical missing-metadata compromise, superseded for caller-supplied authority
+by ADR-043. Act & Verify's no-payment restriction must
 not be represented as a guarantee about every conversational tool.
 
 ## Domain, state, and continuity

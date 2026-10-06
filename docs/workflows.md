@@ -2,7 +2,7 @@
 
 `config/workflows.yaml` registers execution capability names/webhook paths. This document describes the **legacy conversational workflow/finance path**, not the operational Act & Verify executor. New privileged capabilities follow [ADR-042](decisions.md#adr-042-new-capabilities-converge-on-the-operational-architecture) and [current architecture](current-architecture.md).
 
-**Current limitations:** Notion structured metadata is not mapped; the legacy bill dictionary can be model-supplied; extra parameters can override verified fields; generic workflow triggering does not enforce the finance verification pipeline. D01/D02/D03 in [engineering debt](engineering-debt.md) record these gaps. No deployed exports are present, and `scripts/deploy_workflows.py` only lists configuration/export presence. Actual n8n effects, authentication and backup behavior are unknown (D08/D09).
+**Current boundary:** [ADR-043](decisions.md#adr-043-canonical-legacy-finance-dispatch-and-authenticated-human-evidence) resolves D01/D02: payment inputs come from approved canonical finance metadata, caller overrides fail closed, and generic financial workflow calls are blocked. Financial state writes require authenticated, independent human verification. Notion structured metadata remains unmapped (D03), so the payment path cannot fall back to model-supplied fields. No deployed exports are present, and `scripts/deploy_workflows.py` only lists configuration/export presence. Actual n8n effects, authentication and backup behavior are unknown (D08/D09).
 
 ## Philosophy
 
@@ -59,22 +59,26 @@ Flat workflow entries with `capability.domain` + `capability.method` keep the n8
 User: "Pay my TM110 maintenance bill"
   → finance_bills_search (Knowledge)
   → LLM extracts statement evidence
-  → finance_trigger_payment(bill={...payment_method, bank_account...}, statement={...})
+  → finance_trigger_payment(bill={asset_id: ...}, statement={...})
+  → authenticated execute capability + canonical finance asset re-fetch
   → ExecutionCapabilityRouter: payment_method → pay-bill-bank-transfer
   → VerificationEngine (method-specific checks)
-  → Approval prompt (verification summary + payment method)
+  → Fresh approval prompt (verification + exact payload + execution target)
+  → Re-fetch/reverify canonical inputs and require the reviewed fingerprint
   → bank_transfer: WorkflowProvider (n8n)
   → card_portal: BrowserAutomationProvider (v0.10+)
 ```
 
-The router maps the supplied payment method to a registered capability. That does not establish canonical input provenance: current callers can supply bill fields/overrides. A configured webhook or `triggered` result is not independently verified payment completion.
+The router maps the canonical payment method to a registered financial capability. Repeated caller fields must match exactly; unknown/conflicting parameters are refused. Credential injection may populate credential slots only. A configured webhook, `triggered` result or successful portal login is not payment-completion evidence and cannot mark paid or resolve a Matter.
 
 ## Provider knowledge fields (bills / providers)
 
-Required design inputs are listed below. Current Notion conversion does not map these properties into metadata; ADR-029 documents the interim model-supplied `bill` fields. Do not describe this table as a completed live schema mapping:
+Canonical inputs are listed below. Current Notion conversion does not map these properties into metadata; ADR-043 supersedes ADR-029's interim model-supplied authority. Missing canonical inputs fail closed. This table is not a completed live schema mapping:
 
 | Field | Used for |
 |-------|----------|
+| `asset_id` | Exact approved finance asset fetched by runtime |
+| `currency` | Required currency code, bound to the amount |
 | `payment_method` | Routing (`bank_transfer`, `card_portal`, …) |
 | `bank_account` | Bank transfer verification + n8n parameters |
 | `payment_portal_url` | Card portal verification + n8n parameters |
@@ -92,4 +96,4 @@ The old pattern of adding a model-callable workflow is not the preferred extensi
 
 Operational workflows (`weekly-backup`) omit `capability` metadata. They remain available via `workflow_list` / `workflow_trigger` for explicit user requests.
 
-The legacy intended convention is to use `finance_trigger_payment` for financial checks. It is guidance, not an enforced prohibition on `workflow_trigger`; D02 requires equivalent checks on every reachable financial route. A new consequential capability must not depend on the model choosing the safer tool.
+`workflow_trigger` refuses financial and payment-tagged workflows, including aliases. Bill payments require the authenticated canonical finance path. A new consequential capability must not depend on the model choosing the safer tool.

@@ -62,14 +62,14 @@ def test_prepare_finance_payment_injects_runtime_workflow() -> None:
                 "amount": "142.50",
                 "bank_account": "123456789",
             },
-            "parameters": {"amount": 142.5},
+            "parameters": {"amount": "142.50"},
         },
         router,
     )
     assert error is None
     assert prepared["workflow"] == "pay-bill-bank-transfer"
     assert prepared["_payment_resolution"]["payment_method"] == "bank_transfer"
-    assert prepared["parameters"]["amount"] == 142.5
+    assert prepared["parameters"]["amount"] == "142.50"
     assert prepared["parameters"]["provider"] == "Electricity Co"
 
 

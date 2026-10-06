@@ -2,7 +2,7 @@
 
 `BrowserAutomationProvider` executes deterministic browser actions after runtime governance. Business logic stays in Wally; Playwright is an adapter only.
 
-**Scope:** the trusted-target rule below is the required invariant. Operational Act & Verify re-fetches canonical knowledge; the legacy conversational finance path accepts a model-supplied bill dictionary and cannot establish that same provenance (D01). Live Notion metadata mapping is absent (D03). See [current architecture](current-architecture.md) and [engineering debt](engineering-debt.md) before treating these flows as deployable. The current scripts log in/read/verify; they do not click payment controls.
+**Scope:** both operational Act & Verify and legacy conversational finance re-fetch canonical knowledge. Legacy finance binds the reviewed inputs/target under [ADR-043](decisions.md#adr-043-canonical-legacy-finance-dispatch-and-authenticated-human-evidence); model bill dictionaries cannot supply authority. Live Notion metadata mapping is absent (D03), so missing metadata fails closed. See [current architecture](current-architecture.md) and [engineering debt](engineering-debt.md) before treating these flows as deployable. The current scripts log in/read/verify; they do not click payment controls. Successful login is not payment-completion evidence.
 
 ## Trusted portal URL rule (mandatory)
 

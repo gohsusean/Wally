@@ -24,6 +24,24 @@ class _MockKnowledge:
     def retrieve(self, query: str, *, role: str | None = None, limit: int = 10):
         return KnowledgeRetrievalResult(assets=self.assets[:limit], query=query)
 
+    def get(self, asset_id: str):
+        return next(asset for asset in self.assets if asset.id == asset_id)
+
+
+def _bill_knowledge(bill: dict) -> _MockKnowledge:
+    return _MockKnowledge(
+        assets=[
+            KnowledgeAsset(
+                id=bill.get("asset_id", "bill-1"),
+                title="Canonical bill",
+                content="Due",
+                database="bills",
+                role="finance",
+                metadata={"currency": "MYR", **bill},
+            )
+        ]
+    )
+
 
 @dataclass
 class _MockWorkflow:
@@ -131,7 +149,9 @@ def test_trigger_payment_delegates_to_workflow() -> None:
         knowledge=_MockKnowledge(),
         workflow=workflow,
     )
-    adapter.trigger_payment("pay-bill-bank-transfer", parameters={"amount": 142.5})
+    adapter._trigger_payment(
+        "pay-bill-bank-transfer", parameters={"amount": 142.5}, authorized=True
+    )
     assert workflow.triggered == [("pay-bill-bank-transfer", {"amount": 142.5})]
 
 

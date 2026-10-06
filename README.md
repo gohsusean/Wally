@@ -6,7 +6,7 @@ Wally is not a chatbot. It is not a home automation platform.
 
 ## Status
 
-**Status:** **v0.18.0 — Telegram inbox.** Telegram long-polls from this Mac and reaches Wally through the Gateway. The owner is one numeric Telegram user id in a private chat. Approval buttons carry a server-side nonce. `Not now` dismisses that card and leaves the proposal pending. Approve records a decision and does not execute. ChatGPT v0.17 stays implemented, with `record_decision` still disabled until a hosted connection can authenticate and confirm that call. Act & Verify supports bill portal login/review only, on a separate authorized request, and never pays. The older conversational ToolRegistry path is still callable and can trigger financial n8n workflows under its own approval gates; the Act & Verify limit is not a system-wide no-payment guarantee. Nothing runs on a schedule.
+**Status:** **v0.18.0 — Telegram inbox.** Telegram long-polls from this Mac and reaches Wally through the Gateway. The owner is one numeric Telegram user id in a private chat. Approval buttons carry a server-side nonce. `Not now` dismisses that card and leaves the proposal pending. Approve records a decision and does not execute. ChatGPT v0.17 stays implemented, with `record_decision` still disabled until a hosted connection can authenticate and confirm that call. Act & Verify supports bill portal login/review only, on a separate authorized request, and never pays. The older conversational ToolRegistry path remains callable: financial dispatch now requires authenticated runtime authority, canonical finance metadata and fresh human approval under ADR-043. The Act & Verify limit is not a system-wide no-payment guarantee. Nothing runs on a schedule.
 
 Complete: v0.10 browser automation, v0.11.1 secrets hardening, v0.12 Observe & Brief, v0.13 Assess & Propose, v0.14 Approval Inbox, v0.15 Act & Verify, v0.16 Gateway, v0.17 ChatGPT interface, v0.18 Telegram inbox.
 
@@ -16,7 +16,7 @@ Future: scheduling and proactive triggers, notification UX hardening, more suppo
 
 Read [AGENTS.md](AGENTS.md), [current architecture](docs/current-architecture.md), [runtime operations](docs/operations.md), the relevant [ADRs](docs/decisions.md), and affected tests. Check [active engineering debt](docs/engineering-debt.md) before feature work; [roadmap](docs/roadmap.md) owns future delivery.
 
-**New capabilities should converge on the operational proposal/capability/provenance architecture, rather than add privileged behavior through the legacy conversational tools.** [ADR-042](docs/decisions.md#adr-042-new-capabilities-converge-on-the-operational-architecture) records this direction; this handover does not change either application path.
+**New capabilities should converge on the operational proposal/capability/provenance architecture, rather than add privileged behavior through the legacy conversational tools.** [ADR-042](docs/decisions.md#adr-042-new-capabilities-converge-on-the-operational-architecture) records this direction; [ADR-043](docs/decisions.md#adr-043-canonical-legacy-finance-dispatch-and-authenticated-human-evidence) records the focused legacy finance stabilization.
 
 ## Getting started
 
@@ -132,7 +132,7 @@ Legacy `databases:` blocks are imported once via `scripts/migrate_notion_yaml.py
 3. Enable workflows in `config/macbook.yaml`: `providers.workflow.enabled: true`
 4. List configured workflows: `uv run python scripts/deploy_workflows.py`
 
-The registry can route "Run the weekly backup" to a `weekly-backup` webhook, but no exports or proven backup procedure are in the repo. The helper lists configuration; it does not deploy. Actual downstream behavior must be verified separately. Legacy conversational bill-payment routing requires CLI approval and has known verification/provenance limitations; see [workflow scope](docs/workflows.md) and D01/D02/D08/D09 in the backlog.
+The registry can route "Run the weekly backup" to a `weekly-backup` webhook, but no exports or proven backup procedure are in the repo. The helper lists configuration; it does not deploy. Actual downstream behavior must be verified separately. Legacy conversational bill-payment routing now binds canonical inputs and authenticated human review (D01/D02 resolved); missing live metadata fails closed (D03), and downstream effects remain unknown (D08/D09). See [workflow scope](docs/workflows.md) and the backlog.
 
 ### Communications setup (v0.6)
 

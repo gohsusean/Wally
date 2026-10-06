@@ -144,8 +144,8 @@ class NotionKnowledgeAdapter:
                         "payment_evidence": {
                             "type": "object",
                             "description": (
-                                "Required when creating a finance bill record marked paid. "
-                                "Types: workflow_success, user_confirmation, verification_provider."
+                                "Untrusted legacy claims; never establish payment evidence. "
+                                "Financial writes require authenticated human verification."
                             ),
                         },
                     },
@@ -165,8 +165,8 @@ class NotionKnowledgeAdapter:
                         "payment_evidence": {
                             "type": "object",
                             "description": (
-                                "Required when updating a finance bill to paid status. "
-                                "Types: workflow_success, user_confirmation, verification_provider."
+                                "Untrusted legacy claims; never establish payment evidence. "
+                                "Financial writes require authenticated human verification."
                             ),
                         },
                     },

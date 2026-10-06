@@ -184,6 +184,12 @@ class N8nWorkflowAdapter:
             ]
             return json.dumps({"workflows": workflows})
         if tool_name == "workflow_trigger":
+            definition = self._router.get_workflow(str(arguments.get("workflow", "")))
+            if definition is None or (
+                definition.action_class == ActionClass.FINANCIAL
+                or definition.capability_domain == "payment"
+            ):
+                return json.dumps({"status": "denied", "error": "Use canonical finance review."})
             result = self.trigger(
                 arguments["workflow"],
                 parameters=arguments.get("parameters"),

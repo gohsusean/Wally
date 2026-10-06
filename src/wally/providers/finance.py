@@ -5,7 +5,9 @@ from __future__ import annotations
 from typing import Protocol
 
 from wally.models.finance import BillSummary, PaymentWorkflowSummary
+from wally.models.principal import RequestContext
 from wally.providers.capability import CapabilityProvider
+from wally.runtime.principals import PrincipalAuthority
 
 
 class FinanceProvider(CapabilityProvider, Protocol):
@@ -22,11 +24,16 @@ class FinanceProvider(CapabilityProvider, Protocol):
     def prepare_payment(
         self, arguments: dict[str, object]
     ) -> tuple[dict[str, object], str | None]:
-        """Resolve execution capability and merge provider parameters."""
+        """Fetch canonical inputs and resolve the exact execution capability."""
         ...
 
-    def trigger_payment(
-        self, workflow: str, parameters: dict[str, object] | None = None
+    def execute_payment(
+        self,
+        arguments: dict[str, object],
+        *,
+        context: RequestContext,
+        authority: PrincipalAuthority,
+        reviewed_fingerprint: str,
     ) -> dict[str, object]:
-        """Trigger an approval-gated financial workflow via n8n."""
+        """Revalidate a runtime-reviewed dispatch before execution."""
         ...

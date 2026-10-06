@@ -26,6 +26,8 @@ read each current-scope note before treating an older decision as an instruction
 - ADR-038 is extended by ADR-039 registration and ADR-040/041 interfaces.
 - ADR-042 records the preferred direction for new capabilities; it does not
   retroactively remove the legacy provider/tool path or fix its defects.
+- ADR-043 supersedes ADR-027/029's legacy bill authority and paid-evidence rules
+  with canonical dispatch binding and authenticated human verification.
 
 ---
 
@@ -866,6 +868,8 @@ Add Tavily or Brave adapter when OpenAI web search cost/latency or citation form
 **Status:** Accepted  
 **Date:** 2026-06-29
 
+**Current scope / supersession:** Composition remains. [ADR-043](#adr-043-canonical-legacy-finance-dispatch-and-authenticated-human-evidence) replaces payload-based paid evidence, config-optional financial prompts and generic financial workflow access with authenticated canonical dispatch/human verification. The evidence-type list below is historical.
+
 ### Context
 
 v0.9 needs bill awareness and approval-gated payments without duplicating Notion storage or direct bank access.
@@ -924,7 +928,7 @@ v0.9 finance payments need evidence checks before approval — comparing bill st
 **Status:** Accepted  
 **Date:** 2026-06-27
 
-**Current scope / supersession:** Legacy conversational routing is still callable. Structured Notion metadata remains unmapped, and canonical provenance/parameter-equality is weaker than the trusted-input language below. [D01/D02/D03](engineering-debt.md) capture those defects. [ADR-042](#adr-042-new-capabilities-converge-on-the-operational-architecture) supersedes this legacy tool pattern as the preferred extension point, not the existing implementation.
+**Current scope / supersession:** Legacy conversational routing remains callable. [ADR-043](#adr-043-canonical-legacy-finance-dispatch-and-authenticated-human-evidence) supersedes the interim model-supplied bill/parameter authority and payload evidence; D01/D02 are resolved in code. Missing live metadata remains D03 and now fails closed. [ADR-042](#adr-042-new-capabilities-converge-on-the-operational-architecture) keeps the operational path as the preferred extension point.
 
 ### Context
 
@@ -1515,6 +1519,67 @@ The direction is not a certification of financial safety or a completed migratio
 Revisit when planning path migration, a new consequential executor, or a change to
 interface authority. Verify the design against actual code/tests and current
 external prerequisites before claiming readiness.
+
+---
+
+## ADR-043: Canonical legacy finance dispatch and authenticated human evidence
+
+**Status:** Accepted — focused D01/D02 stabilization
+
+**Date:** 2026-10-06
+
+### Context
+
+The legacy finance path verified a caller-supplied bill but merged execution
+overrides, permitting verify(A)/authorize(A)/execute(B). Paid-write policy accepted
+model payload claims as evidence. Generic financial workflow calls could bypass
+bill checks. The existing operational authority/provenance distinction provides
+a smaller fix than inventing another grant system or migrating unrelated tools.
+
+### Decision
+
+1. Require a canonical asset ID; fetch approved operational finance metadata.
+   Model fields are exact assertions only. Unknown/conflicting execution keys
+   fail closed. Amount, currency, financial identities and targets come from the
+   canonical record. Live metadata mapping remains D03; never fall back to prose.
+2. Bind the reviewed digest to canonical bill, exact payload and registered
+   workflow definition. Use the process PrincipalAuthority execute capability and
+   always obtain fresh ApprovalProvider authorization, then re-fetch/reverify and
+   require the same digest. Secret refs are canonical and may populate credential
+   slots only. Model-facing direct finance dispatch and generic financial workflow
+   calls (including aliases) cannot bypass this path.
+3. Reuse the verify capability for an explicitly authorized human financial-state
+   check. All finance creates/updates require independent human verification of
+   the exact record/write because free text cannot reliably distinguish payment
+   state from benign edits. Detected paid claims/evidence elsewhere also require
+   it. Revalidate the target/current asset after the prompt and audit a bound write
+   fingerprint plus provenance. Payload booleans/status/provider names grant nothing.
+4. No automatic completion evidence is added: webhook acceptance and portal
+   login cannot mark paid or resolve Matters. An eventual trusted payment executor/
+   verification integration needs separate design. Act & Verify, existing proposals,
+   Telegram/ChatGPT capability sets and persistent schemas are unchanged.
+
+### Consequences
+
+Old model-supplied bills, numeric/string substitutions, arbitrary parameters and
+generic payment workflow calls can now be refused. Only exact canonical assertions
+are accepted; caller values never supply dispatch fields. Direct `trigger_payment`
+is no longer a public FinanceProvider operation; the adapter's private transport
+helper is reached by authenticated runtime review. Old session text/evidence does
+not become authorization. No records are migrated or credentials/config changed.
+
+The stricter path is unavailable without canonical live metadata. Deployed n8n
+effects/completion remain unknown (D08); this fix does not certify a payment flow.
+Legacy ambiguous outcomes still require operator review and must not be retried
+automatically. Financial human confirmation is not a new remote permission.
+
+### Validation and review trigger
+
+Synthetic regressions exercise the real registry/router/safety abstractions for
+overrides, post-prompt drift, workflow aliases, secret collisions, forged/foreign/
+restricted contexts, human refusal/verification, dry-run and secret redaction.
+Baseline probes reproduce the original flaws. Revisit for a trusted completion
+provider, new consequential executor or migration to the operational lifecycle.
 
 ---
 

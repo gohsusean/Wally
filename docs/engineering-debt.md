@@ -1,8 +1,8 @@
 # Active engineering debt and deployment gaps
 
 **Status:** Open findings from the 5 October 2026 audit of `ce47fcd`, recorded
-6 October 2026. The handover patch changes documentation only: none of these
-defects is fixed here. Priority expresses impact, not proof that harm occurred.
+6 October 2026. D01/D02 are resolved by the focused finance stabilization below;
+the other findings remain open. Priority expresses impact, not proof that harm occurred.
 
 Current paths are described in [current architecture](current-architecture.md);
 operational prerequisites in [operations](operations.md). New privileged
@@ -13,7 +13,9 @@ by themselves establish live provider readiness.
 
 ## D01 — Legacy finance verifies different fields from execution (high)
 
-**Verified:** the conversational finance adapter accepts model-supplied `bill`
+**Status:** Resolved in code, 6 October 2026; live metadata readiness remains D03.
+
+**Original verified defect:** the conversational finance adapter accepted model-supplied `bill`
 fields without canonical rebinding. Extra execution parameters take precedence
 over bill account/payee/destination fields, while verification compares bill and
 statement. An in-memory synthetic probe routed a different account without being
@@ -30,9 +32,24 @@ or parameter overrides fail before approval/provider calls. Regression tests
 cover equal verified inputs with a different execution destination and canonical
 drift. New capability work must not reproduce the legacy privilege path.
 
+**Resolution:** runtime fetches the exact asset ID from approved operational
+finance knowledge; requires canonical amount/currency/payee and applicable target
+fields. Model bill fields/parameters are assertions only: conflicting or unknown
+keys fail before approval. Verification checks canonical versus resolved payload
+and statement; the reviewed digest binds metadata, dispatch and registered
+workflow target. Execution requires an authenticated execute capability, a fresh
+prompt even when the generic gate allows, and matching re-fetched inputs after
+the prompt. Credential injection cannot populate financial slots. Generic
+financial workflow tools (including aliases/payment-tagged misclassifications)
+are refused. Regression coverage: [finance trust](../tests/test_finance_trust.py)
+and [verification](../tests/test_verification_engine.py). No live payment was run.
+
 ## D02 — Legacy payment evidence has weak provenance (high)
 
-**Verified:** `user_confirmed=True`, `workflow_status=triggered` and a provider name
+**Status:** Resolved in code, 6 October 2026, using explicit authenticated human
+verification; automated payment-completion evidence is not implemented.
+
+**Original verified defect:** `user_confirmed=True`, `workflow_status=triggered` and a provider name
 can satisfy the paid-write guard as caller arguments. They are not linked to an
 authenticated decision, completed execution, or independent verification record.
 Generic `workflow_trigger` also bypasses the finance tool's verification pipeline
@@ -46,6 +63,17 @@ obligation/action; model assertions and mere webhook acceptance cannot establish
 completion. Every reachable financial route applies equivalent verification and
 authorization. Tests reject forged confirmation/provider/workflow evidence and
 generic-tool attempts to bypass financial verification.
+
+**Resolution:** no tool-payload evidence type establishes completion. Every
+finance create/update (and detected paid claims/evidence elsewhere) requires a
+runtime-issued verify capability plus a fresh human prompt to independently
+check the exact record/write. Target/current asset are re-read after confirmation;
+drift blocks the write. Audit stores authority-free provenance and a bound write
+fingerprint, never grants. Forged, foreign-authority and restricted-channel
+contexts fail. Dispatch/login results leave paid state and Matters unchanged;
+webhook acceptance is explicitly unverified. All generic financial workflow
+routes are blocked rather than relying on model tool choice. Tests cover both
+forged claims and the legitimate human path. See [ADR-043](decisions.md#adr-043-canonical-legacy-finance-dispatch-and-authenticated-human-evidence).
 
 ## D03 — Live Notion metadata and finance-role mapping missing (high)
 

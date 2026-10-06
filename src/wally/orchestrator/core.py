@@ -11,6 +11,7 @@ from wally.conversation.context import (
 )
 from wally.exceptions import ProviderUnavailableError
 from wally.models.messages import Message, Role, Session, WallyResponse
+from wally.models.principal import RequestContext
 from wally.models.task import Task, TaskIntent
 from wally.orchestrator.context import build_instructions
 from wally.orchestrator.response import compose_response
@@ -96,7 +97,13 @@ class Orchestrator:
             health["secrets"] = False
         return health
 
-    def handle(self, session: Session, user_input: str) -> WallyResponse:
+    def handle(
+        self,
+        session: Session,
+        user_input: str,
+        *,
+        context: RequestContext | None = None,
+    ) -> WallyResponse:
         self._tools.set_session_id(session.id)
         if self._conversation is not None:
             self._conversation.set_exclude_session(session.id)
@@ -229,7 +236,7 @@ class Orchestrator:
             tool_names: list[str] = []
             for call in llm_response.tool_calls:
                 tool_names.append(call.name)
-                result = self._tools.execute(call)
+                result = self._tools.execute(call, context=context)
                 tool_results.append(ToolResult(call_id=result.call_id, output=result.output))
                 if result.action_taken:
                     actions_taken.append(result.action_taken)

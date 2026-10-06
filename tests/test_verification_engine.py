@@ -52,6 +52,19 @@ def test_normalize_bank_account_ignores_formatting() -> None:
     assert normalize_bank_account("123/456/789") == "123456789"
 
 
+def test_amount_verified_against_statement_cannot_hide_different_execution_amount() -> None:
+    report = VerificationEngine().verify_bill_payment(
+        trusted=_trusted_bill(), evidence={"amount": "RM356.40"}, payment_amount="RM999.00"
+    )
+    assert report.blocked
+    assert any(check.field == "amount" and check.critical for check in report.checks)
+
+
+def test_safety_report_rejects_payload_conflicting_with_otherwise_verified_bill() -> None:
+    arguments = _payment_args(parameters={"bank_account": "999999999", "amount": "RM356.40"})
+    assert verify_finance_payment(arguments).blocked
+
+
 def test_bank_account_formatting_only_does_not_mismatch() -> None:
     engine = VerificationEngine()
     report = engine.verify_bill_payment(
@@ -142,14 +155,14 @@ def test_card_portal_skips_bank_account_verification() -> None:
 
 
 def test_tool_registry_blocks_before_approval_on_verification_mismatch(tmp_path) -> None:
-    from tests.test_finance import _MockKnowledge, _MockWorkflow, _settings
+    from tests.test_finance import _bill_knowledge, _MockWorkflow, _settings
     from wally.adapters.finance.local import LocalFinanceAdapter
     from wally.models.actions import ActionClass
     from wally.models.workflow import WorkflowDefinition
 
     finance = LocalFinanceAdapter(
         settings=_settings(),
-        knowledge=_MockKnowledge(),
+        knowledge=_bill_knowledge(_trusted_bill()),
         workflow=_MockWorkflow(
             workflows=[
                 WorkflowDefinition(
@@ -171,6 +184,9 @@ def test_tool_registry_blocks_before_approval_on_verification_mismatch(tmp_path)
             captured.append(summary)
             return True
 
+    from wally.runtime.principals import PrincipalAuthority
+
+    authority = PrincipalAuthority()
     registry = ToolRegistry(
         providers={"finance": finance},
         knowledge=None,
@@ -180,15 +196,18 @@ def test_tool_registry_blocks_before_approval_on_verification_mismatch(tmp_path)
         approval=_CapturingApproval(),
         audit=AuditLogger(tmp_path / "audit"),
         dry_run=False,
+        authority=authority,
     )
+    arguments = _payment_args(statement={"bank_account": "000000000", "amount": "RM356.40"})
+    arguments.pop("_payment_resolution")
+    arguments["bill"]["asset_id"] = "bill-1"
     result = registry.execute(
         ToolCall(
             call_id="c1",
             name="finance_trigger_payment",
-            arguments=_payment_args(
-                statement={"bank_account": "000000000", "amount": "RM356.40"}
-            ),
-        )
+            arguments=arguments,
+        ),
+        context=authority.issue("repl"),
     )
     assert result.denied
     assert "verification_blocked" in (result.action_taken or "")

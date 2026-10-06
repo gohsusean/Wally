@@ -76,7 +76,7 @@ def test_playwright_adapter_reports_unhealthy_without_package() -> None:
 
 
 def test_finance_card_portal_blocked_without_portal_url(tmp_path) -> None:
-    from tests.test_finance import _MockKnowledge, _MockWorkflow, _settings
+    from tests.test_finance import _bill_knowledge, _MockWorkflow, _settings
     from wally.adapters.finance.local import LocalFinanceAdapter
     from wally.audit.logger import AuditLogger
     from wally.models.actions import ActionClass, ToolCall
@@ -88,7 +88,9 @@ def test_finance_card_portal_blocked_without_portal_url(tmp_path) -> None:
     recording = RecordingBrowserAdapter()
     finance = LocalFinanceAdapter(
         settings=_settings(),
-        knowledge=_MockKnowledge(),
+        knowledge=_bill_knowledge(
+            {"provider": "Streaming Co", "payment_method": "card_portal", "amount": "19.99"}
+        ),
         workflow=_MockWorkflow(
             workflows=[
                 WorkflowDefinition(
@@ -104,6 +106,9 @@ def test_finance_card_portal_blocked_without_portal_url(tmp_path) -> None:
         ),
         browser_executor=GovernedBrowserExecutor(recording),
     )
+    from wally.runtime.principals import PrincipalAuthority
+
+    authority = PrincipalAuthority()
     registry = ToolRegistry(
         providers={"finance": finance},
         knowledge=None,
@@ -114,6 +119,7 @@ def test_finance_card_portal_blocked_without_portal_url(tmp_path) -> None:
         approval=_CapturingApproval(),
         audit=AuditLogger(tmp_path / "audit"),
         dry_run=False,
+        authority=authority,
     )
     result = registry.execute(
         ToolCall(
@@ -121,6 +127,7 @@ def test_finance_card_portal_blocked_without_portal_url(tmp_path) -> None:
             name="finance_trigger_payment",
             arguments={
                 "bill": {
+                    "asset_id": "bill-1",
                     "provider": "Streaming Co",
                     "payment_method": "card_portal",
                     "amount": "19.99",
@@ -131,7 +138,8 @@ def test_finance_card_portal_blocked_without_portal_url(tmp_path) -> None:
                     "payment_portal_url": "https://evil.example.com",
                 },
             },
-        )
+        ),
+        context=authority.issue("repl"),
     )
     assert result.denied
     assert "browser_policy_denied" in (result.action_taken or "")

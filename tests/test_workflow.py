@@ -84,7 +84,7 @@ def test_financial_workflow_requires_approval(
     assert not workflow.triggered
 
 
-def test_financial_workflow_triggers_after_approval(
+def test_generic_financial_workflow_denied_even_after_approval(
     tmp_path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     workflow = MockWorkflowProvider()
@@ -107,8 +107,8 @@ def test_financial_workflow_triggers_after_approval(
             arguments={"workflow": "pay-bill-bank-transfer", "parameters": {"amount": 100}},
         )
     )
-    assert not result.denied
-    assert workflow.triggered == [("pay-bill-bank-transfer", {"amount": 100})]
+    assert result.denied
+    assert not workflow.triggered
 
 
 def test_knowledge_and_workflow_tools_coexist(tmp_path) -> None:

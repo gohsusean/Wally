@@ -77,7 +77,7 @@ Authenticated pages and filled password fields must not land on disk. Do not ena
 
 ## User-initiated auth-only portal test
 
-This is **not** a CI test and must be separately operator-authorized. Do not store a real password in any file or command. This legacy runbook assumes a grounded bill object; the current Notion adapter does not populate these fields and the conversational path cannot prove their canonical origin (D01/D03). It is not a validated live Notion or Act & Verify acceptance procedure.
+This is **not** a CI test and must be separately operator-authorized. Do not store a real password in any file or command. This legacy runbook requires an approved canonical finance asset with mapped metadata, including amount/currency and portal fields. Under [ADR-043](decisions.md#adr-043-canonical-legacy-finance-dispatch-and-authenticated-human-evidence), callers supply its `asset_id`; a model bill dictionary cannot substitute for missing metadata. The current Notion adapter does not populate those fields (D03), so this procedure currently fails closed. It is not a validated live Notion or Act & Verify acceptance procedure.
 
 ### 1. 1Password
 

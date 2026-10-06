@@ -10,7 +10,7 @@ from unittest.mock import patch
 
 import pytest
 
-from tests.test_finance import _MockKnowledge, _MockWorkflow, _settings
+from tests.test_finance import _bill_knowledge, _MockKnowledge, _MockWorkflow, _settings
 from wally.adapters.browser.recording import RecordingBrowserAdapter
 from wally.adapters.finance.local import LocalFinanceAdapter
 from wally.adapters.secrets.memory import MemorySecretsProvider
@@ -23,6 +23,7 @@ from wally.models.workflow import WorkflowDefinition, WorkflowTriggerResult
 from wally.orchestrator.tools import ToolRegistry
 from wally.runtime.browser_executor import GovernedBrowserExecutor
 from wally.runtime.browser_safety import evaluate_browser_session_actions
+from wally.runtime.principals import PrincipalAuthority
 from wally.runtime.secret_resolver import GovernedSecretsResolver
 from wally.runtime.secrets_safety import flatten_for_leak_search
 from wally.safety.gates import ApprovalGate
@@ -43,6 +44,7 @@ def assert_no_canary(*parts: object, canary: str = CANARY_SECRET) -> None:
 def _portal_bill(**extra) -> dict:
     bill = {
         "provider": "Streaming Co",
+        "asset_id": "bill-1",
         "payment_method": "card_portal",
         "payment_portal_url": "https://pay.example.com/streaming",
         "amount": "19.99",
@@ -115,11 +117,12 @@ def _finance_registry(
     resolver = GovernedSecretsResolver(secrets, audit=AuditLogger(tmp_path / "audit"))
     finance = LocalFinanceAdapter(
         settings=_settings(),
-        knowledge=_MockKnowledge(),
+        knowledge=_bill_knowledge(_portal_bill()),
         workflow=_card_portal_workflow(),
         browser_executor=GovernedBrowserExecutor(recording, secrets=resolver),
         secrets=resolver,
     )
+    authority = PrincipalAuthority()
     registry = ToolRegistry(
         providers={"finance": finance},
         knowledge=None,
@@ -130,6 +133,7 @@ def _finance_registry(
         approval=approval,
         audit=AuditLogger(tmp_path / "audit-tools"),
         dry_run=dry_run,
+        authority=authority,
     )
     return registry, secrets, recording, resolver
 
@@ -161,7 +165,8 @@ def test_denied_approval_never_resolves_secret(tmp_path: Path) -> None:
                     "payment_portal_url": "https://pay.example.com/streaming",
                 },
             },
-        )
+        ),
+        context=registry._authority.issue("repl"),
     )
     assert result.denied
     assert provider.resolve_calls == []
@@ -186,7 +191,8 @@ def test_dry_run_never_resolves_secret(tmp_path: Path) -> None:
                     "payment_portal_url": "https://pay.example.com/streaming",
                 },
             },
-        )
+        ),
+        context=registry._authority.issue("repl"),
     )
     assert result.denied
     assert provider.resolve_calls == []
@@ -213,7 +219,8 @@ def test_authorized_execution_resolves_and_hides_values(tmp_path: Path) -> None:
                     "payment_portal_url": "https://pay.example.com/streaming",
                 },
             },
-        )
+        ),
+        context=registry._authority.issue("repl"),
     )
     assert not result.denied
     assert PASSWORD_REF in provider.resolve_calls
@@ -326,7 +333,7 @@ def test_secrets_disabled_fails_closed_for_workflow_refs() -> None:
         secrets=GovernedSecretsResolver(None),
     )
     with pytest.raises(ProviderUnavailableError):
-        adapter.trigger_payment(
+        adapter._trigger_payment(
             "pay-bill-bank-transfer",
             parameters={"amount": "10"},
             bill={"workflow_secret_refs": {"otp": OTP_REF}},
@@ -363,7 +370,7 @@ def test_n8n_model_facing_result_scrubs_echoed_secrets() -> None:
         workflow=workflow,
         secrets=GovernedSecretsResolver(secrets),
     )
-    result = adapter.trigger_payment(
+    result = adapter._trigger_payment(
         "pay-bill-bank-transfer",
         parameters={"amount": "10"},
         bill={"workflow_secret_refs": {"otp": OTP_REF}},

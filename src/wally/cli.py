@@ -705,7 +705,9 @@ def run_cli(argv: list[str] | None = None) -> int:
             continue
 
         try:
-            response = app.orchestrator.handle(session, user_input)
+            response = app.orchestrator.handle(
+                session, user_input, context=_request(app, REPL_CHANNEL, session_id=session.id)
+            )
         except ProviderUnavailableError as exc:
             print(f"\nwally> {exc}")
             print("I cannot proceed without the language model.\n")

@@ -151,7 +151,7 @@ def test_workflow_secret_injection_from_knowledge() -> None:
         workflow=workflow,
         secrets=GovernedSecretsResolver(secrets),
     )
-    adapter.trigger_payment(
+    adapter._trigger_payment(
         "pay-bill-bank-transfer",
         parameters={"amount": "10"},
         bill={"workflow_secret_refs": {"otp": "op://Personal/Bank/otp"}},

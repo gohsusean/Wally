@@ -296,6 +296,14 @@ def _compare_amount(
     evidence_norm = normalize_amount(evidence)
     payment_norm = normalize_amount(payment_amount)
 
+    if trusted_norm and payment_norm and trusted_norm != payment_norm:
+        return VerificationCheck(
+            field="amount",
+            status=VerificationStatus.MISMATCH,
+            critical=True,
+            message="Amount: execution differs from Knowledge Asset",
+        )
+
     if evidence_norm and trusted_norm and evidence_norm == trusted_norm:
         return VerificationCheck(
             field="amount",

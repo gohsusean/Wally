@@ -11,6 +11,7 @@ from wally.runtime.finance_safety import (
     format_finance_approval_summary,
     looks_like_marking_bill_paid,
 )
+from wally.runtime.principals import PrincipalAuthority
 from wally.safety.gates import ApprovalGate
 
 
@@ -66,7 +67,7 @@ def test_bill_paid_write_denied_without_evidence() -> None:
     assert "payment evidence" in (decision.reason or "").lower()
 
 
-def test_bill_paid_write_allowed_with_user_confirmation() -> None:
+def test_bill_paid_write_denied_with_self_asserted_user_confirmation() -> None:
     knowledge = _FinanceBillTargetKnowledge()
     decision = evaluate_bill_paid_write_policy(
         knowledge,
@@ -81,10 +82,10 @@ def test_bill_paid_write_allowed_with_user_confirmation() -> None:
         },
         finance_bills_role="finance",
     )
-    assert decision.allowed
+    assert not decision.allowed
 
 
-def test_bill_paid_write_allowed_with_workflow_success() -> None:
+def test_bill_paid_write_denied_with_self_asserted_workflow_success() -> None:
     knowledge = _FinanceBillTargetKnowledge()
     decision = evaluate_bill_paid_write_policy(
         knowledge,
@@ -100,7 +101,7 @@ def test_bill_paid_write_allowed_with_workflow_success() -> None:
         },
         finance_bills_role="finance",
     )
-    assert decision.allowed
+    assert not decision.allowed
 
 
 def test_finance_approval_summary_includes_bill_fields() -> None:
@@ -135,14 +136,23 @@ def test_finance_approval_summary_includes_bill_fields() -> None:
 
 
 def test_finance_approval_summary_used_by_tool_registry(tmp_path) -> None:
-    from tests.test_finance import _MockKnowledge, _MockWorkflow, _settings
+    from tests.test_finance import _bill_knowledge, _MockWorkflow, _settings
     from wally.adapters.finance.local import LocalFinanceAdapter
     from wally.models.actions import ActionClass
     from wally.models.workflow import WorkflowDefinition
 
     finance = LocalFinanceAdapter(
         settings=_settings(),
-        knowledge=_MockKnowledge(),
+        knowledge=_bill_knowledge(
+            {
+                "provider": "Electricity Co",
+                "amount": "142.50",
+                "due_date": "2026-07-15",
+                "amount_source": "finance_bills_search",
+                "payee": "Electricity Co",
+                "bank_account": "123456789",
+            }
+        ),
         workflow=_MockWorkflow(
             workflows=[
                 WorkflowDefinition(
@@ -164,6 +174,7 @@ def test_finance_approval_summary_used_by_tool_registry(tmp_path) -> None:
             captured.append(summary)
             return False
 
+    authority = PrincipalAuthority()
     registry = ToolRegistry(
         providers={"finance": finance},
         knowledge=None,
@@ -173,14 +184,16 @@ def test_finance_approval_summary_used_by_tool_registry(tmp_path) -> None:
         approval=_CapturingApproval(),
         audit=AuditLogger(tmp_path / "audit"),
         dry_run=False,
+        authority=authority,
     )
     registry.execute(
         ToolCall(
             call_id="c1",
             name="finance_trigger_payment",
             arguments={
-                "parameters": {"amount": 142.5},
+                "parameters": {"amount": "142.50"},
                 "bill": {
+                    "asset_id": "bill-1",
                     "provider": "Electricity Co",
                     "amount": "142.50",
                     "due_date": "2026-07-15",
@@ -190,7 +203,8 @@ def test_finance_approval_summary_used_by_tool_registry(tmp_path) -> None:
                 },
                 "statement": {"amount": "142.50", "payee": "Electricity Co"},
             },
-        )
+        ),
+        context=authority.issue("repl"),
     )
     assert captured
     assert "Verification:" in captured[0]

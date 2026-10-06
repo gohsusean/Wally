@@ -188,6 +188,7 @@ def create_app(
         finance = None
 
     gate = ApprovalGate(require_approval=settings.require_approval, dry_run=settings.dry_run)
+    authority = PrincipalAuthority()
     tools = ToolRegistry(
         providers=providers,
         knowledge=knowledge,
@@ -198,6 +199,7 @@ def create_app(
         approval=CLIApprovalProvider(),
         audit=audit,
         dry_run=settings.dry_run,
+        authority=authority,
     )
     orchestrator = Orchestrator(
         settings=settings,
@@ -215,7 +217,6 @@ def create_app(
     )
     # One authority per process. Every channel adapter issues request contexts
     # from it, and every service checks capabilities against it.
-    authority = PrincipalAuthority()
     ops = None
     act = None
     gateway = None

@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 from collections.abc import Sequence
 from typing import Any
 
+from wally.models.actions import ActionClass
 from wally.models.execution_capability import (
     DEFAULT_PAYMENT_METHOD,
     CapabilityDomain,
@@ -12,6 +15,13 @@ from wally.models.execution_capability import (
 )
 from wally.models.finance import PaymentResolution
 from wally.models.workflow import WorkflowDefinition
+
+
+def payment_fingerprint(prepared: dict[str, Any]) -> str:
+    """Bind canonical inputs and the exact registered financial dispatch target."""
+    return hashlib.sha256(
+        json.dumps(prepared, sort_keys=True, allow_nan=False).encode()
+    ).hexdigest()
 
 
 class ExecutionCapabilityRouter:
@@ -56,28 +66,31 @@ class ExecutionCapabilityRouter:
         """Select payment execution capability from provider knowledge."""
         payment_method = _normalize_payment_method(bill.get("payment_method"))
 
+        workflow = self._payment_capabilities.get(payment_method)
+        if workflow is None:
+            return (
+                None,
+                f"No execution capability registered for payment method '{payment_method}'.",
+            )
+        if workflow.action_class != ActionClass.FINANCIAL:
+            return None, "Payment capability must be classified financial."
+
         if workflow_override:
             canonical = self.resolve_workflow_name(workflow_override.strip())
-            if canonical is None:
+            if canonical != workflow.name:
                 return None, (
-                    f"Workflow '{workflow_override}' is not registered. "
+                    f"Workflow '{workflow_override}' is not the canonical payment capability. "
                     "Runtime selects execution capabilities from provider payment_method."
                 )
-            workflow = self._workflows[canonical]
-            if workflow.capability and workflow.capability != payment_method:
-                return None, (
-                    f"Workflow '{workflow_override}' does not match provider "
-                    f"payment_method '{payment_method}'."
-                )
-        else:
-            workflow = self._payment_capabilities.get(payment_method)
-            if workflow is None:
-                return None, (
-                    f"No execution capability registered for payment method "
-                    f"'{payment_method}'."
-                )
 
-        parameters = _build_payment_parameters(bill, extra_parameters)
+        parameters = canonical_payment_parameters(bill)
+        if extra_parameters is not None:
+            if not isinstance(extra_parameters, dict):
+                return None, "Payment parameters must be an object."
+            for key, value in extra_parameters.items():
+                # Assertions may repeat canonical values, but never become dispatch data.
+                if key not in parameters or value != parameters[key]:
+                    return None, f"Payment parameter '{key}' conflicts with canonical knowledge."
         return (
             PaymentResolution(
                 workflow=workflow.name,
@@ -94,7 +107,7 @@ def prepare_finance_payment_arguments(
     arguments: dict[str, Any],
     router: ExecutionCapabilityRouter,
 ) -> tuple[dict[str, Any], str | None]:
-    """Inject runtime-selected workflow and merged parameters into payment arguments."""
+    """Route already-canonical bill data; caller assertions cannot override it."""
     bill = arguments.get("bill")
     if not isinstance(bill, dict) or not bill:
         return arguments, "Trusted bill data from Knowledge Provider is required."
@@ -131,26 +144,27 @@ def _normalize_payment_method(value: object | None) -> str:
     return normalized
 
 
-def _build_payment_parameters(
+def canonical_payment_parameters(
     bill: dict[str, Any],
-    extra: dict[str, object] | None,
 ) -> dict[str, object]:
-    """Merge provider-specific fields for n8n — business logic stays in Wally."""
+    """Only canonical fields enter the financial provider payload."""
     parameters: dict[str, object] = {}
-    if extra:
-        parameters.update(extra)
 
     for key in (
         "amount",
+        "currency",
         "provider",
         "payee",
         "destination",
         "due_date",
         "bank_account",
+        "account_number",
+        "recipient",
         "account_reference",
         "payment_portal_url",
         "payment_reference_type",
         "asset_id",
+        "bill_id",
     ):
         value = bill.get(key)
         if value is not None and str(value).strip() and key not in parameters:
