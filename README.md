@@ -10,7 +10,7 @@ Wally is not a chatbot. It is not a home automation platform.
 
 Complete: v0.10 browser automation, v0.11.1 secrets hardening, v0.12 Observe & Brief, v0.13 Assess & Propose, v0.14 Approval Inbox, v0.15 Act & Verify, v0.16 Gateway, v0.17 ChatGPT interface, v0.18 Telegram inbox.
 
-Future: scheduling and proactive triggers, notification UX hardening, more supported action types, and a validated hosted ChatGPT connection. Current service implementations are not proof of live provider readiness; the Notion structured metadata/finance-role mapping and other acceptance gaps are recorded in [engineering debt](docs/engineering-debt.md). Remote execution from ChatGPT is not part of this release.
+Future: scheduling and proactive triggers, notification UX hardening, more supported action types, and a validated hosted ChatGPT connection. Current service implementations are not proof of live provider readiness; D03 now supplies a typed certified financial catalog with local-owner certification under [ADR-044](docs/decisions.md#adr-044-certified-financial-identities-and-local-owner-certification). Live chain validation and other acceptance gaps remain in [engineering debt](docs/engineering-debt.md). Remote execution from ChatGPT is not part of this release.
 
 ## Engineering handover
 

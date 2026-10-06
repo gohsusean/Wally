@@ -3,6 +3,7 @@
 **Status:** Current implementation reference, checked against `ce47fcd` during
 the 5 October 2026 handover audit. Documentation updated 6 October 2026.
 The D01/D02 stabilization updates the legacy finance boundary under ADR-043.
+D03 adds the certified financial catalog under ADR-044; live validation is pending.
 
 Code and tests take precedence over this description. Runtime observations are
 point-in-time evidence, not deployment guarantees. See [operations](operations.md)
@@ -24,7 +25,7 @@ executors require separately reviewed implementation work.
 ### Operational path: preferred foundation for new capabilities
 
 ```text
-Gmail / Calendar / Knowledge reads
+Gmail / Calendar / certified financial instance reads
   -> SourceObserver -> Observations -> MatterReconciler -> Matters / priorities
   -> deterministic proposal generation / reconciliation -> brief / Approval Inbox
   -> explicit authenticated decision on a proposal version
@@ -87,7 +88,7 @@ not be represented as a guarantee about every conversational tool.
 
 - **Observation:** immutable source fact with source identity, timestamp,
   bounded text, trust/authority labels, and references. Gmail/calendar text is
-  untrusted. Only designated structured Knowledge metadata drives obligations.
+  untrusted. Only enabled, certified typed financial instances drive canonical obligations.
 - **Matter:** canonical issue/open loop, linked to evidence and explainable
   priority. States: `open`, `watching`, `blocked`, `resolved`, `dismissed`;
   a declared enum state is not proof of an implemented transition into it.
@@ -115,7 +116,7 @@ Matters either. Notes have a separate identity and cannot become matches by
 replay or disappearance of competitors; legacy FYI history is preserved.
 No human association API or remote permission is added. See
 [D04](engineering-debt.md#d04--unmatched-receipt-can-resolve-an-unrelated-obligation-high)
-and ADR-034 for the scoped rationale; D03 remains open.
+and ADR-034 for the scoped rationale; D03 is implemented in code; its separately authorized live pilot remains pending.
 
 ## Proposal, decision, execution, verification
 
@@ -140,9 +141,9 @@ delivery currently skips this release logic (D06). No current user command
 enters proposal `dismissed`; Telegram notification dismissal is a separate state.
 
 Only `review_bill` has an operational executor: portal login/review, not payment.
-Preflight fetches the canonical approved-classification finance Knowledge asset,
-checks supporting evidence and approval fingerprint, and builds a typed plan
-using HTTPS portal configuration, credential refs, selectors and an auth success
+Preflight rereads the enabled certified financial chain and occurrence evidence,
+checks the approval fingerprint, and builds a typed plan
+using certified canonical provider/account/profile configuration and an auth success
 condition. A fresh execution prompt is required even if the generic gate would
 allow the action; approval/target/plan are rechecked afterwards before secrets
 resolve and the executor runs. Prepare-event and document-delivery remain advice.
@@ -158,14 +159,14 @@ Verification checks stored evidence or an authorized explicit human confirmation
 it does not rerun the browser. Portal-login success does not pay a bill or resolve
 its Matter. Financial receipt resolution awaits future canonical obligation binding; current
 receipts remain FYI.
-The live Notion adapter does not yet populate the metadata needed for this plan
-or recurring obligations; fixture coverage is not live readiness (D03).
+The dedicated Notion finance reader supplies provisional typed candidates; generic
+metadata supplies no authority. Code/fixture validation does not establish live readiness.
 
 ## Identity and interface boundaries
 
-PrincipalAuthority owns a per-process HMAC key and grants the six capabilities:
+PrincipalAuthority owns a per-process HMAC key and grants seven capabilities:
 submit request, read context, link channel, decide proposal, execute proposal,
-verify execution. Grants bind principal/channel/authentication and are neither
+verify execution, and local-owner financial certification. Grants bind principal/channel/authentication and are neither
 persisted nor copied into proposal fingerprints. The system is single-owner;
 local terminal identity assumes that operator is the owner.
 
@@ -212,3 +213,22 @@ and optional HA context remain [roadmap](roadmap.md) work. Semantic/vector retri
 federation and retriever/store extraction are historical proposals; current recall
 is SQLite FTS5. n8n exports and proven recovery are missing, not delivered features.
 The [backlog](engineering-debt.md) records defects without claiming fixes.
+
+## Certified finance catalog
+
+[ADR-044](decisions.md#adr-044-certified-financial-identities-and-local-owner-certification)
+and the [operator guide](finance-catalog.md) define Wally-owned subject/provider/
+account/definition/instance identity, provisional typed Notion candidates,
+immutable material versions and local-owner certification. Stable property IDs,
+complete source/relation reads and explicit designation precede certification.
+Seven gates separate ordinary knowledge from financial authority. Identity and
+portal scopes are independent; portal enablement needs exact-version governed
+auth-only acceptance. Reviewed runtime profiles own browser configuration.
+
+Additive `finance_*` tables reside in the operational database. No rows or live
+classifications are migrated automatically. Generic knowledge metadata cannot
+drive canonical obligations or portal plans. Manual primary-evidence intake keeps
+expected occurrences free of payable facts; issued amounts use exact decimals.
+Finance edits invalidate certification and produce same-period observation revisions.
+Receipts remain FYI; no payment/settlement/scheduler is introduced. The separately
+authorized first utility/property chain remains necessary before live readiness.

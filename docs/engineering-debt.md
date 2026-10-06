@@ -77,20 +77,34 @@ forged claims and the legitimate human path. See [ADR-043](decisions.md#adr-043-
 
 ## D03 — Live Notion metadata and finance-role mapping missing (high)
 
-**Verified:** Notion `_page_to_asset` does not populate KnowledgeAsset.metadata.
-Recurring obligations and portal review depend on fields supplied by fixtures.
-The audited local registry had no finance role and tracked overrides supplied
-none. ADR-029 leaves schema mapping as a review trigger. **Unknown:** whether an
-approved schema exists outside the repo.
+**Status:** Resolved in code, 6 October 2026, under [ADR-044](decisions.md#adr-044-certified-financial-identities-and-local-owner-certification).
+Live metadata readiness and the first auth-only validation remain pending owner work.
 
-Evidence: [Notion adapter](../src/wally/adapters/notion/adapter.py),
-[observation ingest](../src/wally/ops/observe.py), [plan construction](../src/wally/ops/act.py).
+The typed catalog now owns immutable property/entity/provider/account/definition/
+instance IDs, stable Notion property mappings, exact money, complete pagination/
+relations, duplicates, material versions and persistent certificates. Seven source/
+record/chain gates fail closed. Local-owner certification requires a dedicated
+capability, primary evidence/attestations, fresh exact-version confirmation and
+post-prompt revalidation. Identity/tracking and portal scopes are separate; portal
+readiness also requires governed exact-version auth-only acceptance. Generic
+knowledge metadata no longer establishes obligations or portal plans.
 
-**Acceptance:** agree/document schema and designated database roles, implement
-typed mapping for cadence/due and portal/credential-reference/auth fields, and
-test actual Notion-shaped responses through ingestion/preflight. Missing or
-malformed fields fail closed. Complete a separately authorized auth-only live
-validation before describing those paths as operationally ready; no payments.
+Existing Recurring Bills is generalized conceptually; additive schema migration
+preserves all database/page identities and rows. No live schema, data cleanup,
+certification or chain enablement was performed during implementation. Restricted
+account serialization suppresses customer IDs. Receipts remain FYI under D04;
+D03 provides no payment or settlement path.
+
+Evidence: [typed catalog](../src/wally/finance/service.py),
+[Notion reader](../src/wally/finance/notion.py),
+[Notion-shaped and boundary tests](../tests/test_finance_catalog.py),
+[operator procedure and limitations](finance-catalog.md).
+
+**Live acceptance:** separately authorize one utility/property chain, review and
+apply only necessary additive schema changes, pin stable property mappings,
+validate primary documents, certify/enable identity, manually intake an occurrence,
+then certify/review the portal profile and perform auth-only acceptance. Do not
+describe configured/fixture-tested paths as live operational readiness.
 
 ## D04 — Unmatched receipt can resolve an unrelated obligation (high)
 
@@ -167,8 +181,11 @@ delivery, finance and calendar plus stale fingerprint/closed-Matter cases.
 
 ## D07 — Incomplete incremental observation semantics (medium)
 
-**Verified:** Knowledge fingerprints use asset/period, ignoring edits within a
-period; calendar snapshots use start/summary, omitting other material fields.
+**Status:** Finance portion resolved in D03; calendar work remains open. Certified
+instance versions/dependency bindings create fresh observations within a period,
+block stale Matters and invalidate old proposal/target authority.
+
+**Remaining verified defect:** calendar snapshots use start/summary, omitting other material fields.
 Calendar listing does not paginate; disappearance from the upcoming result can
 resolve a Matter. Incomplete results can therefore masquerade as resolution.
 

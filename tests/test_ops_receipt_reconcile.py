@@ -5,8 +5,11 @@ from datetime import timedelta
 
 import pytest
 
+from tests.finance_fixture import ATTEST, PROOF, catalog_fixture
 from tests.mock_knowledge import MockKnowledgeProvider
-from tests.test_ops_brief import NOW, FixtureCommunications, _email, _service
+from tests.test_ops_brief import NOW, FixtureCommunications, _email
+from tests.test_ops_brief import _service as _base_service
+from wally.finance.models import Kind, Scope
 from wally.models.knowledge import KnowledgeAsset, KnowledgeClass
 from wally.models.ops import MatterDomain, MatterStatus, ObservationCategory
 from wally.ops.decisions import UserDecision
@@ -25,6 +28,28 @@ def _knowledge(*asset_ids):
             metadata={"cadence": "monthly", "due_date": "2026-08-15"},
         )
     return knowledge
+
+
+def _service(tmp_path, comms, knowledge=None):
+    service = _base_service(tmp_path, comms, knowledge)
+    if knowledge is None or not knowledge._assets:
+        return service
+    catalog, chain, _ = catalog_fixture(tmp_path, service.authority)
+    service._finance_catalog = catalog
+    for index in range(1, len(knowledge._assets)):
+        facts = asdict(catalog.store.get(chain["instance"]).candidate.facts)
+        facts.update(occurrence=f"distinct-{index}", invoice_reference=f"INV-{index}")
+        record = catalog.register_local(
+            Kind.INSTANCE, facts, context=service.authority.issue("cli")
+        )
+        catalog.certify(
+            record.id,
+            Scope.IDENTITY,
+            evidence=PROOF,
+            attestations=ATTEST,
+            context=service.authority.issue("cli"),
+        )
+    return service
 
 
 def _receipt(**changes):

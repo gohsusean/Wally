@@ -5,7 +5,6 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
-from wally.models.knowledge import KnowledgeAsset
 from wally.models.ops import Observation, ObservationCategory
 from wally.ops.classify import classify_email, looks_like_injection
 from wally.ops.store import OperationsStore
@@ -16,7 +15,6 @@ from wally.ops.text import (
     extract_currency_amount,
 )
 from wally.providers.communications import CommunicationsProvider
-from wally.providers.knowledge import KnowledgeProvider
 from wally.runtime.authority import InformationAuthority
 
 EXTERNAL = InformationAuthority.EXTERNAL_COMMUNICATIONS.value
@@ -88,10 +86,13 @@ class SourceObserver:
                 ),
                 trusted=False,
                 authority=EXTERNAL,
-                confidence=0.9 if category in {
+                confidence=0.9
+                if category
+                in {
                     ObservationCategory.INVOICE,
                     ObservationCategory.RECEIPT,
-                } else 0.7,
+                }
+                else 0.7,
                 thread_id=summary.thread_id,
                 extra=extra,
             )
@@ -180,63 +181,39 @@ class SourceObserver:
         self._store.set_checkpoint("calendar", {"snapshots": snapshots})
         return ingested
 
-    def observe_knowledge(
-        self,
-        knowledge: KnowledgeProvider,
-        *,
-        now: datetime | None = None,
-        bills_role: str = "finance",
-    ) -> list[Observation]:
-        current = _now(now)
-        ingested: list[Observation] = []
-        seen: set[str] = set()
-        assets: list[KnowledgeAsset] = []
-        for query in ("obligation", "recurring", "due"):
-            try:
-                result = knowledge.retrieve(query, role=bills_role, limit=20)
-            except Exception:
-                continue
-            for asset in result.assets:
-                if asset.id in seen:
-                    continue
-                seen.add(asset.id)
-                assets.append(asset)
-        for asset in assets:
-            ingested.extend(self._obligation_from_asset(asset, current))
-        return ingested
+    def observe_knowledge(self, knowledge, *, now=None, bills_role="finance") -> list[Observation]:
+        """Generic knowledge metadata cannot establish canonical financial facts."""
+        return []
 
-    def _obligation_from_asset(
-        self, asset: KnowledgeAsset, current: datetime
-    ) -> list[Observation]:
-        meta = {key.lower(): value for key, value in asset.metadata.items()}
-        cadence = (meta.get("cadence") or meta.get("recurrence") or "").lower()
-        if cadence not in {"monthly", "recurring", "annual"} and not meta.get("due_date"):
-            return []
-        period = current.strftime("%Y-%m")
-        if cadence == "annual":
-            period = current.strftime("%Y")
-        fingerprint = f"knowledge-obligation:{asset.id}:{period}"
-        if self._store.get_observation_by_fingerprint(fingerprint) is not None:
-            return []
-        due = meta.get("due_date") or meta.get("due_at") or ""
-        extra = {"period": period, "cadence": cadence or "unspecified"}
-        if looks_like_injection(asset.content):
-            extra["injection_suspected"] = "true"
-        observation = Observation(
-            id=str(uuid4()),
-            fingerprint=fingerprint,
-            source="knowledge",
-            source_id=asset.id,
-            observed_at=_iso(current),
-            source_timestamp=due or _iso(current),
-            category=ObservationCategory.KNOWLEDGE_OBLIGATION,
-            title=clean_title(asset.title),
-            summary=clean_email_snippet(asset.content),
-            trusted=True,
-            authority=KNOWLEDGE,
-            confidence=1.0,
-            related_knowledge_id=asset.id,
-            extra=extra,
-        )
-        self._store.save_observation(observation)
-        return [observation]
+    def observe_finance(self, catalog, *, now=None) -> list[Observation]:
+        current = _now(now)
+        ingested = []
+        for record, binding in catalog.tracked_instances():
+            facts = record.candidate.facts
+            fingerprint = f"finance-instance:{record.id}:{record.version}:{binding}"
+            if self._store.get_observation_by_fingerprint(fingerprint):
+                continue
+            observation = Observation(
+                id=str(uuid4()),
+                fingerprint=fingerprint,
+                source="finance",
+                source_id=record.id,
+                observed_at=_iso(current),
+                source_timestamp=facts.due_date,
+                category=ObservationCategory.KNOWLEDGE_OBLIGATION,
+                title=f"{facts.stage.capitalize()} obligation {record.id[-8:]}",
+                summary=f"Owner-certified {facts.stage} obligation occurrence; review only.",
+                trusted=True,
+                authority=KNOWLEDGE,
+                confidence=1.0,
+                related_knowledge_id=facts.definition,
+                extra={
+                    "finance_binding": binding,
+                    "stage": facts.stage,
+                    "amount": facts.amount,
+                    "currency": facts.currency,
+                },
+            )
+            self._store.save_observation(observation)
+            ingested.append(observation)
+        return ingested

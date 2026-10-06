@@ -21,7 +21,13 @@ def _apply_override(
     return NotionDatabaseConfig(
         name=record.registry_key,
         id=record.database_id,
-        role=(override.role if override and override.role else record.role),
+        role=(
+            "finance"
+            if record.role == "finance"
+            else override.role
+            if override and override.role
+            else record.role
+        ),
         readable=True,
         writable=writable,
         knowledge_class=classification,
@@ -53,7 +59,5 @@ def databases_from_registry(
         if _normalize_id(record.database_id) in notion.exclude_ids:
             continue
         override = notion.overrides.get(_normalize_id(record.database_id))
-        configs.append(
-            _apply_override(record, override, notion.defaults.type_property)
-        )
+        configs.append(_apply_override(record, override, notion.defaults.type_property))
     return configs

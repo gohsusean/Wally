@@ -120,6 +120,8 @@ class MatterReconciler:
         return existing if existing is None or not self._is_receipt_note(existing) else None
 
     def _matter_fingerprint(self, observation: Observation) -> str:
+        if observation.source == "finance":
+            return f"matter:finance-instance:{observation.source_id}"
         if observation.source == "calendar":
             return f"matter:event:{observation.source_id}"
         if observation.category == ObservationCategory.KNOWLEDGE_OBLIGATION:
@@ -253,9 +255,7 @@ class MatterReconciler:
         if existing and existing.status not in {MatterStatus.RESOLVED, MatterStatus.DISMISSED}:
             existing.status = MatterStatus.WATCHING
             existing.expected_by = existing.expected_by or expected
-            return self._touch(
-                existing, observation, current, last_change="Waiting for reply"
-            )
+            return self._touch(existing, observation, current, last_change="Waiting for reply")
         matter = self._new_matter(
             observation,
             current,
@@ -324,6 +324,24 @@ class MatterReconciler:
         )
 
     def _open_obligation(self, observation: Observation, current: datetime) -> Matter:
+        if observation.source == "finance":
+            existing = self._store.get_matter_by_fingerprint(self._matter_fingerprint(observation))
+            if existing and existing.status in {MatterStatus.RESOLVED, MatterStatus.DISMISSED}:
+                return existing
+            matter = existing or self._new_matter(observation, current)
+            matter.status = MatterStatus.OPEN
+            matter.title = observation.title
+            matter.summary = observation.summary
+            matter.due_at = observation.source_timestamp
+            matter.updated_at = _iso(current)
+            matter.observation_ids = (observation.id,)
+            matter.knowledge_ids = (observation.related_knowledge_id,)
+            matter.open_reason = (
+                f"Certified {observation.extra['stage']} occurrence; no payment authority"
+            )
+            matter.last_change = "Canonical occurrence version observed"
+            self._store.save_matter(matter)
+            return matter
         existing = self._store.get_matter_by_fingerprint(self._matter_fingerprint(observation))
         due = observation.source_timestamp
         if existing and existing.status != MatterStatus.RESOLVED:

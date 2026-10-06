@@ -1,0 +1,8 @@
+# D03 is opt-in. Add reviewed mappings with stable property IDs after schema preview.
+# Configuration alone grants neither source designation nor record certification.
+schema_version: 1
+sources: []
+profiles: []
+# Privacy restriction applies even before finance source designation/certification.
+restricted_databases:
+  - 3884d585-1c89-803a-8164-fe2dda19333e # Existing Bill Accounts; identifiers stay local

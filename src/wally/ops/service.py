@@ -44,12 +44,14 @@ class ObserveBriefService:
         bills_role: str = "finance",
         display_timezone: str | None = None,
         authority: PrincipalAuthority | None = None,
+        finance_catalog=None,
     ) -> None:
         self._store = store
         self._audit = audit
         self._authority = authority or PrincipalAuthority()
         self._communications = communications
         self._knowledge = knowledge
+        self._finance_catalog = finance_catalog
         self._calendar_horizon_days = calendar_horizon_days
         self._email_lookback_days = email_lookback_days
         self._bills_role = bills_role
@@ -84,14 +86,12 @@ class ObserveBriefService:
                     horizon_days=self._calendar_horizon_days,
                 )
             )
-        if self._knowledge is not None:
-            ingested.extend(
-                self._observer.observe_knowledge(
-                    self._knowledge,
-                    now=now,
-                    bills_role=self._bills_role,
-                )
-            )
+        if self._finance_catalog is not None:
+            try:
+                ingested.extend(self._observer.observe_finance(self._finance_catalog, now=now))
+            except Exception:
+                self._log("finance_observation_blocked", "finance", "certification unavailable")
+        self._refresh_finance_matters(now)
         for fingerprint in self._observer.skipped_fingerprints:
             # Fingerprints embed source text (a calendar fingerprint carries the event
             # summary), so the audit records the opaque id of the stored observation.
@@ -111,6 +111,42 @@ class ObserveBriefService:
             self._audit_matter(previous, matter)
         self._reconciler.refresh_priorities(now=now)
         return ingested
+
+    def _refresh_finance_matters(self, now):
+        from dataclasses import replace
+
+        from wally.models.ops import MatterStatus
+
+        for matter in self._store.list_matters():
+            if matter.source != "finance" or matter.status not in {
+                MatterStatus.OPEN,
+                MatterStatus.BLOCKED,
+            }:
+                continue
+            ready = False
+            if self._finance_catalog is not None:
+                try:
+                    record = self._finance_catalog.store.get(
+                        matter.fingerprint.removeprefix("matter:finance-instance:")
+                    )
+                    self._finance_catalog.binding(record.id)
+                    definition = record.candidate.facts.definition
+                    from wally.finance.models import Scope
+
+                    ready = self._finance_catalog.store.enabled(
+                        definition, Scope.IDENTITY, self._finance_catalog.binding(definition)
+                    )
+                except Exception:
+                    pass
+            if not ready:
+                self._store.save_matter(
+                    replace(
+                        matter,
+                        status=MatterStatus.BLOCKED,
+                        open_reason="Financial certification needs attention",
+                        updated_at=self._clock(now).isoformat(),
+                    )
+                )
 
     def brief(
         self,

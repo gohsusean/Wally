@@ -231,6 +231,10 @@ def _review_bill(
         "observation_ids": list(observation_ids),
         "thread_id": matter.thread_id,
     }
+    if any(item.source == "finance" for item in evidence):
+        fields["finance_bindings"] = sorted(
+            item.extra.get("finance_binding", "") for item in evidence if item.source == "finance"
+        )
     # Omitted when absent so a v0.13 bill with no structured amount keeps its fingerprint.
     amounts = _bill_amounts(evidence)
     if amounts:

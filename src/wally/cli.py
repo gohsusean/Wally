@@ -67,6 +67,9 @@ def build_parser() -> argparse.ArgumentParser:
         help="Skip interactive pending database classification at startup",
     )
     sub = parser.add_subparsers(dest="cli_command")
+    from wally.cli_finance import add_parser
+
+    add_parser(sub)
     brief = sub.add_parser("brief", help="Generate an operational Chief-of-Staff brief")
     brief.add_argument("--json", action="store_true", dest="brief_json")
     brief.add_argument(
@@ -162,9 +165,7 @@ def _print_health(app) -> None:
     if app.settings.knowledge_enabled and not health.get("knowledge", False):
         hints.append("Set NOTION_API_KEY and share Notion databases with your integration.")
     if app.settings.workflow_enabled and not health.get("workflow", False):
-        hints.append(
-            "Set N8N_WEBHOOK_BASE_URL and configure config/workflows.yaml for workflows."
-        )
+        hints.append("Set N8N_WEBHOOK_BASE_URL and configure config/workflows.yaml for workflows.")
     if app.settings.communications_enabled and not health.get("communications", False):
         hints.append(
             "Set GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, and GOOGLE_REFRESH_TOKEN. "
@@ -281,10 +282,7 @@ def _ops_required(app) -> bool:
 
 
 def _print_decision_result(proposal) -> None:
-    print(
-        f"{proposal.status.value}: {proposal.id}\n"
-        "Wally has not executed this proposal."
-    )
+    print(f"{proposal.status.value}: {proposal.id}\nWally has not executed this proposal.")
 
 
 def _run_approvals(app, *, refresh: bool, as_json: bool) -> int:
@@ -590,6 +588,10 @@ def run_cli(argv: list[str] | None = None) -> int:
         return 1
 
     command = getattr(args, "cli_command", None)
+    if command == "finance":
+        from wally.cli_finance import run as run_finance
+
+        return run_finance(app, args)
     if command == "brief":
         return _run_brief(app, args)
     if command == "approvals":
@@ -620,16 +622,12 @@ def run_cli(argv: list[str] | None = None) -> int:
     print(BANNER)
     print(f"Session: {session.id}")
     if app.settings.reasoning_profile_override:
-        profile_label = (
-            f"{app.settings.reasoning_profile_override} (override)"
-        )
+        profile_label = f"{app.settings.reasoning_profile_override} (override)"
     else:
         profile_label = f"auto (default {app.settings.default_reasoning_profile})"
 
     print(
-        f"Environment: {app.settings.environment} | "
-        f"Profile: {profile_label} | "
-        f"Dry-run: {dry_run}"
+        f"Environment: {app.settings.environment} | Profile: {profile_label} | Dry-run: {dry_run}"
     )
     if app.knowledge_registry is not None:
         print_pending_banner(app.knowledge_registry)
@@ -661,6 +659,22 @@ def run_cli(argv: list[str] | None = None) -> int:
 
         if user_input.startswith("/"):
             verb = user_input.split()[0].lower()
+            if verb == "/finance":
+                import shlex
+
+                from wally.cli_finance import run as run_finance
+
+                try:
+                    finance_args = build_parser().parse_args(
+                        ["finance", *shlex.split(user_input)[1:]]
+                    )
+                    run_finance(app, finance_args, channel=REPL_CHANNEL)
+                except (SystemExit, ValueError):
+                    print(
+                        "Use /finance status, schema, designate, intake, certify, "
+                        "enable, revoke or accept-portal."
+                    )
+                continue
             if verb in {"/exit", "/quit"}:
                 print("Goodbye.")
                 return 0

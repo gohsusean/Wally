@@ -34,14 +34,27 @@ class RecordingBrowserAdapter:
     def name(self) -> str:
         return "browser"
 
+    @property
+    def supports_live_auth_verification(self) -> bool:
+        return False
+
     def is_healthy(self) -> bool:
         return True
 
-    def open_session(self, *, url: str) -> BrowserSession:
+    def open_session(self, *, url: str, allowed_origins: tuple[str, ...] = ()) -> BrowserSession:
         session_id = str(uuid.uuid4())
         self._sessions[session_id] = _RecordingSession(session_id=session_id, url=url)
+        if allowed_origins:
+            self.restrict_origins(session_id, allowed_origins)
         self.opened_urls.append(url)
         return BrowserSession(session_id=session_id, url=url)
+
+    def restrict_origins(self, session_id: str, origins: tuple[str, ...]) -> None:
+        from wally.finance.models import FinanceError, origin
+
+        session = self._sessions[session_id]
+        if origin(session.url) not in origins:
+            raise FinanceError("Portal origin denied.")
 
     def run_actions(
         self,

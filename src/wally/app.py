@@ -59,6 +59,7 @@ class App:
     act: ActVerifyService | None = None
     authority: PrincipalAuthority = field(default_factory=PrincipalAuthority)
     gateway: GatewayRuntime | None = None
+    finance_catalog: object | None = None
 
 
 class _UnavailableLLM:
@@ -148,6 +149,12 @@ def create_app(
         llm = _UnavailableLLM(exc.reason)
 
     providers, knowledge, registry, workflow, communications, _, web = _build_providers(settings)
+    if hasattr(knowledge, "restrict_finance_sources"):
+        from wally.finance.config import restricted_databases
+
+        knowledge.restrict_finance_sources(
+            lambda: restricted_databases(settings.project_root / "config" / "finance.yaml")
+        )
 
     sessions = SessionStore(settings.session_database)
     conversation = create_conversation_provider(settings, sessions)
@@ -220,6 +227,23 @@ def create_app(
     ops = None
     act = None
     gateway = None
+    finance_catalog = None
+    if settings.ops_enabled and registry is not None:
+        from wally.finance.config import load_profiles, load_sources
+        from wally.finance.service import FinanceService
+        from wally.finance.store import FinanceStore
+
+        finance_config_path = settings.project_root / "config" / "finance.yaml"
+        finance_catalog = FinanceService(
+            FinanceStore(settings.ops_database),
+            authority=authority,
+            approval=CLIApprovalProvider(),
+            registry=registry,
+            reader=knowledge.finance_reader() if hasattr(knowledge, "finance_reader") else None,
+            sources=lambda: load_sources(finance_config_path),
+            profiles=lambda: load_profiles(finance_config_path),
+            dry_run=settings.dry_run,
+        )
     if settings.ops_enabled:
         ops_store = OperationsStore(settings.ops_database)
         ops = ObserveBriefService(
@@ -232,12 +256,14 @@ def create_app(
             email_lookback_days=settings.ops_email_lookback_days,
             bills_role=settings.finance_bills_role,
             display_timezone=settings.ops_timezone,
+            finance_catalog=finance_catalog,
             authority=authority,
         )
         act = ActVerifyService(
             ops_store,
             authority=authority,
             reconcile=ops.reconcile_proposals,
+            finance_catalog=finance_catalog,
             knowledge=knowledge,
             browser_executor=browser_executor,
             gate=gate,
@@ -272,4 +298,5 @@ def create_app(
         act=act,
         authority=authority,
         gateway=gateway,
+        finance_catalog=finance_catalog,
     )

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from datetime import datetime
 from typing import Any
 
@@ -15,6 +16,7 @@ from wally.models.actions import ActionClass, PlannedAction
 from wally.models.knowledge import (
     KnowledgeAsset,
     KnowledgeAssetType,
+    KnowledgeClass,
     KnowledgeRetrievalResult,
 )
 
@@ -50,6 +52,8 @@ class NotionKnowledgeAdapter:
         registry: KnowledgeRegistry | None = None,
         notion: NotionPlatformConfig | None = None,
     ) -> None:
+        self._restricted_finance_databases: set[str] = set()
+        self._finance_restriction_loader = None
         self._api_key = api_key
         self._registry = registry
         self._notion = notion
@@ -76,6 +80,24 @@ class NotionKnowledgeAdapter:
 
         databases = databases_from_registry(self._registry, self._notion)
         self._databases = {db.name: db for db in databases}
+
+    def restrict_finance_sources(self, database_ids) -> None:
+        from wally.finance.notion import notion_id
+
+        if callable(database_ids):
+            self._finance_restriction_loader = database_ids
+        else:
+            self._restricted_finance_databases = {notion_id(i) for i in database_ids}
+
+    def _restricted_database_ids(self):
+        if self._finance_restriction_loader is not None:
+            return self._finance_restriction_loader()
+        return self._restricted_finance_databases
+
+    def finance_reader(self):
+        from wally.finance.notion import NotionFinanceReader
+
+        return NotionFinanceReader(self._client)
 
     def planned_action_for_tool(
         self, tool_name: str, arguments: dict[str, Any]
@@ -341,9 +363,22 @@ class NotionKnowledgeAdapter:
             )
         if response.status_code >= 400:
             raise ProviderUnavailableError(
-                self.name, f"Knowledge provider error {response.status_code}: {response.text}"
+                self.name, f"Knowledge provider returned error {response.status_code}."
             )
         return response.json()
+
+    def _current_database(self, db):
+        if self._registry is None:
+            return db
+        record = self._registry.find_by_key_or_id(db.id)
+        if record is None:
+            return replace(db, writable=False, knowledge_class=KnowledgeClass.PENDING)
+        return replace(
+            db,
+            role="finance" if record.role == "finance" else db.role,
+            writable=record.classification == KnowledgeClass.OPERATIONAL,
+            knowledge_class=record.classification,
+        )
 
     def _readable_databases(self, role: str | None = None) -> list[NotionDatabaseConfig]:
         dbs = [db for db in self._databases.values() if db.readable]
@@ -351,17 +386,16 @@ class NotionKnowledgeAdapter:
             dbs = [db for db in dbs if db.role == role]
         return dbs
 
-    def _resolve_writable_database(
-        self, *, role: str, name: str | None
-    ) -> NotionDatabaseConfig:
+    def _resolve_writable_database(self, *, role: str, name: str | None) -> NotionDatabaseConfig:
         if name and name in self._databases:
-            db = self._databases[name]
+            db = self._current_database(self._databases[name])
             if not db.writable:
                 raise ValueError(f"Database {name} is not writable")
             return db
-        candidates = [db for db in self._databases.values() if db.writable and db.role == role]
+        current = [self._current_database(db) for db in self._databases.values()]
+        candidates = [db for db in current if db.writable and db.role == role]
         if not candidates:
-            candidates = [db for db in self._databases.values() if db.writable]
+            candidates = [db for db in current if db.writable]
         if not candidates:
             raise ValueError("No writable knowledge databases configured")
         return candidates[0]
@@ -370,7 +404,7 @@ class NotionKnowledgeAdapter:
         parent_db = page.get("parent", {}).get("database_id", "")
         for db in self._databases.values():
             if db.id.replace("-", "") == parent_db.replace("-", ""):
-                return db
+                return self._current_database(db)
         return None
 
     def _build_properties(
@@ -403,6 +437,16 @@ class NotionKnowledgeAdapter:
         content = ""
         if db.content_property and db.content_property in props:
             content = _extract_rich_text(props[db.content_property])
+        registry_record = self._registry.find_by_key_or_id(db.id) if self._registry else None
+        restricted = (
+            db.role == "finance"
+            or (registry_record and registry_record.role == "finance")
+            or db.id.replace("-", "")
+            in {i.replace("-", "") for i in self._restricted_database_ids()}
+        )
+        if restricted:
+            title = "Restricted financial record"
+            content = "Use authenticated local finance operations for reviewed financial facts."
         asset_type = KnowledgeAssetType.UNSPECIFIED
         if db.type_property and db.type_property in props:
             raw_type = _extract_select(props[db.type_property])
@@ -420,7 +464,7 @@ class NotionKnowledgeAdapter:
             role=db.role,
             knowledge_class=db.knowledge_class,
             asset_type=asset_type,
-            url=page.get("url"),
+            url=None if restricted else page.get("url"),
             last_edited=datetime.fromisoformat(last_edited) if last_edited else None,
         )
 

@@ -215,6 +215,20 @@ class KnowledgeRegistry:
             raise RuntimeError("Failed to load database after approval")
         return updated
 
+    def set_finance_role(self, database_id: str) -> None:
+        """Internal to authenticated FinanceService.designate, never a model tool."""
+        record = self.get(database_id)
+        if (
+            record is None
+            or record.classification != KnowledgeClass.OPERATIONAL
+            or not record.approved_by
+        ):
+            raise ValueError("Only approved operational databases can have a finance role")
+        with self._connect() as conn:
+            conn.execute(
+                "UPDATE knowledge_databases SET role='finance' WHERE database_id=?", (database_id,)
+            )
+
     def import_approved(
         self,
         *,

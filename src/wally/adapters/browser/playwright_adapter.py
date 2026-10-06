@@ -32,6 +32,10 @@ class PlaywrightBrowserAdapter:
     def name(self) -> str:
         return "browser"
 
+    @property
+    def supports_live_auth_verification(self) -> bool:
+        return True
+
     def is_healthy(self) -> bool:
         try:
             import playwright  # noqa: F401
@@ -53,14 +57,54 @@ class PlaywrightBrowserAdapter:
         # Do not enable tracing, HAR, or video — they persist credentials and session pages.
         self._browser = self._playwright.chromium.launch(headless=self._headless)
 
-    def open_session(self, *, url: str) -> BrowserSession:
+    def open_session(self, *, url: str, allowed_origins: tuple[str, ...] = ()) -> BrowserSession:
         self._ensure_browser()
         assert self._browser is not None
-        page = self._browser.new_page()
-        page.goto(url, wait_until="domcontentloaded")
+        page = self._browser.new_page(service_workers="block")
         session_id = str(uuid.uuid4())
         self._pages[session_id] = page
-        return BrowserSession(session_id=session_id, url=url)
+        try:
+            if allowed_origins:
+                # Install on the isolated context before any remote script/navigation.
+                self.restrict_origins(session_id, allowed_origins)
+            page.goto(url, wait_until="domcontentloaded")
+            if allowed_origins:
+                self._check_origin(page, allowed_origins)
+            return BrowserSession(session_id=session_id, url=url)
+        except Exception:
+            self.close_session(session_id)
+            raise ProviderUnavailableError(
+                "browser", "Portal navigation/origin policy failed."
+            ) from None
+
+    @staticmethod
+    def _check_origin(page, origins):
+        from wally.finance.models import FinanceError, origin
+
+        if origin(page.url) not in origins:
+            raise FinanceError("Portal origin denied.")
+
+    def restrict_origins(self, session_id: str, origins: tuple[str, ...]) -> None:
+        from wally.finance.models import FinanceError, origin
+
+        page = self._pages[session_id]
+        if page.url != "about:blank":
+            self._check_origin(page, origins)
+        if getattr(page, "_wally_restricted", False):
+            return
+
+        def restrict(route):
+            try:
+                allowed = origin(route.request.url) in origins
+            except FinanceError:
+                allowed = False
+            route.continue_() if allowed else route.abort()
+
+        page.context.route("**/*", restrict)
+        # Ordinary request routes do not cover WebSockets. Deny all on this bounded
+        # auth-only path, including sockets an initial script could retain.
+        page.context.route_web_socket("**/*", lambda socket: socket.close())
+        page._wally_restricted = True
 
     def run_actions(
         self,

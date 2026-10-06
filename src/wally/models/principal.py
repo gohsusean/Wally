@@ -30,6 +30,7 @@ class Capability(StrEnum):
     DECIDE_PROPOSAL = "decide_proposal"
     EXECUTE_PROPOSAL = "execute_proposal"
     VERIFY_EXECUTION = "verify_execution"
+    CERTIFY_FINANCIAL_DATA = "certify_financial_data"
 
 
 def clean_ref(value: Any) -> str:

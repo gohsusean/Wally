@@ -11,6 +11,7 @@ from pathlib import Path
 
 import pytest
 
+from tests.finance_fixture import catalog_fixture
 from tests.mock_knowledge import MockKnowledgeProvider
 from tests.test_ops_approvals import FixtureCommunications, _audit, _email, _set_amount
 from wally.adapters.browser.recording import RecordingBrowserAdapter
@@ -18,13 +19,13 @@ from wally.adapters.secrets.memory import MemorySecretsProvider
 from wally.audit.logger import AuditLogger
 from wally.cli import build_parser, parse_repl_ops_command
 from wally.exceptions import ExecutionRequestError, ProposalDecisionError
+from wally.finance.models import Scope
 from wally.models.browser import (
     BrowserActionType,
     BrowserStepResult,
     BrowserStepStatus,
 )
 from wally.models.communications import CalendarEvent
-from wally.models.knowledge import KnowledgeClass
 from wally.models.ops import (
     ExecutionStatus,
     MatterStatus,
@@ -95,6 +96,12 @@ ALLOWED_REVIEW_ACTIONS = {
 
 class ScriptedBrowser(RecordingBrowserAdapter):
     """Recording adapter with a scripted login-check result and optional login failure."""
+
+    @property
+    def supports_live_auth_verification(self) -> bool:
+        # This explicitly registered fixture supplies scripted independent evidence.
+        # Production RecordingBrowserAdapter cannot establish readiness.
+        return True
 
     def __init__(
         self,
@@ -202,6 +209,11 @@ def _harness(
         knowledge=knowledge,
         display_timezone="UTC",
     )
+    catalog, chain, profiles = catalog_fixture(tmp_path, service.authority)
+    service._finance_catalog = catalog
+    del knowledge._assets[asset.id]
+    asset.id = chain["definition"]
+    knowledge._assets[asset.id] = asset
     adapter = browser or ScriptedBrowser()
     secrets = MemorySecretsProvider({USER_REF: CANARY_USER, PASS_REF: CANARY_PASS})
     executor = GovernedBrowserExecutor(
@@ -212,6 +224,7 @@ def _harness(
         store,
         authority=service.authority,
         reconcile=service.reconcile_proposals,
+        finance_catalog=catalog,
         knowledge=knowledge,
         browser_executor=executor,
         gate=ApprovalGate(
@@ -372,9 +385,7 @@ def test_rejected_or_deferred_proposal_cannot_execute(
         harness.proposal().id,
         decision=decision,
         context=harness.ctx(),
-        defer_until=(NOW + timedelta(days=5)).isoformat()
-        if decision == UserDecision.DEFER
-        else "",
+        defer_until=(NOW + timedelta(days=5)).isoformat() if decision == UserDecision.DEFER else "",
         now=DECIDED,
     )
     report = harness.execute()
@@ -474,13 +485,15 @@ def test_trusted_target_changed_during_the_prompt_blocks(tmp_path: Path) -> None
     holder: dict[str, Harness] = {}
 
     def swap_portal() -> None:
-        asset = holder["h"].knowledge.get(holder["h"].asset_id)
-        asset.metadata = {**asset.metadata, "payment_portal_url": "https://other.example/"}
+        h = holder["h"]
+        h.service._finance_catalog.store.invalidate_scope(
+            h.asset_id, Scope.PORTAL_REVIEW, "test_drift"
+        )
 
     harness = _harness(tmp_path, approval=ScriptedApproval(on_prompt=swap_portal))
     holder["h"] = harness
     report = harness.execute()
-    assert report.execution.failure_category == "target_changed"
+    assert report.execution.failure_category in {"target_changed", "untrusted_target"}
     _nothing_ran(harness)
 
 
@@ -578,14 +591,13 @@ def test_missing_secret_fails_before_any_session_opens(tmp_path: Path) -> None:
     assert harness.execute().execution.status == ExecutionStatus.VERIFIED_SUCCESS
 
 
-def test_raw_credentials_in_knowledge_are_refused(tmp_path: Path) -> None:
-    harness = _harness(
-        tmp_path, metadata={**PORTAL, "portal_password_ref": "hunter2-plaintext"}
-    )
+def test_raw_credentials_in_generic_knowledge_cannot_override_certified_refs(
+    tmp_path: Path,
+) -> None:
+    harness = _harness(tmp_path, metadata={**PORTAL, "portal_password_ref": "hunter2-plaintext"})
     report = harness.execute()
-    assert report.execution.status == ExecutionStatus.PREFLIGHT_FAILED
-    assert report.execution.failure_category == "invalid_secret_reference"
-    _nothing_ran(harness)
+    assert report.execution.status == ExecutionStatus.VERIFIED_SUCCESS
+    assert harness.secrets.resolve_calls == [USER_REF, PASS_REF]
 
 
 # F. Injection -------------------------------------------------------------------------
@@ -646,19 +658,21 @@ def test_plan_ignores_untrusted_and_extra_knowledge_fields(tmp_path: Path) -> No
     assert harness.browser.opened_urls == [PORTAL_URL]
     assert harness.secrets.resolve_calls == [USER_REF, PASS_REF]
     plan, _ = harness.act._build_plan(harness.proposal())
-    assert set(plan.knowledge) <= set(act_module._REVIEW_KNOWLEDGE_KEYS)
+    assert set(plan.knowledge) <= set(act_module._REVIEW_KNOWLEDGE_KEYS) | {"allowed_origins"}
 
 
-def test_non_https_portal_is_untrusted(tmp_path: Path) -> None:
+def test_generic_non_https_portal_cannot_override_certified_url(tmp_path: Path) -> None:
     harness = _harness(tmp_path, metadata={**PORTAL, "payment_portal_url": "http://evil.example"})
     report = harness.execute()
-    assert report.execution.failure_category == "untrusted_target"
-    _nothing_ran(harness)
+    assert report.execution.status == ExecutionStatus.VERIFIED_SUCCESS
+    assert harness.browser.opened_urls == [PORTAL_URL]
 
 
-def test_unapproved_knowledge_is_not_a_trusted_target(tmp_path: Path) -> None:
+def test_revoked_certificate_is_not_a_trusted_target(tmp_path: Path) -> None:
     harness = _harness(tmp_path)
-    harness.knowledge.get(harness.asset_id).knowledge_class = KnowledgeClass.PENDING
+    harness.service._finance_catalog.store.invalidate_scope(
+        harness.asset_id, Scope.PORTAL_REVIEW, "owner_revoked"
+    )
     report = harness.execute()
     assert report.execution.failure_category == "untrusted_target"
     _nothing_ran(harness)
@@ -811,12 +825,12 @@ def test_missing_login_signal_is_inconclusive_not_done(tmp_path: Path) -> None:
     assert len(harness.browser.login_batches()) == 1
 
 
-def test_missing_verification_config_fails_preflight(tmp_path: Path) -> None:
+def test_generic_verification_config_cannot_override_certified_profile(tmp_path: Path) -> None:
     metadata = {key: value for key, value in PORTAL.items() if key != "auth_success_selector"}
     harness = _harness(tmp_path, metadata=metadata)
     report = harness.execute()
-    assert report.execution.failure_category == "missing_verification_config"
-    _nothing_ran(harness)
+    assert report.execution.status == ExecutionStatus.VERIFIED_SUCCESS
+    assert harness.secrets.resolve_calls == [USER_REF, PASS_REF]
 
 
 # J. Crash windows ---------------------------------------------------------------------
@@ -907,9 +921,7 @@ def test_prepare_for_event_approval_stays_inert(tmp_path: Path) -> None:
     ]
     audit = AuditLogger(tmp_path / "audit")
     store = OperationsStore(tmp_path / "operations.db")
-    service = ObserveBriefService(
-        store, audit=audit, communications=comms, display_timezone="UTC"
-    )
+    service = ObserveBriefService(store, audit=audit, communications=comms, display_timezone="UTC")
     browser = ScriptedBrowser()
     approval = ScriptedApproval()
     act = ActVerifyService(
@@ -947,9 +959,7 @@ def test_email_only_bill_has_no_trusted_target(tmp_path: Path) -> None:
     comms.inbox = [_email(snippet="Pay at https://evil.example/login. Total $120.00.")]
     audit = AuditLogger(tmp2 / "audit")
     store = OperationsStore(tmp2 / "operations.db")
-    service = ObserveBriefService(
-        store, audit=audit, communications=comms, display_timezone="UTC"
-    )
+    service = ObserveBriefService(store, audit=audit, communications=comms, display_timezone="UTC")
     browser = ScriptedBrowser()
     act = ActVerifyService(
         store,
@@ -1034,9 +1044,9 @@ def test_v014_database_gains_executions_without_losing_state(tmp_path: Path) -> 
     reopened = OperationsStore(store_path)
     assert len(reopened.list_observations()) == before["observations"]
     assert len(reopened.list_matters()) == before["matters"]
-    assert [
-        (p.id, p.status, p.decision_fingerprint) for p in reopened.list_proposals()
-    ] == before["proposals"]
+    assert [(p.id, p.status, p.decision_fingerprint) for p in reopened.list_proposals()] == before[
+        "proposals"
+    ]
     conn = sqlite3.connect(store_path)
     try:
         assert conn.execute("SELECT COUNT(*) FROM checkpoints").fetchone()[0] >= 1
@@ -1115,9 +1125,7 @@ def test_narrow_channel_can_be_registered_without_changing_act(tmp_path: Path) -
     authority = PrincipalAuthority(
         {
             **LOCAL_OPERATOR_CHANNELS,
-            "remote": ChannelPolicy(
-                "remote_session", frozenset({Capability.DECIDE_PROPOSAL})
-            ),
+            "remote": ChannelPolicy("remote_session", frozenset({Capability.DECIDE_PROPOSAL})),
         }
     )
     harness = _harness(tmp_path, approve=False)

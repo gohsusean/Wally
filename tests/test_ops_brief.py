@@ -167,48 +167,15 @@ def test_calendar_move_updates_same_matter(tmp_path: Path) -> None:
     assert "updated" in matters[0].last_change.lower() or matters[0].due_at == moved
 
 
-def test_recurring_knowledge_obligation_next_period_is_new_matter(tmp_path: Path) -> None:
+def test_generic_recurrence_metadata_has_no_canonical_finance_authority(tmp_path: Path) -> None:
     comms = FixtureCommunications()
     knowledge = MockKnowledgeProvider()
-    asset = KnowledgeAsset(
-        id="ka-sc",
-        title="Q3 service charge obligation",
-        content="Pay monthly service charge.",
-        database="operations",
-        role="finance",
-        knowledge_class=KnowledgeClass.OPERATIONAL,
-        metadata={"cadence": "monthly", "due_date": "2026-08-20"},
-    )
-    knowledge._assets[asset.id] = asset
+    asset = knowledge.seed("Q3 obligation", "Pay monthly", role="finance")
+    asset.metadata = {"cadence": "monthly", "due_date": "2026-08-20"}
     service = _service(tmp_path, comms, knowledge)
-
     service.brief(now=NOW)
-    first = [m for m in service.store.list_matters() if m.source == "knowledge"]
-    assert len(first) == 1
-    assert first[0].status == MatterStatus.OPEN
-
-    comms.inbox = [
-        _email(
-            message_id="msg-paid",
-            thread_id="thread-other",
-            subject="Payment received",
-            snippet="Payment confirmation for service charge.",
-        )
-    ]
-    service.brief(now=NOW + timedelta(days=1))
-    first_unresolved = service.store.get_matter(first[0].id)
-    assert first_unresolved is not None
-    assert first_unresolved.status == MatterStatus.OPEN
-
-    september = datetime(2026, 9, 2, 12, 0, tzinfo=UTC)
-    comms.inbox = []
-    service.brief(now=september)
-    knowledge_matters = [m for m in service.store.list_matters() if m.source == "knowledge"]
-    assert len(knowledge_matters) == 2
-    open_next = [m for m in knowledge_matters if m.status == MatterStatus.OPEN]
-    assert len(open_next) == 2
-    september_matter = next(m for m in open_next if m.recurrence_key == "2026-09")
-    assert september_matter.id != first[0].id
+    service.brief(now=datetime(2026, 9, 2, 12, 0, tzinfo=UTC))
+    assert service.store.list_matters() == []
 
 
 def test_prompt_injection_cannot_act_or_become_trusted(tmp_path: Path) -> None:
@@ -260,9 +227,7 @@ def test_prompt_injection_cannot_act_or_become_trusted(tmp_path: Path) -> None:
     assert email_obs[0].extra.get("injection_suspected") == "true"
     assert email_obs[0].category != ObservationCategory.RECEIPT
     receipts = [
-        m
-        for m in service.store.list_matters()
-        if "Resolved from payment receipt" in m.last_change
+        m for m in service.store.list_matters() if "Resolved from payment receipt" in m.last_change
     ]
     assert receipts == []
     knowledge_obs = [o for o in observations if o.source == "knowledge"]
@@ -273,9 +238,7 @@ def test_duplicate_ingest_is_idempotent(tmp_path: Path) -> None:
     comms = FixtureCommunications()
     comms.inbox = [_email()]
     start = (NOW + timedelta(days=5)).isoformat()
-    comms.events = [
-        CalendarEvent(event_id="evt-1", summary="Dentist", start=start, end=start)
-    ]
+    comms.events = [CalendarEvent(event_id="evt-1", summary="Dentist", start=start, end=start)]
     service = _service(tmp_path, comms)
     service.brief(now=NOW)
     obs = len(service.store.list_observations())
@@ -392,9 +355,7 @@ def test_brief_dates_are_human_readable_in_display_timezone(tmp_path: Path) -> N
 
     comms = FixtureCommunications()
     start = datetime(2026, 8, 16, 12, 0, tzinfo=UTC).isoformat()
-    comms.events = [
-        CalendarEvent(event_id="evt-tz", summary="Dentist", start=start, end=start)
-    ]
+    comms.events = [CalendarEvent(event_id="evt-tz", summary="Dentist", start=start, end=start)]
     service = ObserveBriefService(
         OperationsStore(tmp_path / "operations.db"),
         communications=comms,

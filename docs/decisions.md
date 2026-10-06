@@ -1626,3 +1626,65 @@ What other options were evaluated and why were they rejected?
 ### Review trigger (optional)
 When should this decision be revisited?
 ```
+
+## ADR-044: Certified financial identities and local owner certification
+
+**Status:** Accepted and implemented, 6 October 2026. Owner-approved D03 decisions.
+Live source designation, document validation, certification and auth-only acceptance
+remain a separately authorized pilot. See [catalog operations](finance-catalog.md).
+
+### Context
+
+Generic knowledge metadata and fixture-only portal configuration cannot establish
+financial identity or reviewed authority. An approved operational classification
+alone is insufficient. Recurring Bills must also represent irregular,
+statement-driven and one-off streams while preserving its database/pages.
+
+### Decision
+
+Wally owns immutable IDs for subjects/properties, providers, accounts, obligation
+definitions and occurrences. Source database/data-source/page IDs are provenance.
+Typed stable-property mappings, complete pagination/relation reads, deterministic
+normalization and duplicate detection register provisional candidates. Only the
+certified projection establishes canonical financial identity. Existing Notion
+rows remain provisional; additive schema changes never certify or rewrite them.
+
+Introduce `CERTIFY_FINANCIAL_DATA` for the authenticated local owner on CLI/REPL.
+No remote adapter or conversational tool gains this authority. Certification and
+chain enablement require fresh confirmation of the exact candidate/version,
+evidence and dependency bindings, followed by source/dependency rereads. Persist
+certificates, immutable revisions, provenance, timestamp, revocation/invalidation
+history and chain enablement in additive operational tables. Material changes,
+missing/partial sources and dependency changes invalidate readiness; reverting
+facts never resurrects invalidated certificates.
+
+Separate identity/tracking from portal review. Reviewed runtime profiles own
+selectors, exact origins, supported intent and auth conditions. Certified provider
+and account records supply URL and secret references only. Successful governed
+auth-only acceptance of the exact portal configuration precedes portal enablement.
+Approval remains inert; execution needs a separate authenticated capability check,
+fresh prompt and canonical revalidation before secret resolution.
+
+Manually validated primary evidence creates expected or issued instances using a
+stable occurrence discriminator. Expected instances contain no amount or invoice
+facts. Issued facts use exact decimal money and explicit amount basis. Corrections
+retain occurrence IDs, append revisions and explicitly replace invoice references.
+Email threads/amount similarity/receipts do not establish occurrence identity.
+Receipts remain FYI even when a payload claims owner confirmation.
+
+General knowledge serialization masks restricted financial sources. Customer IDs
+stay in the restricted typed catalog; credential values remain exclusively in the
+existing SecretsProvider. Technical Notion prose and Runtime Action fields never
+choose privileged behavior. D03 introduces no payment executor or generic payable
+payload; D01/D02 checks remain independently required on the legacy path.
+
+### Consequences
+
+All seven gates—classification, explicit designation, known kind, typed mapping,
+current certification, certified dependencies and chain enablement—must pass.
+Generic metadata no longer drives obligation observations or portal review plans.
+Existing fixture coverage is migrated to real certified catalog fixtures and
+Notion-shaped transport tests. Full safe tests and adversarial review are required.
+Finance revisions address the applicable part of D07; calendar debt remains.
+Snapshot reads cannot prove remote transactional immutability or document truth.
+The owner must validate one live chain before operational readiness is claimed.

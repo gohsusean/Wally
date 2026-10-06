@@ -81,6 +81,13 @@ class GovernedBrowserExecutor:
         if not navigation.allowed:
             raise ProviderUnavailableError("browser", navigation.reason or "Policy denied.")
 
+        if knowledge.get("allowed_origins"):
+            try:
+                return provider.open_session(
+                    url=trusted_url, allowed_origins=tuple(knowledge["allowed_origins"].split(","))
+                )
+            except Exception:
+                raise ProviderUnavailableError("browser", "Portal origin policy failed.") from None
         return provider.open_session(url=trusted_url)
 
     def run_governed_actions(
@@ -197,9 +204,7 @@ class GovernedBrowserExecutor:
                 "credentials_unavailable",
                 "Knowledge lists no usable portal login references or secrets are unavailable.",
             )
-        if any(
-            action.action_type not in _REVIEW_LOGIN_ACTION_TYPES for action in login_actions
-        ):
+        if any(action.action_type not in _REVIEW_LOGIN_ACTION_TYPES for action in login_actions):
             raise ExecutionNotStartedError(
                 "policy_denied", "Portal review login may only fill fields and submit login."
             )
@@ -207,6 +212,16 @@ class GovernedBrowserExecutor:
             session = self.open_trusted_session(bill)
         except ProviderUnavailableError as exc:
             raise ExecutionNotStartedError("untrusted_target", exc.reason) from exc
+        if bill.get("allowed_origins"):
+            try:
+                self._require_provider().restrict_origins(
+                    session.session_id, tuple(bill["allowed_origins"].split(","))
+                )
+            except Exception:
+                self.close_session(session.session_id)
+                raise ExecutionNotStartedError(
+                    "policy_denied", "Portal origin policy could not be enforced."
+                ) from None
         try:
             result = self.run_governed_actions(
                 knowledge=bill,
@@ -230,6 +245,10 @@ class GovernedBrowserExecutor:
         session_id: str,
     ) -> BrowserStepResult:
         """Read-only login check in an existing session. Never repeats the login."""
+        if bill.get("allowed_origins"):
+            self._require_provider().restrict_origins(
+                session_id, tuple(bill["allowed_origins"].split(","))
+            )
         actions = portal_verify_auth_actions(bill)
         if not actions:
             return BrowserStepResult(

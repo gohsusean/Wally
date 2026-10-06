@@ -24,18 +24,25 @@ class BrowserAutomationProvider(Protocol):
     """
 
     @property
-    def name(self) -> str:
+    def name(self) -> str: ...
+
+    @property
+    def supports_live_auth_verification(self) -> bool:
+        """Runtime provider capability; simulation results cannot establish readiness."""
         ...
 
-    def is_healthy(self) -> bool:
-        ...
+    def is_healthy(self) -> bool: ...
 
-    def open_session(self, *, url: str) -> BrowserSession:
+    def open_session(self, *, url: str, allowed_origins: tuple[str, ...] = ()) -> BrowserSession:
         """Open a new browser session at a URL.
 
         Callers must pass a URL already validated by runtime/browser_safety.py
         against payment_portal_url (or equivalent) from an approved Knowledge Asset.
         """
+        ...
+
+    def restrict_origins(self, session_id: str, origins: tuple[str, ...]) -> None:
+        """Block every request outside reviewed exact HTTPS origins; inspect current URL."""
         ...
 
     def run_actions(

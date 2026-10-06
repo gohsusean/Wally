@@ -27,7 +27,8 @@ Ignored local state includes:
   classifications/roles. This is not regenerated safely from Git alone.
 - `data/operations.db`: Observations, Matters, checkpoints, proposal versions and
   decisions, execution attempts, Gateway requests, ActiveMatter/session/correlation
-  links, Telegram updates/cursor/lease, and notification outbox.
+  links, Telegram updates/cursor/lease, notification outbox and additive certified
+  finance objects/versions/certificates/audit/enablement/acceptance tables.
 - `data/audit/*.jsonl`: append-only daily UTC audit events.
 - `data/logs/telegram-poll.{stdout,stderr}.log`: LaunchAgent output/error streams.
 - `.env`: provider credentials and local integration endpoint configuration.
@@ -56,8 +57,9 @@ command. Use direct read-only mechanisms for audits, with SQLite `mode=ro` and
   macOS Security.framework and unlocked login Keychain for unattended Telegram.
 - User GUI login session/launchd and network access to Telegram for polling.
 - Approved database classifications, correct roles and structured metadata for
-  operational Knowledge features. The Notion adapter currently omits that
-  metadata; live finance mapping is unresolved (D03).
+  operational Knowledge features. D03 uses a separate typed certified catalog;
+  general metadata grants no financial authority. Live designation/certification
+  and auth-only acceptance remain operator work; see [finance operations](finance-catalog.md).
 
 The 5 October audit found the Telegram process running, source version v0.18.0,
 and stale installed distribution metadata v0.13.0. It did not authenticate remote
@@ -195,3 +197,15 @@ pollers. Never clear uncertain records just to make recovery appear successful.
 The audit found private local files with `0644` read bits; access/retention and
 interpreter-scoped Keychain trust need an explicit threat-model decision (D13).
 No backup, chmod, Keychain, lease or service changes were made by the handover.
+
+## D03 operator boundary
+
+The [certified catalog guide](finance-catalog.md) gives local CLI/REPL designation,
+additive schema preview/application, primary-evidence intake, exact-version
+certification, revocation, chain enablement and governed auth-only acceptance.
+`config/finance.yaml` starts with empty source/profile lists, so the milestone
+automatically certifies or enables no existing record. The Bill Accounts privacy
+restriction applies before designation. Never print raw typed catalog records
+or put restricted intake/proof files into Git. Existing state remains untouched
+by development verification. Configure/review one live property/utility chain only
+under separate owner authorization; code tests are not live readiness evidence.

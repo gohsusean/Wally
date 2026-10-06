@@ -104,6 +104,8 @@ class LocalFinanceAdapter:
         supplied = arguments.get("bill")
         if not isinstance(supplied, dict) or not isinstance(supplied.get("asset_id"), str):
             return {}, "A canonical bill asset_id is required."
+        if supplied["asset_id"].startswith("fin_"):
+            return {}, "D03 financial identities do not authorize legacy payments."
         try:
             asset = self._knowledge.get(supplied["asset_id"])
         except Exception:

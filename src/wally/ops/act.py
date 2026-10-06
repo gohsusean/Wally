@@ -18,7 +18,7 @@ import contextlib
 import hashlib
 import json
 from collections.abc import Callable
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from typing import Any
 from urllib.parse import urlparse
@@ -32,7 +32,6 @@ from wally.exceptions import (
 )
 from wally.models.actions import ActionClass, PlannedAction
 from wally.models.browser import BrowserStepStatus
-from wally.models.knowledge import KnowledgeClass
 from wally.models.ops import (
     UNCERTAIN_EXECUTION_STATUSES,
     ExecutionStatus,
@@ -54,19 +53,10 @@ from wally.ops.execution import (
 from wally.ops.priority import parse_time
 from wally.ops.propose import propose_for_matter
 from wally.ops.store import OperationsStore
-from wally.ops.text import clean_title
 from wally.providers.approval import ApprovalProvider
 from wally.providers.knowledge import KnowledgeProvider
 from wally.runtime.browser_executor import GovernedBrowserExecutor
-from wally.runtime.browser_safety import resolve_trusted_portal_url
 from wally.runtime.principals import PrincipalAuthority
-from wally.runtime.secrets_safety import (
-    auth_success_selector,
-    auth_success_url_contains,
-    evaluate_secret_reference,
-    portal_login_refs,
-    portal_login_selectors,
-)
 from wally.safety.gates import ApprovalGate, GateResult
 
 PORTAL_REVIEW_EXECUTOR = "browser.portal_review_login"
@@ -115,8 +105,10 @@ class PortalReviewPlan:
     knowledge_id: str
     provider_label: str
     portal_host: str
-    knowledge: dict[str, str]
+    knowledge: dict[str, str] = field(repr=False)
     digest: str
+    catalog_binding: str = ""
+    acceptance: bool = False
 
     def authorization_summary(self) -> str:
         return (
@@ -159,6 +151,7 @@ class ActVerifyService:
         approval: ApprovalProvider,
         audit: AuditLogger | None = None,
         bills_role: str = "finance",
+        finance_catalog=None,
     ) -> None:
         self._store = store
         self._authority = authority
@@ -169,6 +162,7 @@ class ActVerifyService:
         self._approval = approval
         self._audit = audit
         self._bills_role = bills_role
+        self._finance_catalog = finance_catalog
 
     @property
     def store(self) -> OperationsStore:
@@ -180,6 +174,7 @@ class ActVerifyService:
         *,
         context: RequestContext,
         now: datetime | None = None,
+        acceptance: bool = False,
     ) -> ExecutionReport:
         """Execute one approved proposal for an authenticated caller.
 
@@ -188,6 +183,10 @@ class ActVerifyService:
         a context it issued with ``EXECUTE_PROPOSAL`` proceeds.
         """
         self._require(context, Capability.EXECUTE_PROPOSAL, "Execution")
+        if acceptance:
+            if self._finance_catalog is None:
+                raise ExecutionRequestError("Certified finance catalog unavailable.")
+            self._finance_catalog._owner(context)
         current = _clock(now)
         if self._store.get_proposal(proposal_id) is None:
             raise ExecutionRequestError(f"Unknown proposal: {proposal_id}")
@@ -210,7 +209,7 @@ class ActVerifyService:
         if existing is not None:
             return self._duplicate(existing)
 
-        plan, plan_problem = self._build_plan(proposal)
+        plan, plan_problem = self._build_plan(proposal, acceptance=acceptance)
         if plan is None:
             return self._preflight_failed(proposal, context, current, plan_problem)
         self._log(
@@ -331,9 +330,7 @@ class ActVerifyService:
 
         outcome = assess_portal_review(execution.evidence)
         if outcome == VerificationOutcome.INCONCLUSIVE:
-            self._log_execution(
-                "execution_verification_inconclusive", execution, context=verifier
-            )
+            self._log_execution("execution_verification_inconclusive", execution, context=verifier)
             return ExecutionReport(
                 f"{EXECUTED_UNVERIFIED_MESSAGE} Check the portal yourself, then run "
                 f"`wally verify {execution.id} --confirm success` or `--confirm failure`.",
@@ -357,9 +354,7 @@ class ActVerifyService:
             approval=RequestProvenance(
                 channel=proposal.decision_origin if proposal is not None else "",
                 principal=proposal.decision_principal if proposal is not None else "",
-                correlation_id=(
-                    proposal.decision_correlation_id if proposal is not None else ""
-                ),
+                correlation_id=(proposal.decision_correlation_id if proposal is not None else ""),
             ),
             execution=execution.request_provenance,
             verification=execution.verification_provenance,
@@ -455,6 +450,19 @@ class ActVerifyService:
                 with_evidence,
                 blocked=True,
             )
+        if outcome == VerificationOutcome.VERIFIED_SUCCESS and plan.acceptance:
+            try:
+                self._finance_catalog.accept_auth(
+                    plan.knowledge_id, plan.catalog_binding, with_evidence.id
+                )
+            except Exception:
+                return self._settle(
+                    with_evidence,
+                    VerificationOutcome.VERIFIED_FAILURE,
+                    now,
+                    method=VERIFY_AUTH_METHOD,
+                    verifier=with_evidence.request_provenance,
+                )
         return self._settle(
             with_evidence,
             outcome,
@@ -527,9 +535,7 @@ class ActVerifyService:
         )
         return "granted"
 
-    def _final_check(
-        self, proposal_id: str, plan: PortalReviewPlan, now: datetime
-    ) -> str | None:
+    def _final_check(self, proposal_id: str, plan: PortalReviewPlan, now: datetime) -> str | None:
         proposal = self._store.get_proposal(proposal_id)
         if proposal is None:
             return STALE_APPROVAL
@@ -538,7 +544,7 @@ class ActVerifyService:
             return problem
         if proposal.fingerprint != plan.fingerprint:
             return STALE_APPROVAL
-        rebuilt, rebuilt_problem = self._build_plan(proposal)
+        rebuilt, rebuilt_problem = self._build_plan(proposal, acceptance=plan.acceptance)
         if rebuilt is None:
             return rebuilt_problem
         if rebuilt.digest != plan.digest:
@@ -565,59 +571,62 @@ class ActVerifyService:
         return None
 
     def _build_plan(
-        self, proposal: ProposedAction
+        self, proposal: ProposedAction, *, acceptance: bool = False
     ) -> tuple[PortalReviewPlan | None, str]:
         if proposal.intent != ProposalIntent.REVIEW_BILL or len(proposal.knowledge_ids) != 1:
             return None, NO_TRUSTED_TARGET
         if self._browser is None:
             return None, "browser_unavailable"
-        if self._knowledge is None:
-            return None, "knowledge_unavailable"
-        knowledge_id = proposal.knowledge_ids[0]
-        try:
-            asset = self._knowledge.get(knowledge_id)
-        except Exception:
-            return None, "knowledge_unavailable"
-        if asset.knowledge_class == KnowledgeClass.PENDING or asset.role != self._bills_role:
-            return None, "untrusted_target"
-        meta = {str(key).lower(): str(value) for key, value in asset.metadata.items()}
-        trusted = {key: meta[key].strip() for key in _REVIEW_KNOWLEDGE_KEYS if meta.get(key)}
-        url, policy = resolve_trusted_portal_url(trusted)
-        if not policy.allowed or not url:
+        if self._finance_catalog is None:
             return None, NO_TRUSTED_TARGET
-        parsed = urlparse(url)
-        if parsed.scheme != "https" or not parsed.hostname:
+        if getattr(self._browser.provider, "supports_live_auth_verification", False) is not True:
+            return None, "live_auth_required"
+        definition_id = proposal.knowledge_ids[0]
+        try:
+            trusted, binding = self._finance_catalog.review_plan(
+                definition_id, acceptance=acceptance
+            )
+            observations = {o.id: o for o in self._store.list_observations()}
+            evidence = [observations.get(i) for i in proposal.observation_ids]
+            if not evidence or any(
+                item is None
+                or item.source != "finance"
+                or item.related_knowledge_id != definition_id
+                or self._finance_catalog.binding(item.source_id)
+                != item.extra.get("finance_binding")
+                for item in evidence
+            ):
+                return None, "target_changed"
+            parsed = urlparse(trusted["portal_url"])
+            plan_digest = hashlib.sha256(
+                json.dumps(
+                    {
+                        "definition": definition_id,
+                        "binding": binding,
+                        "instance_bindings": sorted(
+                            item.extra["finance_binding"] for item in evidence
+                        ),
+                        "acceptance": acceptance,
+                    },
+                    sort_keys=True,
+                ).encode()
+            ).hexdigest()
+            return PortalReviewPlan(
+                proposal.id,
+                proposal.fingerprint,
+                proposal.matter_id,
+                definition_id,
+                "certified bill",
+                parsed.hostname,
+                trusted,
+                plan_digest,
+                catalog_binding=binding,
+                acceptance=acceptance,
+            ), ""
+        except Exception:
             return None, "untrusted_target"
-        username_ref, password_ref = portal_login_refs(trusted)
-        user_selector, password_selector, _ = portal_login_selectors(trusted)
-        if not username_ref or not password_ref or not user_selector or not password_selector:
-            return None, "missing_login_config"
-        for reference in (username_ref, password_ref):
-            if not evaluate_secret_reference(reference).allowed:
-                return None, "invalid_secret_reference"
-        if not auth_success_selector(trusted) and not auth_success_url_contains(trusted):
-            return None, "missing_verification_config"
-        label = clean_title(trusted.get("provider") or asset.title) or "bill"
-        digest = hashlib.sha256(
-            json.dumps({"knowledge_id": knowledge_id, **trusted}, sort_keys=True).encode()
-        ).hexdigest()
-        return (
-            PortalReviewPlan(
-                proposal_id=proposal.id,
-                fingerprint=proposal.fingerprint,
-                matter_id=proposal.matter_id,
-                knowledge_id=knowledge_id,
-                provider_label=label[:80],
-                portal_host=parsed.hostname,
-                knowledge=trusted,
-                digest=digest,
-            ),
-            "",
-        )
 
-    def _recover_pending(
-        self, proposal: ProposedAction, now: datetime
-    ) -> ProposalExecution | None:
+    def _recover_pending(self, proposal: ProposedAction, now: datetime) -> ProposalExecution | None:
         """Return a blocking attempt, first retiring a pending row that never ran.
 
         The executor is reached only after pending → running succeeds, so a pending
