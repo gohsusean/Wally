@@ -1,7 +1,7 @@
 # Active engineering debt and deployment gaps
 
 **Status:** Open findings from the 5 October 2026 audit of `ce47fcd`, recorded
-6 October 2026. D01/D02 are resolved by the focused finance stabilization below;
+6 October 2026. D01/D02 and D04 are resolved in code by the focused stabilizations below;
 the other findings remain open. Priority expresses impact, not proof that harm occurred.
 
 Current paths are described in [current architecture](current-architecture.md);
@@ -94,7 +94,10 @@ validation before describing those paths as operationally ready; no payments.
 
 ## D04 — Unmatched receipt can resolve an unrelated obligation (high)
 
-**Verified:** reconciliation assigns an unmatched receipt to the sole open
+**Status:** Resolved in code, 6 October 2026, under the owner-approved
+fail-closed rule below. Canonical receipt matching remains unavailable.
+
+**Original verified defect:** reconciliation assigned an unmatched receipt to the sole open
 knowledge-backed finance Matter without matching financial identity. This
 conflicts with the documented FYI rule. False closure/proposal withdrawal is an
 **inferred risk**, not an observed live incident.
@@ -106,6 +109,35 @@ Evidence: [receipt fallback](../src/wally/ops/reconcile.py),
 cannot resolve a Matter based only on cardinality; unmatched/ambiguous evidence
 stays FYI or awaits explicit matching. Tests cover zero/one/multiple obligations,
 identity mismatches and proposal retention. Update ADR-034's scoped rationale.
+
+**Owner-approved rule / resolution:** financial receipt evidence must not resolve
+or materially advance a Matter until it can be bound to the canonical obligation
+being tracked. Candidate uniqueness, email-thread association and contextual
+correlation alone are insufficient. The owner explicitly chose to keep **all
+financial receipts FYI until canonical bill matching exists** on 6 October 2026.
+No invoice-thread exception is implemented.
+
+The sole-Matter fallback and receipt auto-resolution are removed. All receipts,
+including same-thread/amount matches and claimed canonical IDs or confirmations,
+remain separate, idempotent FYI records. Receipt wording classified as an ordinary
+reply cannot close or advance a financial Matter through thread lookup either.
+Notes cannot resolve themselves on replay, attach themselves to later invoices,
+change obligation attention or invalidate its proposal/decision. Legacy FYI rows
+retain their identities and history; new invoices do not reuse them.
+
+Baseline regressions reproduced sole-Matter false resolution, FYI replay
+self-resolution and a financial reply closure. Coverage includes zero/one/multiple
+obligations, disappearing competitors, ambiguous/shared threads, identity claims,
+amount/title similarity, injection, legacy notes and proposal/decision retention:
+[receipt reconciliation](../tests/test_ops_receipt_reconcile.py). Correct canonical
+calendar reconciliation and nonfinancial reply closure still work.
+
+Current ingestion has no canonical receipt-to-obligation binding or authenticated
+human association operation. No override is added; execution confirmation verifies
+portal review, never payment/receipt association. D03 remains out of scope. Missing
+infrastructure fails closed; this fix does not implement automatic matched-payment
+resolution. No historical financial closure is reopened or repaired automatically;
+suspected false associations need separate operator review of preserved evidence.
 
 ## D05 — Telegram processed-update/cursor crash seam (medium)
 
@@ -278,5 +310,6 @@ or full hosted ChatGPT validation was performed. Those are dated evidence, not
 permanent agent rules or a certification of all paths.
 
 No broad historical chat extraction is required. Required external inputs are
-current n8n exports, recovery arrangements, any agreed Notion schema, and the
-owner's receipt-matching decision; see [operations](operations.md).
+current n8n exports, recovery arrangements and any agreed Notion schema; see
+[operations](operations.md). The owner's receipt-matching decision is recorded
+under D04 above.

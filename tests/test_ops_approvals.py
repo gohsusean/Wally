@@ -338,26 +338,25 @@ def test_prose_amount_and_presentation_changes_do_not_void_approval(tmp_path: Pa
 
 def test_resolved_matter_withdraws_a_pending_proposal(tmp_path: Path) -> None:
     comms = FixtureCommunications()
-    comms.inbox = [_email()]
+    start = (NOW + timedelta(days=1)).isoformat()
+    comms.events = [
+        CalendarEvent(event_id="evt-canonical", summary="Meeting", start=start, end=start)
+    ]
     service = _service(tmp_path, comms)
     service.brief(now=NOW)
     proposal = _proposal(service)
 
-    comms.inbox.append(
-        _email(
-            message_id="msg-receipt",
-            subject="Payment confirmation",
-            snippet="Thank you for your payment. Receipt for August.",
-        )
-    )
-    service.brief(now=NOW + timedelta(days=1))
+    # Canonical event identity still permits resolution on cancellation. A receipt
+    # in a matching email thread is no longer a financial resolution fixture.
+    comms.events = []
+    service.brief(now=NOW + timedelta(hours=1))
 
     matter = service.store.list_matters()[0]
     assert matter.status is MatterStatus.RESOLVED
     stored = service.store.get_proposal(proposal.id)
     assert stored is not None
     assert stored.status is ProposalStatus.INVALIDATED
-    text = service.render(refresh=False, now=NOW + timedelta(days=1))
+    text = service.render(refresh=False, now=NOW + timedelta(hours=1))
     assert "Decisions waiting for you" not in text
     assert proposal.id not in text
 

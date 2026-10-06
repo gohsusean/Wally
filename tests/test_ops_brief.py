@@ -65,7 +65,7 @@ def _email(**kwargs) -> EmailSummary:
     return EmailSummary(**defaults)
 
 
-def test_bill_then_receipt_same_matter(tmp_path: Path) -> None:
+def test_bill_then_same_thread_receipt_remains_fyi(tmp_path: Path) -> None:
     comms = FixtureCommunications()
     comms.inbox = [_email()]
     service = _service(tmp_path, comms)
@@ -74,6 +74,7 @@ def test_bill_then_receipt_same_matter(tmp_path: Path) -> None:
     matters = service.store.list_matters()
     assert len(matters) == 1
     assert matters[0].status == MatterStatus.OPEN
+    bill_id = matters[0].id
     assert any(item.title == "Invoice" for item in brief.needs_attention)
 
     comms.inbox = [
@@ -86,15 +87,16 @@ def test_bill_then_receipt_same_matter(tmp_path: Path) -> None:
     ]
     brief = service.brief(now=NOW + timedelta(hours=1))
     matters = service.store.list_matters()
-    assert len(matters) == 1
-    assert matters[0].status == MatterStatus.RESOLVED
-    assert any(item.matter_id == matters[0].id for item in brief.recently_resolved)
-    assert not any(item.matter_id == matters[0].id for item in brief.needs_attention)
+    assert len(matters) == 2
+    assert service.store.get_matter(bill_id).status == MatterStatus.OPEN
+    assert any(item.matter_id == bill_id for item in brief.needs_attention)
+    assert not brief.recently_resolved
+    assert len(brief.fyi) == 1
 
     obs_count = len(service.store.list_observations())
     service.brief(now=NOW + timedelta(hours=2))
     assert len(service.store.list_observations()) == obs_count
-    assert len(service.store.list_matters()) == 1
+    assert len(service.store.list_matters()) == 2
     assert comms.sent == []
 
 
@@ -194,9 +196,9 @@ def test_recurring_knowledge_obligation_next_period_is_new_matter(tmp_path: Path
         )
     ]
     service.brief(now=NOW + timedelta(days=1))
-    first_resolved = service.store.get_matter(first[0].id)
-    assert first_resolved is not None
-    assert first_resolved.status == MatterStatus.RESOLVED
+    first_unresolved = service.store.get_matter(first[0].id)
+    assert first_unresolved is not None
+    assert first_unresolved.status == MatterStatus.OPEN
 
     september = datetime(2026, 9, 2, 12, 0, tzinfo=UTC)
     comms.inbox = []
@@ -204,9 +206,9 @@ def test_recurring_knowledge_obligation_next_period_is_new_matter(tmp_path: Path
     knowledge_matters = [m for m in service.store.list_matters() if m.source == "knowledge"]
     assert len(knowledge_matters) == 2
     open_next = [m for m in knowledge_matters if m.status == MatterStatus.OPEN]
-    assert len(open_next) == 1
-    assert open_next[0].id != first[0].id
-    assert open_next[0].recurrence_key == "2026-09"
+    assert len(open_next) == 2
+    september_matter = next(m for m in open_next if m.recurrence_key == "2026-09")
+    assert september_matter.id != first[0].id
 
 
 def test_prompt_injection_cannot_act_or_become_trusted(tmp_path: Path) -> None:
@@ -528,7 +530,7 @@ def test_legacy_unmatched_receipt_reason_is_canonical(tmp_path: Path) -> None:
         )
     )
     text = service.render(now=NOW, refresh=False)
-    assert "Why: Unmatched receipt; no open bill" in text
+    assert "Why: Unmatched receipt; bill association unverified" in text
     assert "Receipt noted; no matching open bill" not in text
     assert "Recently resolved" not in text
     assert "FYI" in text

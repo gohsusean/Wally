@@ -69,7 +69,7 @@ In the REPL: `/brief` (add `--no-refresh` to skip a new observe pass), `/approva
 
 Brief timestamps use `ops.timezone` when set, otherwise the system local timezone. Stored values remain ISO.
 
-Google Calendar auto-event boilerplate (and google.com/calendar / g.co/calendar URLs) is stripped from descriptions. Email snippets are length-capped; receipts use a shorter cap. Unmatched receipts are intended to appear under FYI. Current reconciliation has a sole-open-knowledge-finance fallback that can resolve an unmatched obligation; D04 records this exception and the required matching decision.
+Google Calendar auto-event boilerplate (and google.com/calendar / g.co/calendar URLs) is stripped from descriptions. Email snippets are length-capped; receipts use a shorter cap. All financial receipts remain FYI until canonical obligation binding exists. Candidate uniqueness and email-thread correlation cannot establish bill identity; D04 records the owner-approved fail-closed rule. Obligation attention and proposals remain unchanged.
 
 Live Gmail/Calendar/Notion is optional. CI uses fake providers. Do not treat a live mailbox run as a required gate.
 
@@ -175,7 +175,7 @@ The plan uses only the portal URL, secret refs, selectors, and success condition
 
 **Verification.** Only an explicit authenticated result from the configured success condition counts. Otherwise Wally says "Executed, but verification could not confirm completion." `wally verify` re-reads stored evidence and never reruns the action. For an uncertain attempt, `--confirm success|failure` records your own check.
 
-**No optimistic resolution.** A verified login is not a paid bill. The Matter and proposal are unchanged; only later Observe evidence resolves the bill.
+**No optimistic resolution.** A verified login is not a paid bill. The Matter and proposal are unchanged. Financial receipts remain FYI until a future implementation can bind them to the canonical obligation; current Observe does not resolve bills from receipt/thread correlation.
 
 ## Privacy
 

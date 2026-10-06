@@ -29,7 +29,7 @@ _CALENDAR_BOILERPLATE_URLS = re.compile(
 )
 
 UNMATCHED_RECEIPT_CHANGE = "Receipt noted; no matching open bill"
-UNMATCHED_RECEIPT_REASON = "Unmatched receipt; no open bill"
+UNMATCHED_RECEIPT_REASON = "Unmatched receipt; bill association unverified"
 
 _AMOUNT_TOKEN = re.compile(r"^\d{1,9}(?:\.\d{1,2})?$")
 _CURRENCY_AMOUNT = re.compile(

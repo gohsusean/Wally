@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
@@ -59,18 +58,16 @@ class MatterReconciler:
         self._preparation_hours = preparation_hours
 
     def fingerprint_for(self, observation: Observation) -> str:
+        if observation.category == ObservationCategory.RECEIPT:
+            noted = self._receipt_note(observation)
+            return noted.fingerprint if noted else self._receipt_fingerprint(observation)
         return self._matter_fingerprint(observation)
 
     def apply(self, observation: Observation, *, now: datetime | None = None) -> Matter | None:
         current = _now(now)
-        if (
-            observation.extra.get("injection_suspected") == "true"
-            and observation.category == ObservationCategory.RECEIPT
-        ):
-            observation = replace(observation, category=ObservationCategory.EMAIL_RECEIVED)
         handler = {
             ObservationCategory.INVOICE: self._open_or_update_invoice,
-            ObservationCategory.RECEIPT: self._resolve_receipt,
+            ObservationCategory.RECEIPT: self._note_receipt,
             ObservationCategory.EMAIL_SENT: self._open_waiting,
             ObservationCategory.EMAIL_REPLY: self._apply_reply,
             ObservationCategory.EMAIL_RECEIVED: self._apply_generic_email,
@@ -114,11 +111,13 @@ class MatterReconciler:
                 matter
                 for matter in self._store.find_matters_by_thread(observation.thread_id)
                 if matter.status not in {MatterStatus.RESOLVED, MatterStatus.DISMISSED}
+                and not self._is_receipt_note(matter)
             ]
             if open_matters:
                 return open_matters[0]
         fingerprint = self._matter_fingerprint(observation)
-        return self._store.get_matter_by_fingerprint(fingerprint)
+        existing = self._store.get_matter_by_fingerprint(fingerprint)
+        return existing if existing is None or not self._is_receipt_note(existing) else None
 
     def _matter_fingerprint(self, observation: Observation) -> str:
         if observation.source == "calendar":
@@ -127,6 +126,13 @@ class MatterReconciler:
             period = observation.extra.get("period", "")
             return f"matter:obligation:{observation.source_id}:{period}"
         if observation.thread_id:
+            legacy = self._store.get_matter_by_fingerprint(f"matter:thread:{observation.thread_id}")
+            if (
+                observation.category == ObservationCategory.INVOICE
+                and legacy
+                and self._is_receipt_note(legacy)
+            ):
+                return f"matter:invoice:{observation.source}:{observation.thread_id}"
             return f"matter:thread:{observation.thread_id}"
         return f"matter:source:{observation.source}:{observation.source_id}"
 
@@ -194,40 +200,52 @@ class MatterReconciler:
         self._store.save_matter(matter)
         return matter
 
-    def _resolve_receipt(self, observation: Observation, current: datetime) -> Matter:
-        existing = self._match_existing(observation)
-        if existing is None:
-            knowledge_open = [
+    @staticmethod
+    def _receipt_fingerprint(observation: Observation) -> str:
+        return f"matter:receipt:{observation.source}:{observation.source_id}"
+
+    @staticmethod
+    def _is_receipt_note(matter: Matter) -> bool:
+        return (
+            matter.open_reason.startswith("Unmatched receipt")
+            or matter.last_change == UNMATCHED_RECEIPT_CHANGE
+        )
+
+    def _receipt_note(self, observation: Observation) -> Matter | None:
+        noted = self._store.get_matter_by_fingerprint(self._receipt_fingerprint(observation))
+        if noted is not None:
+            return noted
+        # Reuse legacy FYI rows without rewriting their IDs, fingerprints or history.
+        return next(
+            (
                 matter
                 for matter in self._store.list_matters()
-                if matter.status not in {MatterStatus.RESOLVED, MatterStatus.DISMISSED}
-                and matter.source == "knowledge"
-                and matter.domain == MatterDomain.FINANCE
-            ]
-            if len(knowledge_open) == 1:
-                existing = knowledge_open[0]
-        if existing is None:
-            # Receipt without a matching open matter is FYI, not a resolution.
-            matter = self._new_matter(
-                observation,
-                current,
-                open_reason=UNMATCHED_RECEIPT_REASON,
-                last_change=UNMATCHED_RECEIPT_CHANGE,
-            )
-            matter.domain = MatterDomain.OTHER
-            matter.status = MatterStatus.OPEN
-            matter.open_reason = UNMATCHED_RECEIPT_REASON
-            self._store.save_matter(matter)
-            return matter
-        existing.status = MatterStatus.RESOLVED
-        existing.resolution_evidence = f"observation:{observation.id}"
-        existing.open_reason = ""
-        return self._touch(
-            existing,
+                if self._is_receipt_note(matter) and observation.id in matter.observation_ids
+            ),
+            None,
+        )
+
+    def _note_receipt(self, observation: Observation, current: datetime) -> Matter:
+        # No canonical receipt-to-obligation binding exists. Context and claimed
+        # confirmation cannot resolve a financial Matter; every receipt stays FYI.
+        noted = self._receipt_note(observation)
+        if noted is not None:
+            return noted
+        matter = self._new_matter(
             observation,
             current,
-            last_change="Resolved from payment receipt evidence",
+            open_reason=UNMATCHED_RECEIPT_REASON,
+            last_change=UNMATCHED_RECEIPT_CHANGE,
         )
+        # Separate receipt identity from thread/obligation identity. Replays and
+        # later invoices must neither resolve the note nor absorb it as a bill.
+        matter.fingerprint = self._receipt_fingerprint(observation)
+        matter.knowledge_ids = ()
+        matter.thread_id = ""
+        matter.domain = MatterDomain.OTHER
+        matter.status = MatterStatus.OPEN
+        self._store.save_matter(matter)
+        return matter
 
     def _open_waiting(self, observation: Observation, current: datetime) -> Matter:
         existing = self._match_existing(observation)
@@ -249,10 +267,14 @@ class MatterReconciler:
         self._store.save_matter(matter)
         return matter
 
-    def _apply_reply(self, observation: Observation, current: datetime) -> Matter:
+    def _apply_reply(self, observation: Observation, current: datetime) -> Matter | None:
         existing = self._match_existing(observation)
         if existing is None:
             return self._apply_generic_email(observation, current)
+        # Receipt wording may be classified as an ordinary reply. A thread-bound
+        # reply is context, not canonical financial resolution evidence.
+        if existing.domain == MatterDomain.FINANCE:
+            return None
         if existing.status == MatterStatus.WATCHING:
             existing.status = MatterStatus.RESOLVED
             existing.resolution_evidence = f"observation:{observation.id}"

@@ -1089,7 +1089,7 @@ v0.11 resolves passwords into Playwright FILL actions and n8n payloads. Secondar
 **Date:** 2026-08-16  
 **Deciders:** Founding engineer + project owner
 
-**Current scope / supersession:** The Observation/Matter/read-only ingestion boundary remains. [ADR-035](#adr-035-durable-proposed-actions-chief-of-staff-phase-2), [ADR-036](#adr-036-proposal-approval-is-not-execution-chief-of-staff-phase-3) and [ADR-037](#adr-037-guarded-execution-of-the-exact-approved-version-chief-of-staff-phase-4) extend the loop separately. The unmatched-receipt FYI rule has a current sole-open-Matter exception requiring resolution under D04; live metadata is missing under D03 in [engineering debt](engineering-debt.md).
+**Current scope / supersession:** The Observation/Matter/read-only ingestion boundary remains. [ADR-035](#adr-035-durable-proposed-actions-chief-of-staff-phase-2), [ADR-036](#adr-036-proposal-approval-is-not-execution-chief-of-staff-phase-3) and [ADR-037](#adr-037-guarded-execution-of-the-exact-approved-version-chief-of-staff-phase-4) extend the loop separately. D04 removes financial receipt auto-resolution: all receipts remain FYI until canonical obligation binding exists, under the owner-approved clarification below. Live metadata remains D03 in [engineering debt](engineering-debt.md).
 
 ### Context
 
@@ -1105,6 +1105,28 @@ v1.0 should make Wally a proactive Chief of Staff. The first increment must pers
 6. Version this increment as **0.12.0** (v1.0 Phase 1). Do not declare production 1.0.0.
 
 **v0.12.1 (quality patch):** Strip Google Calendar auto-event boilerplate from brief/observation text; unmatched receipts are FYI not “resolved”; render brief datetimes in the configured or system-local timezone. Still read-only.
+
+**D04 clarification (owner-approved, 6 October 2026):** Uniqueness of candidate
+is not proof of identity. Financial receipt evidence cannot resolve or materially
+advance a Matter until bound to its canonical obligation. Knowledge obligations
+carry asset and recurrence-period identity; Gmail message/thread IDs are provenance
+and context, not canonical bill identity. Matching amounts, invoice-thread history,
+observation trust labels and claimed confirmation cannot substitute for that bind.
+
+No canonical financial receipt association exists today. All financial receipts
+therefore remain separate FYI evidence, including receipts in the exact thread
+of a single invoice. No invoice-thread exception is retained. A thread reply
+cannot close or advance a financial Matter either; nonfinancial communications
+and canonical calendar reconciliation remain unchanged. Replay, later invoices
+and disappearance of competitors do not promote a note into proof. Obligation
+attention, proposal versions and decisions remain intact; legacy FYI history is
+preserved without migration or automatic repair of past financial closures.
+
+No human association operation is added. Future canonical matching (including
+live metadata work under D03) or explicit human association needs reviewed design;
+any human operation must use PrincipalAuthority-issued context/capability checks,
+never payload booleans or source strings. Portal execution confirmation remains
+review evidence, not payment completion.
 
 ### Consequences
 

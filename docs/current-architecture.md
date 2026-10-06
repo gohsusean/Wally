@@ -105,6 +105,18 @@ untrusted and hashed by Wally. Public context and audit events omit that capsule
 text. These minimization limits do not apply to full conversational transcripts.
 See [ops privacy](ops-privacy.md) and [domain models](../src/wally/models/ops.py).
 
+D04 reconciliation follows the owner-approved invariant: financial receipt
+resolution requires binding to the canonical obligation. Candidate uniqueness,
+Gmail thread identity, matching amounts and contextual correlation cannot supply
+that binding. It is not implemented today, so **all financial receipts remain
+FYI** and leave obligation attention/proposals unchanged. No invoice-thread
+exception exists. Ordinary thread replies cannot close or advance financial
+Matters either. Notes have a separate identity and cannot become matches by
+replay or disappearance of competitors; legacy FYI history is preserved.
+No human association API or remote permission is added. See
+[D04](engineering-debt.md#d04--unmatched-receipt-can-resolve-an-unrelated-obligation-high)
+and ADR-034 for the scoped rationale; D03 remains open.
+
 ## Proposal, decision, execution, verification
 
 Current intents: `prepare_for_event`, `review_bill`, `deliver_document`.
@@ -144,7 +156,8 @@ not repeated; known failure can permit a new explicit attempt and prompt.
 
 Verification checks stored evidence or an authorized explicit human confirmation;
 it does not rerun the browser. Portal-login success does not pay a bill or resolve
-its Matter. Only later Observe evidence changes the operational obligation.
+its Matter. Financial receipt resolution awaits future canonical obligation binding; current
+receipts remain FYI.
 The live Notion adapter does not yet populate the metadata needed for this plan
 or recurring obligations; fixture coverage is not live readiness (D03).
 
