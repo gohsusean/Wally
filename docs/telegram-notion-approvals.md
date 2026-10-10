@@ -173,12 +173,29 @@ An actual read-only `getMe` call authenticated successfully to the configured
 The exact staged snapshot, excluding unrelated finance work, passed **723 tests**
 with the same three exclusions and clean lint. Successful startup/API authentication
 is not owner authorization or end-to-end mutation acceptance.
-Desktop tool discovery still requires the owner's MCP reload; this conversation's
-tool inventory has no Wally entry. No actual biometric interaction is claimed.
+On 11 October the owner explicitly authorized isolated, nonfinancial live acceptance.
+This Codex conversation discovered all five installed Wally tools and called status,
+which reported principal `owner`, channel `codex_local`, both gates false and zero targets.
+Actual Desktop discovery is now established. No biometric interaction is claimed.
 
-No real Notion sandbox or edit has yet been created/executed. The four Phase 6 records
-and staged September invoice are excluded. Live acceptance requires explicit sandbox
-creation approval and parent page, exact nonfinancial registration, sandbox-only
-Telegram gate, shared runtime/client reload, actual owner button presses (including
-rejection), independent read verification and retained sanitized evidence. Production
-financial rollout remains blocked by live acceptance and external-writer controls.
+The Notion connector created a private top-level **🧪 Wally Sandbox** page,
+`3f54d585-1c89-81b9-b4e1-e3448785db06`, and its **Synthetic Acceptance Records**
+database, `288053ad-2773-45a6-b1ce-3e191d1c2b96` (data source
+`6a171555-9014-4214-951c-6fc03fbd4c52`). Two synthetic records start with Frequency
+`monthly` and Amount Policy `fixed_contract`; neither is financial or certified.
+No existing parent was used. Identities are also retained in ignored local state at
+`data/sandbox-acceptance/manifest.json` so continuation does not create duplicates.
+
+The connector's access does **not** establish Wally's integration access. An actual
+read-only `/users/me` authenticated as **Wally's Connection**, while GETs for the new
+sandbox page and data source returned 404. Acceptance is awaiting the owner adding
+that connection on this sandbox only through Notion's **⋯ → Connections** menu.
+Both gates and registrations remain disabled/empty while waiting. The four Phase 6
+records, staged September invoice and payment actions remain excluded.
+
+No actual Telegram approval/rejection or live Wally PATCH has occurred. After the
+connection step, acceptance still requires exact nonfinancial registration,
+sandbox-only Telegram gate, shared runtime/client reload, actual owner button presses
+(including rejection and replay), independent read verification, Telegram outcome
+delivery and disabling sandbox writes again. Production financial rollout remains
+blocked by live acceptance and external-writer controls.
