@@ -6,6 +6,7 @@ import argparse
 import json
 import os
 import sys
+from dataclasses import replace
 from pathlib import Path
 
 import httpx
@@ -32,8 +33,8 @@ class NoFinancialConfirmation:
         return False
 
 
-def build_adapter(settings):
-    policy_path = settings.project_root / "config" / "notion-edits.yaml"
+def build_adapter(settings, *, policy_path: Path | None = None):
+    policy_path = policy_path or settings.project_root / "config" / "notion-edits.yaml"
     config = load_config(policy_path)
     authority = PrincipalAuthority(
         {CODEX_CHANNEL: CODEX_POLICY},
@@ -125,10 +126,25 @@ def main():
     )
     parser.add_argument("--project-root", type=Path)
     parser.add_argument("--config")
+    parser.add_argument(
+        "--edit-policy", type=Path, help="Reviewed local policy, never a tool argument"
+    )
+    parser.add_argument(
+        "--state-dir", type=Path, help="Isolate registry, operations and audit state"
+    )
     args = parser.parse_args()
     try:
         settings = load_settings(project_root=args.project_root, config_name=args.config)
-        serve_stdio(build_adapter(settings), sys.stdin, sys.stdout)
+        if args.state_dir:
+            state = args.state_dir.resolve()
+            state.mkdir(mode=0o700, parents=True, exist_ok=True)
+            settings = replace(
+                settings,
+                ops_database=state / "operations.db",
+                knowledge_registry_database=state / "registry.db",
+                audit_directory=state / "audit",
+            )
+        serve_stdio(build_adapter(settings, policy_path=args.edit_policy), sys.stdin, sys.stdout)
     except WallyError as exc:
         print(str(exc), file=sys.stderr)
         return 1

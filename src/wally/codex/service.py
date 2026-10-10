@@ -48,6 +48,15 @@ class CodexEditAdapter:
                 "protocolVersion": "2025-06-18",
                 "capabilities": {"tools": {}},
                 "serverInfo": {"name": "wally-scoped-edits", "version": "0.18.0"},
+                "instructions": (
+                    "Wally authorizes only exact registered proposal versions. First read "
+                    "get_notion_edit_status. Show get_notion_edit's exact changes to the owner. "
+                    "decide_notion_edits requires native review and fresh biometrics; it does "
+                    "not execute. Ask for a separate execute request. Execution prompts again "
+                    "and independently verifies. Only verified_success proves the result. "
+                    "Inspect uncertain attempts without repeating writes. Never use direct "
+                    "Notion connector writes on Wally-managed targets."
+                ),
             }
         elif method == "ping":
             result = {}
@@ -103,6 +112,19 @@ def tools() -> list[dict]:
         "additionalProperties": False,
     }
     definitions = (
+        (
+            "get_notion_edit_status",
+            "Read the runtime-issued principal, enabled gate and registered target/property scope.",
+            {},
+            True,
+        ),
+        (
+            "inspect_notion_execution",
+            "Read/reconcile an interrupted or uncertain attempt. Reports original, approved or "
+            "unexpected state; never writes, releases a lock or authorizes a retry.",
+            {"execution_id": {"type": "string"}},
+            True,
+        ),
         (
             "propose_notion_edit",
             "Stage inert advice for an explicitly registered metadata target.",

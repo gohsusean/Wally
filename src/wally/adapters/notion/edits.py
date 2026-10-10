@@ -15,7 +15,7 @@ import httpx
 from wally.finance.models import digest as finance_digest
 from wally.finance.notion import VERSION, NotionFinanceReader, notion_id
 from wally.models.knowledge import KnowledgeClass
-from wally.ops.notion_edits import EditError, EditTarget, RecordSnapshot
+from wally.ops.notion_edits import EditError, EditNotDispatched, EditTarget, RecordSnapshot
 from wally.runtime.confirmation import digest
 
 # Code-owned initial scope. Expanding it requires review, tests and target policy.
@@ -173,20 +173,22 @@ class NotionEditBackend:
         expected: RecordSnapshot,
         revalidate: Callable[[], None],
     ) -> None:
-        self._gate(target)
-        rules = {r.property_id: r for r in target.properties}
-        if not replacements or set(replacements) - rules.keys():
-            raise EditError("Write exceeds registered property scope.")
-        if any(value not in rules[key].values for key, value in replacements.items()):
-            raise EditError("Write exceeds registered replacement scope.")
-        payload = {key: {"select": {"name": value}} for key, value in replacements.items()}
+        dispatched = False
         # The factory owns credential resolution. Never log HTTP bodies or exceptions.
         try:
+            self._gate(target)
+            rules = {r.property_id: r for r in target.properties}
+            if not replacements or set(replacements) - rules.keys():
+                raise EditError("Write exceeds registered property scope.")
+            if any(value not in rules[key].values for key, value in replacements.items()):
+                raise EditError("Write exceeds registered replacement scope.")
+            payload = {key: {"select": {"name": value}} for key, value in replacements.items()}
             with self.write_client() as client:
                 revalidate()
                 if asdict(self.read(target)) != asdict(expected):
                     raise EditError("Source changed during credential acquisition.")
                 revalidate()
+                dispatched = True
                 response = client.patch(
                     f"https://api.notion.com/v1/pages/{quote(notion_id(target.page_id), safe='')}",
                     headers={"Notion-Version": VERSION},
@@ -195,6 +197,10 @@ class NotionEditBackend:
                 )
                 response.raise_for_status()
         except Exception:
+            if not dispatched:
+                raise EditNotDispatched(
+                    "Notion PATCH was not dispatched; prewrite checks failed."
+                ) from None
             raise EditError("Notion write outcome is uncertain.") from None
 
 

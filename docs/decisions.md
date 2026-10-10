@@ -1737,8 +1737,10 @@ must remain distinct from record editing.
    the same Gateway/service. A pinned macOS native helper presents the exact review
    and requires fresh biometrics. Its owner UID/enrollment binding and installed
    client behavior need operator validation. This is a local owner trust model,
-   not protection against arbitrary same-owner code. No helper, MCP connection,
-   listener or live provider was installed/started for development.
+   not protection against arbitrary same-owner code. The foundation installed no
+   helper or connection. The later isolated rollout installs a signed/pinned helper
+   and stdio configuration but has not validated biometric approval or live writes;
+   see the [dated rollout record](local-codex-rollout.md). No listener is exposed.
 7. **Constrain writes and uncertainty.** Re-read classification, source/schema,
    material state, approved version, Matter and target policy after confirmation
    and after action credential acquisition. Atomically claim proposal and normalized
@@ -1774,3 +1776,15 @@ component boundaries, investigated platform mechanisms and remaining limitations
 A trustworthy hosted per-action attestation, a new property/type or payment-related
 capability, a different authentication method, external concurrent writers, or a
 manual uncertain-attempt recovery API requires review and updated rationale.
+
+### Local rollout extension, 10 October 2026
+
+Separate launch-time policy/state paths keep installation and isolated acceptance
+out of production state. A runtime status read reports only registered scope and
+the authority-issued principal. Read-only inspection may reconcile RUNNING state
+but cannot unlock it, mark it complete or authorize retries. The native helper
+independently verifies the full canonical review digest before displaying its bound
+scope. Known pre-PATCH failures are distinguished from ambiguous dispatched writes;
+conservative certification invalidation remains. These operational extensions add
+no interface capability or automatic recovery authority. Actual owner hardware,
+Desktop discovery and isolated Notion acceptance remain rollout prerequisites.

@@ -3,8 +3,9 @@
 Updated 10 October 2026. [ADR-045](decisions.md#adr-045-interface-neutral-approval-centralized-authorization)
 extends the operational architecture. This is an implemented, default-disabled
 Notion metadata-edit slice, with isolated tests and an opt-in local Codex adapter.
-It is **not evidence of installed MCP configuration, a successful biometric
-interaction, a hosted ChatGPT connection, or safe live financial readiness**.
+The [local rollout record](local-codex-rollout.md) records the later isolated MCP
+installation and native helper build. Neither is evidence of a successful biometric
+interaction, a hosted ChatGPT connection, or safe live financial readiness.
 
 ## What is implemented
 
@@ -101,18 +102,22 @@ receipt verifier was added here.
 ## Codex: implemented local confirmation path
 
 `python -m wally.codex` is a new explicit local stdio MCP entry point. It builds a
-restricted Gateway and provides five tools: propose, exact review, scoped batch
-decision, separate execution, and independent re-verification. It does not run
+restricted Gateway and provides seven tools: runtime status, read-only interrupted
+attempt inspection, propose, exact review, scoped batch decision, separate
+execution, and independent re-verification. It does not run
 normal App bootstrap, start a listener, refresh the finance catalog or invoke a
 reasoner. The local process is connection authentication; its tool invocation
 alone cannot authorize a decision or execution.
 
 The optional `MacOSBiometricConfirmation` provider launches an operator-built,
 SHA-256-pinned helper owned by the configured Mac user. The helper displays the
-entire immutable selection/old/new review, then requests fresh biometric
+entire immutable selection/old/new review, including registered target and field
+names, then requests fresh biometric
 `deviceOwnerAuthenticationWithBiometrics`. A click alone is insufficient.
 Authentication reuse is set to zero and there is no password fallback in this
-policy. Cancellation, unsupported biometrics, timeout, helper substitution, wrong
+policy. The helper independently hashes the canonical authorization envelope and
+uses only its bound presentation; a mismatched digest never reaches the UI.
+Cancellation, unsupported biometrics, timeout, helper substitution, wrong
 UID, wrong nonce/digest or a changed policy fails closed. The confirmation records
 include method, configured UID and helper digest. Apple documents the
 [biometric policy](https://developer.apple.com/documentation/localauthentication/lapolicy/deviceownerauthenticationwithbiometrics)
@@ -124,12 +129,14 @@ stays in Codex. The human must still review that popup and authenticate; typing
 execute request prompts separately. No Codex conversation-reading or generic
 platform approval dialog supplies Wally authority.
 
-**Verified here:** Swift source type-checks against the installed macOS SDK;
-Python tests simulate helper results, check integrity/UID/digest failure paths,
+**Verified here:** Swift source compiles against the installed macOS SDK and the
+private app is ad-hoc signed; actual binary probes deny expired/mismatched reviews
+before UI. Python tests simulate helper results, check integrity/UID/digest failure paths,
 and exercise the stdio/Gateway/Notion sequence with synthetic records. **Not
 verified here:** actual biometric UX, ownership/enrollment of this machine's
 biometrics, installed helper integrity over time, Codex Desktop MCP connection,
-or a live Notion write. The helper was not installed or launched for authentication.
+or a live Notion write. The helper was installed and queried for availability,
+but was not launched for authentication. Current machine readiness is in the rollout record.
 This is a local owner/process trust model, as with the existing terminal: it is
 not a sandbox against arbitrary code running as the owner or a compromised Mac.
 
@@ -164,7 +171,12 @@ A write exception, mismatched read, unavailable verification or process interrup
 is never reported as success. No automatic retry occurs. A durable page claim
 blocks even a different proposal targeting the same record across process restarts.
 An explicit re-verification of `executed_unverified` only reads; `running` may still
-be in flight and needs manual reconciliation. This slice intentionally has no
+be in flight and needs manual reconciliation. `inspect_notion_execution` can
+independently observe original, approved or unexpected state even for RUNNING;
+it never writes, settles the attempt, proves who changed Notion, or releases a
+claim. An unavailable read is explicit. `patch_not_dispatched` distinguishes a
+known pre-dispatch failure from `patch_outcome_uncertain`; conservative certification
+invalidation and the write lock remain in either case. This slice intentionally has no
 automatic/manual-unlock API for a still-running or unresolved claim. Never delete
 its row just to permit another attempt. Successful versions are not repeated.
 
@@ -197,16 +209,19 @@ outside this task; they are not registered as edit targets here.
 Before live use, an operator must:
 
 1. Review/build/pin the helper, bind the Mac UID and enrolled biometrics to the Wally
-   owner, and demonstrate confirmation/cancellation on isolated records. Build with
-   `swiftc src/wally/adapters/macos/ConfirmReview.swift -o <private-helper-path>`;
-   record its SHA-256 in the reviewed policy. No secret is required for this step.
+   owner, and demonstrate confirmation/cancellation on isolated records. The
+   explicit `scripts/install_codex_approval_helper.py` builds/signs a private app
+   only into a new destination and emits its SHA-256 pin; it never authenticates.
+   Record that pin in the reviewed local policy. No secret is required for this step.
 2. Configure explicit target keys, UUID locators, allowed property IDs/options and,
    for finance, the canonical finance object ID. Existing approved classification,
    designation and source mapping gates still apply. Keep writes disabled initially.
 3. Connect Codex to the local stdio command using its supported MCP configuration:
    the existing repository interpreter, `-m wally.codex --project-root <repo>`.
    Secrets stay in the runtime environment/ignored `.env`, never MCP arguments.
-   No Codex settings or installed plugin were changed by this task.
+   Use `--state-dir` and `--edit-policy` for the isolated rollout; neither can be
+   changed through tool arguments. The default production policy remains disabled.
+   The local rollout record names the installed Codex server configuration.
 4. Validate the actual UI/biometric sequence and independent verification in isolation,
    establish the external single-writer/access policy, and define uncertain-attempt
    recovery before enabling writes. Then explicitly enable the reviewed write flag;

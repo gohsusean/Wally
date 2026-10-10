@@ -231,8 +231,12 @@ a read-only audit command. It does not refresh providers or financial certificat
 at startup. Existing ignored state and the Phase 6 checkpoint are preserved.
 
 The local helper must be separately reviewed, built, pinned and validated with the
-owner's enrolled biometrics before writes can be enabled. Desktop MCP settings,
-credentials, services and live financial data were not changed in development.
+owner's enrolled biometrics before writes can be enabled. The
+[local rollout record](local-codex-rollout.md) records the installed isolated stdio
+configuration and signed helper, plus the owner hardware/discovery gates. Use
+`--state-dir` and `--edit-policy` for isolated acceptance. Credentials, production
+services and live financial data were not changed. `inspect_notion_execution`
+reads even RUNNING attempts but cannot release locks or authorize retries.
 External Notion writers are not fenced by SQLite; establish a controlled writer
 policy and uncertain-attempt recovery first. Never clear unresolved page claims
 or re-certify a record as an incidental retry. Hosted ChatGPT decisions remain

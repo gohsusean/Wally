@@ -56,11 +56,8 @@ class MacOSBiometricConfirmation:
             [str(self.helper)],
             input=canonical(
                 {
-                    "review": json.loads(review.presentation),
+                    "canonical_review": canonical(review.__dict__),
                     "digest": review.fingerprint,
-                    "nonce": review.nonce,
-                    "expires_at": review.expires_at,
-                    "purpose": review.purpose,
                     "owner_uid": self.owner_uid,
                 }
             ),

@@ -266,7 +266,10 @@ Financial certification is invalidated, never silently retained or reissued.
 
 New additive specifications, claims and human-review audit tables preserve existing
 state. Default policy registers no target or confirmer and enables no write. The
-local native provider is implemented/type-checked and boundary-tested; hosted
+local native provider is compiled/signed and boundary-tested; the
+[isolated rollout](local-codex-rollout.md) records installation and actual negative
+envelope probes, not successful biometric or live Notion acceptance. Read-only
+inspection reconciles interrupted state without releasing claims. Hosted
 confirmation remains unimplemented. Notion external-writer concurrency and actual
 UI/enrollment/provider readiness are explicit rollout gates in the
 [implementation guide](interface-neutral-approvals.md). No new payment/scheduler

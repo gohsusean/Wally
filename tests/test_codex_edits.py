@@ -2,6 +2,7 @@
 
 import io
 import json
+from dataclasses import dataclass
 from types import SimpleNamespace
 
 import pytest
@@ -11,6 +12,7 @@ from tests.test_notion_edits import harness, propose
 from wally.codex.__main__ import build_adapter, serve_stdio
 from wally.codex.config import load_config
 from wally.codex.service import CODEX_POLICY, CodexEditAdapter, tools
+from wally.exceptions import AuthorizationError
 from wally.gateway.service import AdapterRegistration, GatewayRuntime
 from wally.models.principal import Capability
 from wally.ops.notion_edits import EditError
@@ -61,6 +63,8 @@ def test_local_tools_use_gateway_and_do_not_accept_owner_assertions(tmp_path):
         & CODEX_POLICY.capabilities
     )
     assert {t["name"] for t in tools()} == {
+        "get_notion_edit_status",
+        "inspect_notion_execution",
         "propose_notion_edit",
         "get_notion_edit",
         "decide_notion_edits",
@@ -99,7 +103,8 @@ def test_stdio_notifications_framing_and_errors(tmp_path):
     assert len(messages) == 4
     assert messages[0]["result"]["serverInfo"]["name"] == "wally-scoped-edits"
     assert messages[1]["error"]["code"] == -32700
-    assert len(messages[2]["result"]["tools"]) == 5
+    assert len(messages[2]["result"]["tools"]) == 7
+    assert "native review" in messages[0]["result"]["instructions"]
     assert messages[3]["error"]
     with pytest.raises(EditError, match="size"):
         serve_stdio(adapter, io.StringIO("x" * 70000), output)
@@ -134,6 +139,51 @@ def test_empty_default_runtime_never_contacts_a_provider(tmp_path, monkeypatch):
     assert result["isError"]
     assert "not registered" in result["structuredContent"]["error"]
     assert not load_config(tmp_path / "missing.yaml").writes_enabled
+
+
+def test_cli_isolation_keeps_production_state_paths_untouched(tmp_path, monkeypatch):
+    from wally.codex.__main__ import main
+
+    @dataclass
+    class Settings:
+        ops_database: object
+        knowledge_registry_database: object
+        audit_directory: object
+
+    production = tmp_path / "production.db"
+    production.write_bytes(b"existing state must survive")
+    settings = Settings(production, production, tmp_path / "production-audit")
+    state = tmp_path / "lab"
+    policy = tmp_path / "lab-policy.yaml"
+    captured = []
+    monkeypatch.setattr("wally.codex.__main__.load_settings", lambda **kw: settings)
+    monkeypatch.setattr(
+        "wally.codex.__main__.build_adapter",
+        lambda settings, **kw: captured.append((settings, kw)),
+    )
+    monkeypatch.setattr("wally.codex.__main__.serve_stdio", lambda *a: None)
+    monkeypatch.setattr(
+        "sys.argv", ["wally.codex", "--state-dir", str(state), "--edit-policy", str(policy)]
+    )
+    assert main() == 0
+    isolated, options = captured[0]
+    assert isolated.ops_database == state / "operations.db"
+    assert isolated.knowledge_registry_database == state / "registry.db"
+    assert isolated.audit_directory == state / "audit"
+    assert options == {"policy_path": policy}
+    assert production.read_bytes() == b"existing state must survive"
+
+
+def test_status_reports_only_registered_scope_and_authenticated_principal(tmp_path):
+    service, _, ctx = harness(tmp_path)
+    status = service.status(context=ctx)
+    assert status["channel"] == "codex"
+    assert status["principal"] == ctx.principal.subject
+    assert {t["key"] for t in status["targets"]} == {"tnb", "maybank"}
+    assert status["human_confirmation_required"]
+    assert status["execution_confirmation_is_separate"]
+    with pytest.raises(AuthorizationError):
+        service.status(context=None)
 
 
 @pytest.mark.parametrize(

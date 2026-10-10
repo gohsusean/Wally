@@ -480,7 +480,12 @@ def test_gateway_to_mock_notion_end_to_end_ignores_only_benign_audit(tmp_path):
     )
     review = call("get_notion_edit", proposal_id=proposal["id"])
     assert review["changes"] == [
-        {"property_id": "policy", "before": "fixed_contract", "after": "source_defined"}
+        {
+            "property_id": "policy",
+            "field": "amount_policy",
+            "before": "fixed_contract",
+            "after": "source_defined",
+        }
     ]
     call(
         "decide_notion_edits",
@@ -493,6 +498,7 @@ def test_gateway_to_mock_notion_end_to_end_ignores_only_benign_audit(tmp_path):
         ],
     )
     assert "PATCH" not in api.calls
+
     result = call("execute_notion_edit", proposal_id=proposal["id"])
     assert result["status"] == "verified_success"
     assert api.calls[-2:] == ["GET", "GET"]
@@ -504,6 +510,69 @@ def test_gateway_to_mock_notion_end_to_end_ignores_only_benign_audit(tmp_path):
         body={"proposal_id": proposal["id"], "replacements": {"business": 0}},
     )
     assert not denied.ok
+
+
+@pytest.mark.parametrize("observed", ["approved", "original", "unexpected", "unavailable"])
+def test_running_reconciliation_reads_but_never_unlocks_or_retries(tmp_path, observed):
+    service, _, ctx = harness(tmp_path)
+    proposal = approved(service, ctx)
+
+    def interrupt(*args):
+        raise KeyboardInterrupt
+
+    service.backend.write = interrupt
+    with pytest.raises(KeyboardInterrupt):
+        service.execute(proposal.id, context=ctx)
+    execution = service.store.list_executions(proposal_id=proposal.id)[0]
+    if observed == "approved":
+        service.backend.data["tnb"] = "source_defined"
+    elif observed == "unexpected":
+        service.backend.data["tnb"] = "unexpected"
+    elif observed == "unavailable":
+        service.backend.read_failure = True
+    expected = {
+        "approved": "approved_state_observed",
+        "original": "original_state_observed",
+        "unexpected": "unexpected_state",
+        "unavailable": "read_unavailable",
+    }
+    result = service.inspect_execution(execution.id, context=ctx)
+    assert result["observation"] == expected[observed]
+    assert not result["completion_proven"]
+    assert not result["claim_released"]
+    assert not result["write_repeated"]
+    assert service.store.get_execution(execution.id).status == ExecutionStatus.RUNNING
+    with pytest.raises(EditError):
+        service.execute(proposal.id, context=ctx)
+
+
+def test_timeout_after_provider_applies_write_can_verify_without_retry(tmp_path):
+    service, _, ctx, api, _ = http_harness(tmp_path)
+    original = api.handle
+
+    def timeout_after_patch(request):
+        result = original(request)
+        if request.method == "PATCH":
+            raise httpx.ReadTimeout("synthetic uncertainty")
+        return result
+
+    service.backend.write_client = lambda: httpx.Client(
+        transport=httpx.MockTransport(timeout_after_patch), base_url="https://api.notion.com/v1"
+    )
+    proposal = approved(service, ctx)
+    execution = service.execute(proposal.id, context=ctx)
+    assert execution.failure_category == "patch_outcome_uncertain"
+    assert execution.status == ExecutionStatus.EXECUTED_UNVERIFIED
+    inspection = service.inspect_execution(execution.id, context=ctx)
+    assert inspection["observation"] == "approved_state_observed"
+    assert not inspection["completion_proven"]
+    assert service.verify(execution.id, context=ctx).status == ExecutionStatus.VERIFIED_SUCCESS
+    assert api.calls.count("PATCH") == 1
+    api.page["properties"]["Business"]["number"] = 987
+    inspection = service.inspect_execution(execution.id, context=ctx)
+    assert inspection["observation"] == "unexpected_state"
+    assert inspection["stored_verification_success"]
+    assert not inspection["completion_proven"]
 
 
 @pytest.mark.parametrize("mutation", ["business", "scope", "schema"])
@@ -535,12 +604,13 @@ def test_classification_change_after_review_prevents_write(tmp_path):
     assert "PATCH" not in api.calls
 
 
-def test_financial_edit_invalidates_certificate_without_recertifying(tmp_path):
+@pytest.mark.parametrize("outcome", ["verified", "denied", "unattempted", "uncertain"])
+def test_financial_edit_invalidates_certificate_without_recertifying(tmp_path, outcome):
     from tests.finance_fixture import ATTEST, PROOF, catalog_fixture
     from wally.finance.models import Candidate, Kind, Locator, Scope
     from wally.finance.notion import FieldMapping, SourceMapping
 
-    service, _, ctx, api, registry = http_harness(tmp_path)
+    service, human, ctx, api, registry = http_harness(tmp_path)
     catalog, ids, _ = catalog_fixture(tmp_path, service.authority)
     original = catalog.store.get(ids["definition"])
     candidate = Candidate(
@@ -559,8 +629,40 @@ def test_financial_edit_invalidates_certificate_without_recertifying(tmp_path):
     before_count = len(catalog.store.records())
     proposal = approved(service, ctx)
     assert catalog.store.certificate(record.id, Scope.IDENTITY)
+    if outcome == "denied":
+        human.answer = False
+        with pytest.raises(AuthorizationError):
+            service.execute(proposal.id, context=ctx)
+        assert catalog.store.certificate(record.id, Scope.IDENTITY)
+        assert "PATCH" not in api.calls
+        return
+    if outcome == "unattempted":
+
+        def unavailable():
+            raise RuntimeError("synthetic credential acquisition failure")
+
+        service.backend.write_client = unavailable
+    elif outcome == "uncertain":
+        original_handle = api.handle
+
+        def uncertain(request):
+            response = original_handle(request)
+            if request.method == "PATCH":
+                raise httpx.ReadTimeout("synthetic timeout")
+            return response
+
+        service.backend.write_client = lambda: httpx.Client(
+            transport=httpx.MockTransport(uncertain), base_url="https://api.notion.com/v1"
+        )
     result = service.execute(proposal.id, context=ctx)
-    assert result.status == ExecutionStatus.VERIFIED_SUCCESS
+    if outcome == "verified":
+        assert result.status == ExecutionStatus.VERIFIED_SUCCESS
+    else:
+        assert result.status == ExecutionStatus.EXECUTED_UNVERIFIED
+        assert result.failure_category == (
+            "patch_not_dispatched" if outcome == "unattempted" else "patch_outcome_uncertain"
+        )
+        assert api.calls.count("PATCH") == (0 if outcome == "unattempted" else 1)
     assert catalog.store.certificate(record.id, Scope.IDENTITY) is None
     assert catalog.store.get(record.id).invalid
     assert len(catalog.store.records()) == before_count

@@ -32,6 +32,7 @@ def test_native_helper_requires_integrity_owner_and_exact_response(tmp_path, mon
         assert args == [str(helper)]
         data = json.loads(kwargs["input"])
         assert data["digest"] == review.fingerprint
+        assert json.loads(data["canonical_review"]) == review.__dict__
         return SimpleNamespace(
             returncode=0,
             stdout=json.dumps(

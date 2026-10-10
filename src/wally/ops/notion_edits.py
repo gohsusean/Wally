@@ -42,6 +42,10 @@ class EditError(WallyError):
     pass
 
 
+class EditNotDispatched(EditError):
+    """The backend failed before calling PATCH; no provider write was dispatched."""
+
+
 @dataclass(frozen=True)
 class PropertyRule:
     field: str
@@ -176,7 +180,12 @@ class NotionEditService:
         self._validate(target, replacements)
         before = self.backend.read(target)
         changes = [
-            {"property_id": key, "before": before.values[key], "after": value}
+            {
+                "property_id": key,
+                "field": next(rule.field for rule in target.properties if rule.property_id == key),
+                "before": before.values[key],
+                "after": value,
+            }
             for key, value in sorted(replacements.items())
             if before.values.get(key) != value
         ]
@@ -186,6 +195,7 @@ class NotionEditService:
             "target": target.key,
             "target_digest": target.fingerprint,
             "page_id": target.page_id,
+            "database_id": target.database_id,
             "data_source_id": target.data_source_id,
             "before": asdict(before),
             "changes": changes,
@@ -344,6 +354,9 @@ class NotionEditService:
             "proposal_id": proposal.id,
             "fingerprint": proposal.fingerprint,
             "page_id": target.page_id,
+            "target": target.key,
+            "database_id": target.database_id,
+            "data_source_id": target.data_source_id,
             "target_digest": target.fingerprint,
             "changes": spec["changes"],
             "certification": "Invalidate financial certification; never certify or pay.",
@@ -404,6 +417,7 @@ class NotionEditService:
             raise EditError(
                 "This record has an unresolved execution; no further write may start."
             ) from None
+        entering_backend = False
         try:
             self.backend.invalidate_certification(target)
             # Check semantic source state once more after invalidation. Certificate
@@ -424,14 +438,20 @@ class NotionEditService:
                 self.authority.authorize(context, Capability.EXECUTE_NOTION_EDIT)
                 self.authority.authorize(context, Capability.VERIFY_NOTION_EDIT)
 
+            entering_backend = True
             self.backend.write(
                 target,
                 {c["property_id"]: c["after"] for c in spec["changes"]},
                 RecordSnapshot(**spec["before"]),
                 revalidate,
             )
+        except EditNotDispatched:
+            return self._uncertain(execution, "patch_not_dispatched")
         except Exception:
-            return self._uncertain(execution, "write_or_prewrite_interrupted")
+            return self._uncertain(
+                execution,
+                "patch_outcome_uncertain" if entering_backend else "prewrite_check_failed",
+            )
         execution = replace(
             execution,
             status=ExecutionStatus.EXECUTED_UNVERIFIED,
@@ -441,6 +461,73 @@ class NotionEditService:
         if not self.store.transition_execution(execution, expected=ExecutionStatus.RUNNING):
             raise EditError("Execution changed; manual review required.")
         return self.verify(execution.id, context=context)
+
+    @_audited_request
+    def status(self, *, context: RequestContext) -> dict:
+        self.authority.authorize(context, Capability.READ_CONTEXT)
+        targets = (
+            self._targets_provider() if self._targets_provider else tuple(self.targets.values())
+        )
+        return {
+            "principal": context.principal.subject,
+            "channel": context.principal.channel,
+            "writes_enabled": self._writes_allowed(),
+            "human_confirmation_required": True,
+            "execution_confirmation_is_separate": True,
+            "targets": [asdict(target) for target in targets],
+        }
+
+    @_audited_request
+    def inspect_execution(self, execution_id: str, *, context: RequestContext) -> dict:
+        """Read/reconcile even interrupted attempts without writes or lock release.
+
+        Matching approved state proves only an observed state. A RUNNING process
+        might still act, and external writers can produce the same result.
+        """
+        self.authority.authorize(context, Capability.VERIFY_NOTION_EDIT)
+        execution = self.store.get_execution(execution_id)
+        if execution is None or execution.intent != ProposalIntent.EDIT_NOTION_RECORD:
+            raise EditError("Unknown Notion edit execution.")
+        observation = "read_unavailable"
+        try:
+            _, spec, target = self._load(execution.proposal_id, historical=True)
+            if execution.plan_digest != digest(spec):
+                raise EditError("Execution plan changed.")
+            actual = self.backend.read(target)
+            expected = dict(spec["before"]["hashes"])
+            for change in spec["changes"]:
+                expected[change["property_id"]] = digest(["select", change["after"]])
+            if (
+                actual.schema_digest != spec["before"]["schema_digest"]
+                or actual.finance_version != spec["before"]["finance_version"]
+            ):
+                observation = "unexpected_state"
+            elif actual.hashes == expected:
+                observation = "approved_state_observed"
+            elif actual.hashes == spec["before"]["hashes"]:
+                observation = "original_state_observed"
+            else:
+                observation = "unexpected_state"
+        except Exception:
+            pass
+        result = {
+            "execution_id": execution.id,
+            "status": execution.status.value,
+            "observation": observation,
+            "write_repeated": False,
+            "claim_released": False,
+            "stored_verification_success": execution.status == ExecutionStatus.VERIFIED_SUCCESS,
+            "completion_proven": (
+                execution.status == ExecutionStatus.VERIFIED_SUCCESS
+                and observation == "approved_state_observed"
+            ),
+            "next_step": (
+                "Use verify_notion_edit for executed_unverified; RUNNING requires operator "
+                "reconciliation of process liveness. Never retry PATCH from this observation."
+            ),
+        }
+        self.store.note_edit_event("execution_inspected", result, context.provenance())
+        return result
 
     @_audited_request
     def verify(self, execution_id: str, *, context: RequestContext) -> ProposalExecution:
