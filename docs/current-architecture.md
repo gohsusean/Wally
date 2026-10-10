@@ -201,7 +201,8 @@ interface-neutral, with additional ChatGPT host checks on decisions.
   submit/read/scoped reconciliation in default Telegram mode; no decision/execute
   tools or broad financial execution/certification. The seven-tool native path
   remains dormant behind explicit local mode. Policy ships empty/disabled; Desktop
-  discovery and actual Telegram/Notion acceptance remain unvalidated.
+  discovery and isolated Telegram/Notion owner acceptance were verified on
+  11 October; production financial rollout remains disabled.
 - **Telegram:** owner numeric ID in a private chat, fixed channel; submit/read/
   link/decide only. Groups/edits ignored. Nonce-backed Approve/Reject checks bind
   owner, chat, proposal and fingerprint; repeats do not decide again. `Not now`

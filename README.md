@@ -24,7 +24,8 @@ Telegram review the default for explicitly allowlisted Frequency/Amount Policy
 edits. **Approve & Execute** records separate decision and execution authorizations,
 then uses the existing scoped executor and independent verification. Telegram itself
 retains no execute/verify capability. Native local authentication remains dormant.
-All edit gates and target registrations ship disabled/empty; live acceptance is pending.
+All edit gates and target registrations ship disabled/empty. Isolated Telegram/Notion
+live owner acceptance passed on 11 October; production financial rollout remains disabled.
 
 ## Engineering handover
 

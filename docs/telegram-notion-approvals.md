@@ -186,16 +186,73 @@ database, `288053ad-2773-45a6-b1ce-3e191d1c2b96` (data source
 No existing parent was used. Identities are also retained in ignored local state at
 `data/sandbox-acceptance/manifest.json` so continuation does not create duplicates.
 
-The connector's access does **not** establish Wally's integration access. An actual
-read-only `/users/me` authenticated as **Wally's Connection**, while GETs for the new
-sandbox page and data source returned 404. Acceptance is awaiting the owner adding
-that connection on this sandbox only through Notion's **⋯ → Connections** menu.
-Both gates and registrations remain disabled/empty while waiting. The four Phase 6
-records, staged September invoice and payment actions remain excluded.
+The connector's access does **not** establish Wally's integration access. Initially,
+Wally's own authenticated integration could not read the private sandbox. The owner
+added **Wally's Connection** to this page only, and actual GETs then returned the
+exact database/data-source/page parents and stable property identities. Both records
+were approved as general operational knowledge; neither was designated financial.
+Only their Frequency select property `Kr_Z` was temporarily registered. The local
+write gate stayed false; only the explicit two-target Telegram gate was enabled.
+After an owner MCP reload, this conversation used the installed MCP tool to create
+both proposals. The existing sole LaunchAgent was restarted to load that scope;
+its previous lease expired before the new process consumed updates.
 
-No actual Telegram approval/rejection or live Wally PATCH has occurred. After the
-connection step, acceptance still requires exact nonfinancial registration,
-sandbox-only Telegram gate, shared runtime/client reload, actual owner button presses
-(including rejection and replay), independent read verification, Telegram outcome
-delivery and disabling sandbox writes again. Production financial rollout remains
-blocked by live acceptance and external-writer controls.
+### Actual owner acceptance, 11 October 2026
+
+The live owner rejected proposal `pa_ccbe56acdbec4924`, Frequency `monthly → annual`,
+on the second record. Wally recorded a Telegram rejection, sent **Rejected. No
+write.**, and created no execution attempt. Independent GETs retained `monthly`
+and unchanged protected properties. The owner also pressed the older full-batch
+card after that rejection: Wally stopped safely because a selection was already
+settled, and created no attempt or additional decision authorization.
+
+The owner approved the individual proposal `pa_2c89c3c7bebd42c5`, Frequency
+`monthly → quarterly`, fingerprint
+`4fdbac06199ec10c365c994471194d324fcf5795ee6748ca52983109d433332a`.
+Its callback recorded two separate fresh confirmation receipts: `decide_proposal`
+on `telegram` and `execute_notion_edit` on `telegram_notion_worker`, both for
+principal `owner`, linked by correlation and bound to the exact reviewed scope.
+The scoped executor created one attempt, `ex_0583b4a24ddb460f`, with
+`verified_success` and verification method `independent_notion_read`.
+Telegram's verified-result notification was durably delivered as message 25.
+The final acceptance summary, including rejection/repeat results and disabled
+gates, was also accepted by Telegram as message 26.
+
+Codex called both `inspect_notion_execution` and `verify_notion_edit` on that
+actual attempt. Inspection observed approved state and completion proof; re-verification
+remained `verified_success`. Additional independent GETs read `quarterly` on the
+approved record and `monthly` on the rejected record, with the schema and every
+protected property unchanged. A before/after digest comparison of all eleven local
+finance tables passed; all five pre-existing uncommitted finance files remained
+byte-for-byte unchanged. No existing financial record was modified, no September
+invoice was registered and no payment action was enabled. No successful biometric
+interaction is claimed: this acceptance used Telegram and required no owner Terminal
+commands.
+
+Both write gates were disabled immediately after confirming the successful attempt.
+The owner then confirmed a repeat tap on the original successful individual card.
+The sole authenticated poller recorded another scoped callback; the consumed review
+remained finished, with exactly one verified attempt and the same two approval/
+execution receipts. No additional authorization or execution occurred. This live
+repeat-button check was performed after gate disablement; synthetic tests also cover
+repeat/concurrent callbacks with writes enabled. The settled-batch guard above is a
+separate live negative check. Callback ingress markers retain the outcome category,
+not a second copy of the callback body; the owner confirmation and unchanged exact
+review/attempt/receipt records establish the observed repeat.
+
+The original empty edit policy was restored byte-for-byte: zero targets, an empty
+Telegram subset, both write gates false and no native confirmer. The gate is reloaded
+at action boundaries, so already-running processes cannot dispatch an old sandbox
+scope. No runtime decisions, registry classifications, financial state or audit history
+were deleted. The sandbox remains as nonfinancial test evidence. Its disabled target
+policy and sanitized exact acceptance evidence are retained under ignored
+`data/sandbox-acceptance/`; durable decisions, receipts and attempts remain in the
+existing operations database. Future testing needs a newly reviewed registration/gate
+and fresh authorization; saved evidence grants nothing. The final safe workspace gate
+passed **734 tests**, with three documented exclusions, plus lint and documentation
+checks. No implementation fix was necessary for this live acceptance.
+
+Production rollout still requires effective external-writer permissions and an
+accepted Telegram/local-runtime trust model. Telegram account takeover/bot-token
+compromise and Notion external-writer races remain the documented limitations;
+biometric/native and hosted ChatGPT authorization were not validated or weakened.

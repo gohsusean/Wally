@@ -1803,7 +1803,7 @@ Desktop discovery and isolated Notion acceptance remain rollout prerequisites.
 
 ## ADR-046: Telegram authorizes eligible scoped Notion edits
 
-**Status:** Accepted — implemented default-disabled; live owner acceptance pending
+**Status:** Accepted — implemented default-disabled; isolated Telegram/Notion owner acceptance verified; production rollout disabled
 
 **Date:** 2026-10-11
 
