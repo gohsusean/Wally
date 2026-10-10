@@ -16,7 +16,6 @@ from wally.ops.store import OperationsStore
 from wally.runtime.principals import ChannelPolicy
 from wally.telegram.client import TelegramTransport
 from wally.telegram.ingress import TelegramIngress
-from wally.telegram.notion_approvals import execution_outcome
 from wally.telegram.outbox import Notification, NotificationOutbox
 
 _CALLBACK = re.compile(r"^([A-Za-z0-9_-]{8,32})\.([arnel])$")
@@ -442,17 +441,16 @@ class TelegramService:
             text = f"{title}\nExecution finished. Verification is still open."
         if row.kind != "notion_edit_review":
             buttons = _buttons(row) if row.callback_nonce else None
+        if row.kind == "notion_change_detected":
+            text, buttons = self._notion_approvals.change_notification(row)
         if row.kind == "edit_awaiting_execution":
-            text = (
-                f"Proposal {row.proposal_id}\nApproved, awaiting execution. "
-                "An unused, current Approve & Execute card is required; no automatic retry."
-            )
+            text = self._notion_approvals.completion(row.proposal_id)
         if row.kind == "edit_review_result" and self._notion_approvals is not None:
             text = self._notion_approvals.result(row.execution_id)
         if proposal is not None and proposal.intent == ProposalIntent.EDIT_NOTION_RECORD:
             execution = self._store.get_execution(row.execution_id) if row.execution_id else None
             if execution is not None:
-                text = f"Proposal {proposal.id}\n" + execution_outcome(execution)
+                text = self._notion_approvals.completion(proposal.id, execution)
         try:
             message_id = self._transport.send_message(row.chat_id, text, buttons)
         except Exception as exc:

@@ -63,11 +63,12 @@ class CodexEditAdapter:
                 "serverInfo": {"name": "wally-scoped-edits", "version": "0.18.0"},
                 "instructions": (
                     "Propose exact registered Notion metadata changes. Wally sends the full "
-                    "review to the owner's private Telegram chat. Only its Approve & Execute "
+                    "review to the owner's private Telegram chat. Only its Apply change "
                     "button can authorize eligible edits. Codex conversation text never "
                     "approves or executes. Read get_notion_edit afterward for execution IDs "
                     "and status; only verified_success "
-                    "proves completion. Never use direct Notion writes on Wally-managed records."
+                    "proves completion at verification time. Direct Notion changes require "
+                    "reconcile_notion_record before relying on Wally’s previous verification."
                 )
                 if self.telegram_approval
                 else (
@@ -77,7 +78,7 @@ class CodexEditAdapter:
                     "not execute. Ask for a separate execute request. Execution prompts again "
                     "and independently verifies. Only verified_success proves the result. "
                     "Inspect uncertain attempts without repeating writes. Never use direct "
-                    "Notion connector writes on Wally-managed targets."
+                    "Notion values as verified without reconciliation."
                 ),
             }
         elif method == "ping":
@@ -99,7 +100,7 @@ class CodexEditAdapter:
             )
             if self.telegram_approval and response.ok and name == "get_notion_edit_status":
                 response.data["approval_channel"] = "telegram"
-                response.data["combined_owner_interaction"] = "Approve & Execute"
+                response.data["combined_owner_interaction"] = "Apply change"
                 if self.telegram_policy_provider is not None:
                     policy = self.telegram_policy_provider()
                     response.data["telegram_writes_enabled"] = policy.telegram_writes_enabled
@@ -153,6 +154,13 @@ def tools() -> list[dict]:
         "additionalProperties": False,
     }
     definitions = (
+        (
+            "reconcile_notion_record",
+            "Compare live business properties with Wally’s prior evidence. Read-only in Notion; "
+            "records stale trust and invalidates affected certification, never recertifies.",
+            {"target_key": {"type": "string"}},
+            True,
+        ),
         (
             "get_notion_edit_status",
             "Read the runtime-issued principal, enabled gate and registered target/property scope.",

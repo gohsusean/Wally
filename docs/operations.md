@@ -106,7 +106,8 @@ failures retry and eventually become terminal. Repeated decision buttons remain
 idempotent. `Not now` dismisses notification only; no reminder is scheduled.
 
 [Telegram scoped Notion reviews](telegram-notion-approvals.md) additionally use
-15-minute, full-scope, durable single-use cards with Approve & Execute/Reject/Later.
+15-minute, full-scope, durable single-use cards with Apply change/Reject/Later
+and MYT expiry. The presentation follows the [human-first standard](human-first-communication.md).
 Codex's default command shares this poller's state and reviewed
 `config/notion-edits.yaml`; it cannot decide/execute. Both local and Telegram write
 gates remain false with no targets. The existing LaunchAgent must load the new code;
@@ -249,7 +250,8 @@ configuration and signed helper, plus the owner hardware/discovery gates. Use
 `--state-dir` and `--edit-policy` for isolated acceptance. Credentials, production
 services and live financial data were not changed. `inspect_notion_execution`
 reads even RUNNING attempts but cannot release locks or authorize retries.
-External Notion writers are not fenced by SQLite; establish a controlled writer
-policy and uncertain-attempt recovery first. Never clear unresolved page claims
+External Notion writers are not fenced by SQLite. Use the
+[reconciliation foundation](notion-reconciliation.md) and separately review residual
+GET/PATCH races and uncertain-attempt recovery before production rollout. Never clear unresolved page claims
 or re-certify a record as an incidental retry. Hosted ChatGPT decisions remain
 hard-disabled pending D15; no public/tunneled approval endpoint is provided.

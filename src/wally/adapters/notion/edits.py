@@ -159,6 +159,49 @@ class NotionEditBackend:
             values[rule.property_id] = current
         return RecordSnapshot(values, hashes, digest(schema_properties), version)
 
+    def catalog_snapshot(self, target, snapshot):
+        if not target.finance_id:
+            return snapshot
+        facts = asdict(self.finance.store.get(target.finance_id).candidate.facts)
+        values, hashes = dict(snapshot.values), dict(snapshot.hashes)
+        for rule in target.properties:
+            if rule.field in facts and facts[rule.field] in EDIT_VALUES[rule.field]:
+                values[rule.property_id] = facts[rule.field]
+                hashes[rule.property_id] = digest(["select", facts[rule.field]])
+        return RecordSnapshot(values, hashes, snapshot.schema_digest, snapshot.finance_version)
+
+    def reconcile_certification(self, target, changed_ids, *, snapshot, baseline_finance_version):
+        if not target.finance_id:
+            return False
+        current_version = self._gate(target)
+        source = next(
+            s
+            for s in self.finance.sources()
+            if notion_id(s.data_source_id) == notion_id(target.data_source_id)
+        )
+        affected = bool(
+            set(changed_ids) & {unquote(mapping.property_id) for mapping in source.fields.values()}
+        )
+        if affected:
+            current = self.finance.store.get(target.finance_id)
+            if current_version != baseline_finance_version:
+                # A newer catalog version may already have been reconciled/certified
+                # through the existing owner workflow. Do not revoke it for old drift.
+                facts = asdict(current.candidate.facts)
+                mapped_changes = set(changed_ids) & {
+                    unquote(mapping.property_id) for mapping in source.fields.values()
+                }
+                reviewed_enums = {rule.property_id for rule in target.properties}
+                enum_drift = any(
+                    snapshot.values[rule.property_id] != facts.get(rule.field)
+                    for rule in target.properties
+                )
+                if mapped_changes <= reviewed_enums and not enum_drift:
+                    return True  # Prior assertion was affected; current certificate is separate.
+            if not current.invalid:
+                self.finance.store.invalidate(target.finance_id, "external_notion_change_detected")
+        return affected
+
     def invalidate_certification(self, target: EditTarget) -> None:
         self._gate(target)
         if target.finance_id:

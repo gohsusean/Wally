@@ -22,6 +22,7 @@ from wally.models.ops import ExecutionStatus, ProposalIntent, ProposalStatus
 from wally.models.principal import Capability
 from wally.ops.decisions import UserDecision
 from wally.ops.notion_edits import DecisionSelection, EditError, NotionEditService
+from wally.presentation import change_lines, human_time
 from wally.runtime.confirmation import canonical, digest
 from wally.runtime.principals import ChannelPolicy
 from wally.telegram.outbox import Notification, NotificationOutbox
@@ -39,16 +40,20 @@ MESSAGE_LIMIT = 3900  # UTF-16 units, leaving margin below Telegram's limit.
 
 def execution_outcome(attempt):
     if attempt.status == ExecutionStatus.VERIFIED_SUCCESS:
-        return "Executed and independently verified. Not certified."
+        return "✅ Notion updated", "Verified successfully."
     if attempt.status == ExecutionStatus.RUNNING:
-        return "Executing or interrupted. Completion is unverified; no write retry."
+        return (
+            "⏳ Change in progress",
+            "Completion is unconfirmed. Check the result before trying again.",
+        )
     if attempt.failure_category in {"patch_not_dispatched", "prewrite_check_failed"}:
-        return "Failed before PATCH. Record claim retained; no automatic retry."
-    if attempt.failure_category == "verification_mismatch":
-        return "Verification failed. Outcome unresolved; record locked. No write retry."
+        return (
+            "❌ Change failed",
+            "No change was sent. Review the record before requesting a new change.",
+        )
     return (
-        f"Outcome uncertain: {attempt.failure_category or attempt.status.value}. "
-        "Record remains locked. No automatic write retry."
+        "⚠️ Change outcome uncertain",
+        "Check Notion and ask Wally to verify the result. Do not apply it again.",
     )
 
 
@@ -148,9 +153,9 @@ class TelegramNotionApprovals:
                 ):
                     raise EditError("Change is outside Telegram's metadata policy.")
 
-    def _scope(self, proposal):
+    def _scope(self, proposal, *, refresh=False):
         context = self.edits.authority.issue("telegram")
-        review = self.edits.review(proposal.id, context=context)
+        review = self.edits.review(proposal.id, context=context, refresh=refresh)
         if datetime.fromisoformat(review["expires_at"]) <= datetime.now(UTC):
             raise EditError("Proposal expired; no actionable Telegram review.")
         spec = self.store.get_notion_edit(proposal.id)
@@ -161,6 +166,17 @@ class TelegramNotionApprovals:
         } | {key: spec[key] for key in ("database_id", "data_source_id", "target_digest")}
 
     def sync(self, chat_id: str, now: datetime, *, refresh_reviews=False):
+        # Deliver persisted read-time findings; polling never refreshes Notion.
+        for event_id, _event in self.edits.reconciliation.events(current_only=True):
+            self.outbox.enqueue_decision(
+                proposal_id=event_id,
+                fingerprint=event_id,
+                owner_user_id=self.owner_user_id,
+                chat_id=chat_id,
+                now=now,
+                kind="notion_change_detected",
+                allowed_actions="not_now",
+            )
         scopes = []
         for proposal in self.store.list_proposals():
             defer_released = False
@@ -204,7 +220,7 @@ class TelegramNotionApprovals:
 
     def _enqueue(self, scope, chat_id, now, *, refresh=False):
         text = self._text(scope)
-        if not self._fits(text + "\nReview expires: " + "0" * 40):
+        if not self._fits(text + "\nExpires " + "0" * 45):
             # Fail closed: not even a single target may be abbreviated for approval.
             self.store.note_edit_event(
                 "telegram_review_too_large",
@@ -264,8 +280,8 @@ class TelegramNotionApprovals:
         scope = json.loads(review["scope"])
         text = (
             self._text(scope)
-            + "\nReview expires: "
-            + datetime.fromtimestamp(review["expires_at"], UTC).isoformat()
+            + "\nExpires "
+            + human_time(datetime.fromtimestamp(review["expires_at"], UTC), now=datetime.now(UTC))
         )
         if not self._fits(text):
             raise EditError("Complete review exceeds Telegram's message limit.")
@@ -279,15 +295,22 @@ class TelegramNotionApprovals:
         )
         if review["state"] == "open" and time.time() < review["expires_at"] and pending:
             buttons = [
-                {
-                    "text": "Approve & Execute"
-                    if len(scope) == 1
-                    else "Approve & Execute all shown",
-                    "callback_data": row.callback_nonce + ".e",
-                },
-                {"text": "Reject", "callback_data": row.callback_nonce + ".r"},
-                {"text": "Later (1 hour)", "callback_data": row.callback_nonce + ".l"},
+                [
+                    {
+                        "text": "✅ Apply change" if len(scope) == 1 else "✅ Apply all",
+                        "callback_data": row.callback_nonce + ".e",
+                    },
+                    {"text": "❌ Reject", "callback_data": row.callback_nonce + ".r"},
+                ],
+                [{"text": "⏰ Later", "callback_data": row.callback_nonce + ".l"}],
             ]
+            if len(scope) == 1:
+                buttons[1].append({"text": "View in Notion", "url": self._link(scope[0])})
+            else:
+                buttons.extend(
+                    [[{"text": f"View record {n}", "url": self._link(item)}]]
+                    for n, item in enumerate(scope, 1)
+                )
         return text, buttons
 
     @staticmethod
@@ -295,30 +318,83 @@ class TelegramNotionApprovals:
         return len(text.encode("utf-16-le")) // 2 <= MESSAGE_LIMIT
 
     @staticmethod
-    def _text(scope):
-        lines = ["NOTION CHANGE PROPOSAL", "Each button covers every change shown in this card."]
+    def _link(item):
+        return "https://www.notion.so/" + item["page_id"].replace("-", "")
+
+    def _text(self, scope):
+        lines = ["📝 Notion update" if len(scope) == 1 else "📝 Notion updates — apply all shown"]
+        targets = {target.key: target for target in self.policy().targets}
         for item in scope:
-            lines += [
-                "",
-                "Record: " + item["target"],
-                "Page: " + item["page_id"],
-                "Record link: https://www.notion.so/" + item["page_id"].replace("-", ""),
-                "Proposal: " + item["proposal_id"],
-                "Version: " + item["fingerprint"],
-            ]
-            for change in item["changes"]:
-                lines += [
-                    "Property: " + change["field"] + " (" + change["property_id"] + ")",
-                    "Current value: " + change["before"],
-                    "Proposed value: " + change["after"],
-                ]
+            lines += ["", item["target"], "", *change_lines(item["changes"])]
+            target = targets.get(item["target"])
+            if target is not None and target.finance_id:
+                lines += ["⚠️ This change will require recertification."]
+        return "\n".join(lines)
+
+    def change_notification(self, row):
+        event = next(
+            event
+            for event_id, event in self.edits.reconciliation.events()
+            if event_id == row.proposal_id
+        )
+        baseline = "verified record" if event["baseline"] == "verified" else "previous record"
+        lines = [
+            "📝 Notion change detected",
+            "",
+            event["target"],
+            "",
+            *change_lines(event["changes"]),
+        ]
+        if event["other_business_changes"]:
+            lines += ["Other record information also changed. Review the record in Notion."]
+        if event["contract_changed"]:
+            lines += ["The record’s structure or review settings changed."]
+        if event["catalog_changed"]:
+            lines += ["Wally’s financial record also changed and needs a fresh check."]
         lines += [
             "",
-            "Approve & Execute authorizes this exact edit and independent verification.",
-            "Never pays or certifies. Financial certification is invalidated if applicable.",
-            "Use individual cards to approve selected records.",
+            f"This differs from Wally’s last {baseline}.",
+            "Review the change before relying on this information.",
         ]
-        return "\n".join(lines)
+        if event["certification_affected"]:
+            lines += ["⚠️ This change will require recertification."]
+        text = "\n".join(lines)
+        if not self._fits(text):
+            raise EditError("Complete change notice exceeds the message limit.")
+        return text, [
+            [
+                {"text": "Review in Notion", "url": self._link(event)},
+                {"text": "Later", "callback_data": row.callback_nonce + ".n"},
+            ]
+        ]
+
+    def completion(self, proposal_id, attempt=None):
+        spec = self.store.get_notion_edit(proposal_id)
+        heading, outcome = (
+            execution_outcome(attempt)
+            if attempt
+            else (
+                "⏳ Change approved",
+                "Awaiting execution. Open a fresh review to apply the change.",
+            )
+        )
+        if spec and attempt and attempt.status == ExecutionStatus.VERIFIED_SUCCESS:
+            with self.store._connect() as conn:  # noqa: SLF001
+                baseline = conn.execute(
+                    "SELECT stale FROM notion_trusted_snapshots WHERE page_id=?",
+                    (spec["page_id"],),
+                ).fetchone()
+            if baseline and baseline["stale"]:
+                heading = "⚠️ Previous Notion check is stale"
+                outcome = (
+                    "The record needs a fresh check. "
+                    "Review its current values before relying on it."
+                )
+        if spec is None:
+            return heading + "\n\n" + outcome
+        return "\n".join(
+            [heading, "", spec["target"], "", *change_lines(spec["changes"]), "", outcome]
+        )
 
     def handle(self, row: Notification, action: str, callback: dict) -> str:
         message = callback.get("message", {})
@@ -341,7 +417,7 @@ class TelegramNotionApprovals:
             or action not in {"approve_execute", "reject", "later"}
             or not row.allows(action)
         ):
-            return "Invalid review button. Nothing authorized."
+            return "This button is not valid. No change was started."
         now = time.time()
         with self.store._connect() as conn:  # noqa: SLF001
             conn.execute("BEGIN IMMEDIATE")
@@ -355,7 +431,7 @@ class TelegramNotionApprovals:
                 or review["owner_user_id"] != self.owner_user_id
                 or digest(json.loads(review["scope"])) != row.fingerprint
             ):
-                return "Review expired or already used. Nothing repeated."
+                return "This review expired or was already used. Open a fresh review."
             # Durable single-use claim happens BEFORE decision or provider effects.
             conn.execute(
                 "UPDATE telegram_edit_reviews SET state='claimed', action=?, "
@@ -369,7 +445,7 @@ class TelegramNotionApprovals:
             external_session_ref=row.chat_id,
             external_request_ref=str(callback["id"]),
         )
-        result = "Interrupted review. Inspect execution state; never retry the write."
+        result = "⚠️ Review interrupted. Check the result before trying again."
         try:
             self._eligible(scope, execution=action == "approve_execute")
             decision = {
@@ -383,7 +459,7 @@ class TelegramNotionApprovals:
             selections, prepared, executions = [], [], []
             for item in scope:
                 proposal = self.store.get_proposal(item["proposal_id"])
-                if self._scope(proposal) != item:
+                if self._scope(proposal, refresh=True) != item:
                     raise EditError("Proposal version changed.")
                 if proposal.status == ProposalStatus.PROPOSED:
                     selections.append(
@@ -478,17 +554,25 @@ class TelegramNotionApprovals:
                         # Scope and policy checked anew for EACH record, not once per batch.
                         self._eligible([item], execution=True)
                         attempt = self.edits.execute(item["proposal_id"], context=worker)
-                        outcomes.append(item["proposal_id"] + ": " + execution_outcome(attempt))
+                        outcomes.append(self.completion(item["proposal_id"], attempt))
                     result = "\n".join(outcomes)
                 else:
                     result = (
-                        "Rejected. No write."
+                        "❌ Change rejected\n\n"
+                        + "\n".join(item["target"] for item in scope)
+                        + "\n\nNo changes made."
                         if action == "reject"
-                        else ("Deferred for 1 hour. A fresh review is required afterward.")
+                        else (
+                            "⏰ Review postponed for 1 hour. No changes made. "
+                            "A fresh review will be needed."
+                        )
                     )
         except Exception:
             # Provider errors can contain secrets. Detailed states remain in runtime audit.
-            result = "Stopped safely. Check proposal/execution state; no automatic write retry."
+            result = (
+                "❌ Change stopped. Review the current record and request a fresh review. "
+                "Any completed or uncertain changes are reported separately."
+            )
         finally:
             with self.store._connect() as conn:  # noqa: SLF001
                 conn.execute(

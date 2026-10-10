@@ -21,10 +21,12 @@ approve merely through a bearer, pinned subject or the old confirmation flag.
 
 The [Telegram approval extension](docs/telegram-notion-approvals.md) makes private
 Telegram review the default for explicitly allowlisted Frequency/Amount Policy
-edits. **Approve & Execute** records separate decision and execution authorizations,
+edits. **Apply change** records separate decision and execution authorizations,
 then uses the existing scoped executor and independent verification. Telegram itself
 retains no execute/verify capability. Native local authentication remains dormant.
-All edit gates and target registrations ship disabled/empty. Isolated Telegram/Notion
+The [human-first standard](docs/human-first-communication.md) supplies concise cards
+and MYT times. [External reconciliation](docs/notion-reconciliation.md) detects
+observed drift without requiring exclusive Notion writes. All edit gates and target registrations ship disabled/empty. Isolated Telegram/Notion
 live owner acceptance passed on 11 October; production financial rollout remains disabled.
 
 ## Engineering handover

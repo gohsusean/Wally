@@ -351,3 +351,18 @@ No broad historical chat extraction is required. Required external inputs are
 current n8n exports, recovery arrangements and any agreed Notion schema; see
 [operations](operations.md). The owner's receipt-matching decision is recorded
 under D04 above.
+
+
+## D18 — External Notion continuous discovery and conditional writes
+
+**Status:** Read-time/pre-action foundation implemented under
+[ADR-047](decisions.md#adr-047-human-first-presentation-and-external-notion-reconciliation).
+[Reconciliation](notion-reconciliation.md) replaces exclusive-writer policy; direct
+owner/integration writes continue. Scoped notices come from persisted findings and
+complete financial source refresh retains existing certification/dependency gates.
+There is no continuous Notion monitor. Intervening edits not observed by a read are
+unknown, and GET/PATCH cannot fence an external same-property race. Production
+financial writes stay disabled. Future monitoring belongs to the scheduler roadmap;
+conditional writes require demonstrated provider support. Acceptance must retain
+exact scope, independent reads, stale-trust handling and uncertain-write no-retry
+rules without implying that polling stored proposals watches Notion.

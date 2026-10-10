@@ -63,6 +63,7 @@ def test_local_tools_use_gateway_and_do_not_accept_owner_assertions(tmp_path):
         & CODEX_POLICY.capabilities
     )
     assert {t["name"] for t in tools()} == {
+        "reconcile_notion_record",
         "get_notion_edit_status",
         "inspect_notion_execution",
         "propose_notion_edit",
@@ -103,7 +104,7 @@ def test_stdio_notifications_framing_and_errors(tmp_path):
     assert len(messages) == 4
     assert messages[0]["result"]["serverInfo"]["name"] == "wally-scoped-edits"
     assert messages[1]["error"]["code"] == -32700
-    assert len(messages[2]["result"]["tools"]) == 7
+    assert len(messages[2]["result"]["tools"]) == 8
     assert "native review" in messages[0]["result"]["instructions"]
     assert messages[3]["error"]
     with pytest.raises(EditError, match="size"):

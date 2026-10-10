@@ -85,6 +85,14 @@ class OperationsStore:
     def _init_db(self) -> None:
         with self._connect() as conn:
             conn.executescript("""
+                CREATE TABLE IF NOT EXISTS notion_trusted_snapshots (
+                    page_id TEXT PRIMARY KEY, target_digest TEXT NOT NULL,
+                    snapshot TEXT NOT NULL, execution_id TEXT NOT NULL,
+                    stale INTEGER NOT NULL DEFAULT 0);
+                CREATE TABLE IF NOT EXISTS notion_reconciliation_events (
+                    id TEXT PRIMARY KEY, page_id TEXT NOT NULL, details TEXT NOT NULL,
+                    created_at TEXT NOT NULL, provenance TEXT NOT NULL,
+                    changed_property_ids TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS notion_edit_specs (
                     proposal_id TEXT PRIMARY KEY, specification TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS notion_edit_claims (
@@ -894,7 +902,7 @@ class OperationsStore:
                 execution.request_provenance,
             )
 
-    def finish_notion_edit(self, execution, page_id) -> None:
+    def finish_notion_edit(self, execution, page_id, *, target_digest, snapshot) -> None:
         with self._connect() as conn:
             conn.execute("BEGIN IMMEDIATE")
             payload = _execution_payload(execution)
@@ -908,6 +916,13 @@ class OperationsStore:
             conn.execute(
                 "DELETE FROM notion_edit_claims WHERE page_id=? AND execution_id=?",
                 (page_id, execution.id),
+            )
+            # Baseline publication, verification and claim release share one commit.
+            conn.execute(
+                "INSERT INTO notion_trusted_snapshots VALUES (?,?,?,?,0) "
+                "ON CONFLICT(page_id) DO UPDATE SET target_digest=excluded.target_digest, "
+                "snapshot=excluded.snapshot,execution_id=excluded.execution_id,stale=0",
+                (page_id, target_digest, json.dumps(snapshot, sort_keys=True), execution.id),
             )
             self._edit_event(
                 conn,

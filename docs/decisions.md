@@ -1444,6 +1444,9 @@ Revisit when a ChatGPT connector completes an authenticated grant without sendin
 
 ## ADR-041: Telegram decides through a server-side nonce
 
+**11 October reconciliation extension:** [ADR-047](#adr-047-human-first-presentation-and-external-notion-reconciliation)
+supersedes exclusive-writer rollout requirements; concurrency limitations remain.
+
 **11 October extension:** [ADR-046](#adr-046-telegram-authorizes-eligible-scoped-notion-edits)
 retains this channel's restricted capabilities and established decision-only intents.
 Eligible scoped metadata cards additionally authorize a separate trusted worker;
@@ -1803,6 +1806,9 @@ Desktop discovery and isolated Notion acceptance remain rollout prerequisites.
 
 ## ADR-046: Telegram authorizes eligible scoped Notion edits
 
+**Reconciliation extension:** [ADR-047](#adr-047-human-first-presentation-and-external-notion-reconciliation)
+supersedes exclusive-writer rollout requirements; capabilities and authorization stay unchanged.
+
 **Status:** Accepted — implemented default-disabled; isolated Telegram/Notion owner acceptance verified; production rollout disabled
 
 **Date:** 2026-10-11
@@ -1874,3 +1880,56 @@ validated effective permissions on a dedicated managed subset, a dedicated write
 read-only other connections/users and an accepted runtime trust model. Ordinary
 Notion use elsewhere can remain unrestricted. No permission change is made here.
 See [implementation, UX, recovery and acceptance](telegram-notion-approvals.md).
+
+
+## ADR-047: Human-first presentation and external Notion reconciliation
+
+**Status:** Accepted, 11 October 2026. Owner-directed scope: everyday communication
+and safe reconciliation foundation; production financial writes remain disabled.
+
+### Context
+
+ADR-045/046 established exact scoped authorization and independent verification.
+Their exclusive/controlled-writer rollout requirement does not fit the owner's
+chosen use of Notion: direct owner edits and other authorized integrations continue.
+Technical identifiers and policy prose in routine approval cards also hinder review.
+
+### Decision
+
+1. Adopt the [human-first standard](human-first-communication.md) across Wally,
+   starting with scoped Telegram reviews/results. Complete human-readable scope and
+   material recertification warnings remain visible. Exact identifiers, fingerprints,
+   separate purpose-bound authorizations and precise clocks remain internal.
+2. Default user-facing time to Asia/Kuala_Lumpur (MYT), using shared presentation
+   utilities. Do not change UTC storage, security deadlines or callback lifetimes.
+3. Supersede ADR-045/046's exclusive-writer rollout requirement with
+   [external reconciliation](notion-reconciliation.md). Wally cannot prevent direct
+   writes outside its runtime. Read business values against prior evidence, preserve
+   historical verification, stale changed assertions and revoke affected financial
+   certification without treating all external edits as malicious.
+4. Keep source observations, independent source verification and certified financial
+   facts distinct. No automatic adoption, recertification, overwrite or replay.
+   Existing catalog refresh/certification and scoped verification remain separate.
+5. Provide an authenticated read-time reconciliation operation and persisted notices.
+   No new execution/decision/certification grant, scheduler, Telegram authenticator,
+   hosted confirmation or provider write permission is introduced.
+6. Retain immediate pre-action and post-confirmation rereads, page claims, idempotency
+   and uncertain-write blocks. A Notion GET/PATCH race remains unavoidable without
+   demonstrated provider-side conditional mutation. Accept reconciliation as the
+   foundation, not a prevention guarantee. Financial enablement remains a separately
+   reviewed operator decision, with this residual race explicitly considered.
+
+### Consequences and evidence
+
+Additive snapshots/events and existing certificates/versions preserve audit history.
+Timestamp/actor/audit-only updates do not by themselves invalidate business facts.
+Known Wally execution lineage is separate from unknown changed-state authorship.
+Scoped unknown/raw values remain protected by hashes; financial catalog reads keep
+existing minimization/complete-inventory gates. Read failure does not prove current
+verification. Notifications use stored findings; continuous discovery remains future
+scheduler work. Existing adapter capabilities and hosted restrictions are unchanged.
+
+Isolated tests cover presentation, MYT midnight/expiry boundaries, exact authorization,
+read-only drift detection, unrelated changes, affected certificates, fresh re-verification,
+additive baseline recovery, audit retention and source races. No live permissions,
+finance records, staged invoices or services are changed by this milestone.

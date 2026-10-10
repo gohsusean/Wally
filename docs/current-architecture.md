@@ -284,3 +284,16 @@ confirmation remains unimplemented. Notion external-writer concurrency and actua
 UI/enrollment/provider readiness are explicit rollout gates in the
 [implementation guide](interface-neutral-approvals.md). No new payment/scheduler
 or external approval endpoint is introduced.
+
+
+## Human-first presentation and external reconciliation
+
+[ADR-047](decisions.md#adr-047-human-first-presentation-and-external-notion-reconciliation)
+adopts [shared communication conventions](human-first-communication.md) and MYT
+presentation, initially applied to scoped Telegram reviews/results. Complete scope
+and material consequences remain visible; exact internal authorization is unchanged.
+[Read-time Notion reconciliation](notion-reconciliation.md) compares protected
+business state with observed/verified baselines, retains historical attempts and
+invalidates affected certification. Direct external writes remain permitted; SQLite
+cannot fence them. The existing complete financial catalog refresh governs financial
+facts. No continuous source monitor or provider conditional-write guarantee exists.

@@ -195,14 +195,14 @@ precondition commits no batch decisions.
 
 Notion's documented [page update API](https://developers.notion.com/reference/patch-page)
 is a property PATCH; the inspected contract offers no documented conditional
-compare-and-swap parameter. **Limitation:** semantic reads immediately before PATCH
-cannot eliminate a race with another external writer. The Wally page claim fences
-Wally attempts, not the Notion UI or unrelated integrations. Before live use, the
-operator must establish a controlled single-writer window/access policy for these
-records or implement a demonstrated provider-side concurrency mechanism. A direct
-Notion connector outside Wally cannot be technically governed by this local code;
-remove/reroute its write access to managed records before enabling this slice.
-No unrelated integration permissions were changed by this development task.
+compare-and-swap parameter. **Limitation:** semantic reads immediately before PATCH cannot eliminate a race
+with another external writer. Wally's page claim fences Wally attempts, not Notion
+users/integrations. [ADR-047](decisions.md#adr-047-human-first-presentation-and-external-notion-reconciliation)
+supersedes exclusive-writer policy with [read-time reconciliation](notion-reconciliation.md).
+The owner can continue direct Notion writes; Wally detects observed drift and stales
+trust without automatically adopting, overwriting or certifying it. A same-property
+GET/PATCH race remains and needs separate production rollout acceptance. No unrelated
+integration permissions were changed by this development task.
 
 ## Rollout gate and remaining steps
 
@@ -230,7 +230,7 @@ Before live use, an operator must:
    changed through tool arguments. The default production policy remains disabled.
    The local rollout record names the installed Codex server configuration.
 4. Validate the actual UI/biometric sequence and independent verification in isolation,
-   establish the external single-writer/access policy, and define uncertain-attempt
+   accept external reconciliation/race limitations, and define uncertain-attempt
    recovery before enabling writes. Then explicitly enable the reviewed write flag;
    target/flag policy is re-read after human confirmation. Dry-run always denies.
 5. For hosted ChatGPT, separately implement and demonstrate authenticated owner

@@ -616,6 +616,10 @@ def test_financial_edit_invalidates_certificate_without_recertifying(tmp_path, o
     candidate = Candidate(
         Kind.DEFINITION, Locator("notion", uid(1), uid(2), uid(10)), original.candidate.facts
     )
+    candidate = replace(
+        candidate,
+        facts=replace(candidate.facts, amount_policy="fixed_contract", fixed_amount="1.00"),
+    )
     record = catalog.store.register(candidate)
     catalog.store.certify(record, Scope.IDENTITY, {}, PROOF, list(ATTEST), {"channel": "fixture"})
     source = SourceMapping(

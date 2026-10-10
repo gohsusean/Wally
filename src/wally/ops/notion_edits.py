@@ -33,6 +33,7 @@ from wally.models.ops import (
 from wally.models.principal import Capability, RequestContext
 from wally.ops.decisions import UserDecision, parse_defer_until
 from wally.ops.execution import approval_problem
+from wally.ops.notion_reconcile import NotionReconciliation
 from wally.ops.store import OperationsStore
 from wally.runtime.confirmation import digest
 from wally.runtime.principals import PrincipalAuthority
@@ -164,6 +165,7 @@ class NotionEditService:
         self.writes_enabled = writes_enabled
         self._targets_provider = targets_provider
         self._write_gate = write_gate
+        self.reconciliation = NotionReconciliation(store)
 
     @_audited_request
     def propose(
@@ -179,6 +181,7 @@ class NotionEditService:
         # credentials, URLs, relations, classification authority or payment status.
         self._validate(target, replacements)
         before = self.backend.read(target)
+        self.reconciliation.compare(target, before, self.backend, context.provenance())
         changes = [
             {
                 "property_id": key,
@@ -253,10 +256,12 @@ class NotionEditService:
         self.store.insert_notion_edit(proposal, spec)
         return proposal
 
-    def review(self, proposal_id: str, *, context: RequestContext) -> dict:
+    def review(self, proposal_id: str, *, context: RequestContext, refresh=True) -> dict:
         self.authority.authorize(context, Capability.READ_CONTEXT)
-        proposal, spec, _ = self._load(proposal_id, historical=True)
+        proposal, spec, target = self._load(proposal_id, historical=True)
+        reconciliation = self.reconcile(target.key, context=context) if refresh else None
         return {
+            "reconciliation": reconciliation,
             "proposal_id": proposal.id,
             "fingerprint": proposal.fingerprint,
             "status": proposal.status.value,
@@ -276,6 +281,19 @@ class NotionEditService:
                 for attempt in self.store.list_executions(proposal_id=proposal.id)
             ],
         }
+
+    @_audited_request
+    def reconcile(self, target_key: str, *, context: RequestContext) -> dict:
+        self.authority.authorize(context, Capability.READ_CONTEXT)
+        target = self._target(target_key)
+        try:
+            snapshot = self.backend.read(target)
+        except Exception:
+            self.reconciliation.unavailable(target, context.provenance())
+            raise EditError(
+                "Notion could not be checked. Previous verification is not current."
+            ) from None
+        return self.reconciliation.compare(target, snapshot, self.backend, context.provenance())
 
     @_audited_request
     def decide(
@@ -499,11 +517,16 @@ class NotionEditService:
         if execution is None or execution.intent != ProposalIntent.EDIT_NOTION_RECORD:
             raise EditError("Unknown Notion edit execution.")
         observation = "read_unavailable"
+        verification_current = False
         try:
             _, spec, target = self._load(execution.proposal_id, historical=True)
             if execution.plan_digest != digest(spec):
                 raise EditError("Execution plan changed.")
             actual = self.backend.read(target)
+            if execution.status == ExecutionStatus.VERIFIED_SUCCESS:
+                verification_current = self.reconciliation.compare(
+                    target, actual, self.backend, context.provenance()
+                )["verification_current"]
             expected = dict(spec["before"]["hashes"])
             for change in spec["changes"]:
                 expected[change["property_id"]] = digest(["select", change["after"]])
@@ -530,6 +553,7 @@ class NotionEditService:
             "completion_proven": (
                 execution.status == ExecutionStatus.VERIFIED_SUCCESS
                 and observation == "approved_state_observed"
+                and verification_current
             ),
             "next_step": (
                 "Use verify_notion_edit for executed_unverified; RUNNING requires operator "
@@ -546,6 +570,22 @@ class NotionEditService:
         if execution is None or execution.intent != ProposalIntent.EDIT_NOTION_RECORD:
             raise EditError("Unknown Notion edit execution.")
         if execution.status == ExecutionStatus.VERIFIED_SUCCESS:
+            _, spec, target = self._load(execution.proposal_id, historical=True)
+            self.reconcile(target.key, context=context)
+            actual = self.backend.read(target)
+            expected = dict(spec["before"]["hashes"])
+            for change in spec["changes"]:
+                expected[change["property_id"]] = digest(["select", change["after"]])
+            if (
+                execution.plan_digest != digest(spec)
+                or actual.hashes != expected
+                or actual.schema_digest != spec["before"]["schema_digest"]
+                or actual.finance_version != spec["before"]["finance_version"]
+            ):
+                raise EditError("Previous verification is stale. Review the changed record.")
+            # Explicit independent re-verification can refresh the exact approved state.
+            # It never certifies, releases an unresolved claim or changes attempt history.
+            self.reconciliation.refresh_verified(target, actual, execution, context.provenance())
             return execution
         if execution.status != ExecutionStatus.EXECUTED_UNVERIFIED:
             # A RUNNING process may still be in flight. Never release its target.
@@ -580,7 +620,9 @@ class NotionEditService:
             evidence={"expected_digest": digest(expected), "actual_digest": digest(actual.hashes)},
             verification_provenance=context.provenance(),
         )
-        self.store.finish_notion_edit(settled, target.page_id)
+        self.store.finish_notion_edit(
+            settled, target.page_id, target_digest=target.fingerprint, snapshot=asdict(actual)
+        )
         return settled
 
     def _uncertain(self, execution: ProposalExecution, category: str) -> ProposalExecution:
@@ -624,6 +666,7 @@ class NotionEditService:
 
     def _current(self, proposal, spec, target):
         current = self.backend.read(target)
+        self.reconciliation.compare(target, current, self.backend, proposal.request_provenance)
         if asdict(current) != spec["before"]:
             self.store.close_proposal(
                 proposal.id,

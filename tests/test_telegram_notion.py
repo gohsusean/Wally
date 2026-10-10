@@ -121,16 +121,16 @@ def callback(world, card=0, code="e", update_id=1):
         item
         for item in shown
         if (
-            item["text"].count("\nRecord: ") > 1
+            item["text"].startswith("📝 Notion updates")
             if card == 2
             else (
-                "Record: " + world[4][0].targets[card].key + "\n" in item["text"]
-                and item["text"].count("\nRecord: ") == 1
+                "\n" + world[4][0].targets[card].key + "\n" in item["text"]
+                and item["text"].startswith("📝 Notion update\n")
             )
         )
     )
     message_id = transport.sent.index(item) + 1
-    nonce = item["buttons"][0]["callback_data"].split(".")[0]
+    nonce = item["buttons"][0][0]["callback_data"].split(".")[0]
     update = {
         "update_id": update_id,
         "callback_query": {
@@ -150,9 +150,9 @@ def test_codex_to_telegram_independent_http_verification_and_benign_audit(tmp_pa
     edits, telegram, transport, _, _, adapter = state
     proposal = propose(state)
     card = cards(state)[0]
-    assert "Current value: fixed_contract" in card["text"]
-    assert "Proposed value: source_defined" in card["text"]
-    assert proposal.fingerprint in card["text"]
+    assert "Fixed contract → From source" in card["text"]
+    assert "Amount policy" in card["text"]
+    assert proposal.fingerprint not in card["text"]
     assert "PATCH" not in api.calls
     telegram.handle_update(callback(state))
     attempt = edits.store.list_executions()[0]
@@ -162,7 +162,7 @@ def test_codex_to_telegram_independent_http_verification_and_benign_audit(tmp_pa
     assert api.patch_body == {"properties": {"policy": {"select": {"name": "source_defined"}}}}
     assert edits.store.get_proposal(proposal.id).decision_origin == "telegram"
     assert attempt.origin == WORKER_CHANNEL
-    assert any("independently verified" in item["text"] for item in transport.sent)
+    assert any("Verified successfully" in item["text"] for item in transport.sent)
     with edits.store._connect() as conn:  # noqa: SLF001
         receipts = conn.execute("SELECT record,presentation FROM human_confirmations").fetchall()
         row = conn.execute("SELECT * FROM telegram_edit_reviews").fetchone()
@@ -200,7 +200,7 @@ def test_reject_and_defer_are_durable_and_never_execute(tmp_path, code, status):
     telegram.handle_update(callback(state, code=code))
     assert edits.store.get_proposal(proposal.id).status == status
     assert edits.backend.writes == []
-    assert any("No write" in item["text"] or "Deferred" in item["text"] for item in transport.sent)
+    assert any("No changes made" in item["text"] for item in transport.sent)
     telegram.handle_update(callback(state, code="e", update_id=2))
     assert edits.backend.writes == []
     if code == "l":
@@ -221,8 +221,9 @@ def test_individual_cards_support_partial_batch_and_full_card_lists_all(tmp_path
     edits, telegram, _, _, _, _ = state
     full = cards(state)
     assert len(full) == 3
-    batch = next(item for item in full if item["text"].count("\nRecord: ") == 2)
-    assert first.id in batch["text"] and second.id in batch["text"]
+    batch = next(item for item in full if item["text"].startswith("📝 Notion updates"))
+    assert "Sandbox 0" in batch["text"] and "Sandbox 1" in batch["text"]
+    assert first.id not in batch["text"] and second.id not in batch["text"]
     telegram.handle_update(callback(state, card=0))
     telegram.handle_update(callback(state, card=1, code="r", update_id=2))
     assert edits.store.get_proposal(first.id).status == ProposalStatus.APPROVED
@@ -521,7 +522,7 @@ def test_frequency_uses_same_exact_telegram_authorization(tmp_path):
     ]
     state = world(tmp_path, backend=original.backend, targets=(target,))
     propose(state, after="quarterly")
-    assert "Property: frequency" in cards(state)[0]["text"]
+    assert "Frequency" in cards(state)[0]["text"]
     state[1].handle_update(callback(state))
     assert state[0].store.list_executions()[0].status == ExecutionStatus.VERIFIED_SUCCESS
     assert api.page["properties"]["Policy"]["select"]["name"] == "quarterly"
@@ -539,6 +540,10 @@ def test_telegram_preserves_certification_invalidation_and_no_recertification(tm
         Kind.DEFINITION,
         Locator("notion", uid(1), uid(2), uid(10)),
         catalog.store.get(ids["definition"]).candidate.facts,
+    )
+    candidate = replace(
+        candidate,
+        facts=replace(candidate.facts, amount_policy="fixed_contract", fixed_amount="1.00"),
     )
     record = catalog.store.register(candidate)
     catalog.store.certify(record, Scope.IDENTITY, {}, PROOF, list(ATTEST), {"channel": "fixture"})
@@ -608,7 +613,7 @@ def test_expired_cards_wait_for_owner_and_fresh_button_has_new_nonce(tmp_path):
     state[1].handle_update(stale)
     assert state[0].backend.writes == []
     fresh = [item for item in state[2].sent if item["buttons"]][-1]
-    assert fresh["buttons"][0]["callback_data"] != stale["callback_query"]["data"]
+    assert fresh["buttons"][0][0]["callback_data"] != stale["callback_query"]["data"]
     assert len(state[2].sent) == before + 1
 
 
@@ -626,8 +631,8 @@ def test_codex_default_telegram_and_explicit_dormant_local_modes(tmp_path):
     )
     default = build_adapter(settings)
     local = build_adapter(settings, approval_channel="local")
-    assert len(default.handle({"id": 1, "method": "tools/list"})["result"]["tools"]) == 5
-    assert len(local.handle({"id": 1, "method": "tools/list"})["result"]["tools"]) == 7
+    assert len(default.handle({"id": 1, "method": "tools/list"})["result"]["tools"]) == 6
+    assert len(local.handle({"id": 1, "method": "tools/list"})["result"]["tools"]) == 8
     status = default.handle(
         {
             "id": 2,

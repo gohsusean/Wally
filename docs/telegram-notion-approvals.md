@@ -13,13 +13,14 @@ values. Wally reads Notion and stores an immutable specification with inert prop
 advice. The existing Telegram poller discovers it in the same operations database.
 Proposal origin cannot approve it.
 
-The card shows the record label (configured target key), exact page identity/link,
-property names/IDs, old/new values, proposal ID, fingerprint, expiry and certification
-consequences. Buttons are **Approve & Execute**, **Reject**, **Later (1 hour)**.
-Individual cards support selected records. An additional **Approve & Execute all
-shown** card contains the complete batch scope, with no hidden selection. Decisions
-are atomic; provider executions are sequential and separately recorded. A batch is
-not an atomic Notion transaction. Already settled selections invalidate its older card.
+The card shows the configured record label, complete human-readable property names
+and old/new values, material recertification consequences and MYT expiry. Internal
+identities/hashes remain in immutable reviews and audit records. Buttons are
+**Apply change**, **Reject**, **Later**, with **View in Notion** on a second row.
+Batch cards show every change with **Apply all** and individual record links.
+Decisions remain atomic; provider executions are sequential and separately recorded.
+A batch is not an atomic Notion transaction. Settled selections invalidate older cards.
+See the [before/after presentation](human-first-communication.md).
 
 Cards use a UTF-16 length budget below Telegram's message limit. Oversized batches
 use individual complete cards. An oversized individual review is withheld and
@@ -75,12 +76,13 @@ backend. Certification, bill/invoice registration, payments, amounts, banking,
 secrets, security changes, destructive operations, pending/governance knowledge and
 unregistered records/properties are excluded. Potentially material dispatch invalidates
 affected financial certification, even if later blocked before PATCH. Failed/uncertain
-writes never restore it. Rejected/unattempted advice leaves certification unchanged.
+writes never restore it. Rejected/unattempted advice leaves certification unchanged when source facts are
+unchanged; independently detected source drift stales trust regardless of the decision.
 Verification never certifies, pays or resolves an obligation.
 
-Codex defaults to Telegram mode with five tools: status, propose, exact review,
-inspect attempt and re-verify. Decision/execute tools are absent and capability checks
-also deny them. `--approval-channel local` retains the seven-tool native path for
+Codex defaults to Telegram mode with six tools: status, propose, exact review,
+inspect attempt, re-verify and read-only record reconciliation. Decision/execute tools are absent and capability checks
+also deny them. `--approval-channel local` retains the eight-tool native path for
 future reviewed use. Its helper/state is preserved. Installed MCP and poller must
 share project/profile, operations database, registry and reviewed edit policy. The
 old `data/codex-local/state` isolation cannot hand off proposals to the existing bot.
@@ -121,18 +123,14 @@ Wally cannot prevent direct edits by other users/integrations with Notion write
 access. Immediate semantic reads do not fence external writers between GET and PATCH;
 no atomic compare-and-set is demonstrated in the inspected
 [page update contract](https://developers.notion.com/reference/patch-page).
-Use a dedicated managed financial database/teamspace and Wally writer; ordinary users
-and other connections should have view/comment or read-only access to that subset.
-Leave ordinary Notion work elsewhere unrestricted. Remove inherited write grants and
-audit connections; linked views/database locks are not permission enforcement.
-[Connection capabilities](https://developers.notion.com/reference/capabilities)
-separate read/update/insert rights, and parent sharing grants child access. An owner
-OAuth connector can still bypass Wally if its identity retains edits: use a distinct
-limited identity or remove access to the managed subset. No permissions/credentials
-were changed here. Arbitrary same-owner code can modify runtime/policy or access
-existing credentials; no adversarial local-agent isolation is claimed. Exclusive
-production control needs effective permission validation and potentially a protected
-runtime identity.
+[ADR-047](decisions.md#adr-047-human-first-presentation-and-external-notion-reconciliation)
+supersedes the exclusive-writer requirement. Direct owner/integration writes remain
+permitted. [Reconciliation](notion-reconciliation.md) detects observed business drift
+and stales verification/affected certification without writing back or certifying it.
+A GET/PATCH race remains a limitation, including undetectable same-property overwrites.
+Production financial rollout is still disabled. No Notion permissions/credentials
+were changed. Arbitrary same-owner code can modify runtime/policy or access existing
+credentials; no adversarial local-agent isolation is claimed.
 
 ## Origins and ChatGPT
 
@@ -252,7 +250,7 @@ and fresh authorization; saved evidence grants nothing. The final safe workspace
 passed **734 tests**, with three documented exclusions, plus lint and documentation
 checks. No implementation fix was necessary for this live acceptance.
 
-Production rollout still requires effective external-writer permissions and an
-accepted Telegram/local-runtime trust model. Telegram account takeover/bot-token
+Production rollout still requires separately accepted reconciliation/race recovery
+and a Telegram/local-runtime trust model under ADR-047. Telegram account takeover/bot-token
 compromise and Notion external-writer races remain the documented limitations;
 biometric/native and hosted ChatGPT authorization were not validated or weakened.

@@ -51,6 +51,7 @@ TELEGRAM_CHANNEL = "telegram"
 _NO_APPROVAL = "Execution requires an approval adapter for this channel. Nothing ran."
 
 _OPS: dict[str, Capability] = {
+    "reconcile_notion_record": Capability.READ_CONTEXT,
     "get_notion_edit_status": Capability.READ_CONTEXT,
     "inspect_notion_execution": Capability.VERIFY_NOTION_EDIT,
     "propose_notion_edit": Capability.SUBMIT_REQUEST,
@@ -198,6 +199,7 @@ class GatewayRuntime:
         now: datetime,
     ) -> GatewayResult:
         handler: dict[str, Callable[[AdapterRegistration, dict, datetime], GatewayResult]] = {
+            "reconcile_notion_record": self._reconcile_notion_record,
             "get_notion_edit_status": self._get_notion_edit_status,
             "inspect_notion_execution": self._inspect_notion_execution,
             "propose_notion_edit": self._propose_notion_edit,
@@ -242,6 +244,15 @@ class GatewayRuntime:
             context=self._issued_for_body(adapter, body),
         )
         return GatewayResult(ok=True, data=_public_proposal(proposal))
+
+    def _reconcile_notion_record(self, adapter, body, now):
+        self._edit_fields(body, ("target_key",))
+        return GatewayResult(
+            ok=True,
+            data=self._edits().reconcile(
+                clean_ref(body["target_key"]), context=self._issued_for_body(adapter, body)
+            ),
+        )
 
     def _get_notion_edit_status(self, adapter, body, now):
         self._edit_fields(body, ())

@@ -14,7 +14,10 @@ class TelegramTransientError(TimeoutError):
 
 class TelegramTransport(Protocol):
     def send_message(
-        self, chat_id: str, text: str, buttons: list[dict[str, str]] | None = None
+        self,
+        chat_id: str,
+        text: str,
+        buttons: list[dict[str, str]] | list[list[dict[str, str]]] | None = None,
     ) -> str: ...
 
     def answer_callback(self, callback_id: str, text: str) -> None: ...
@@ -27,11 +30,16 @@ class BotClient:
         self._token = token
 
     def send_message(
-        self, chat_id: str, text: str, buttons: list[dict[str, str]] | None = None
+        self,
+        chat_id: str,
+        text: str,
+        buttons: list[dict[str, str]] | list[list[dict[str, str]]] | None = None,
     ) -> str:
         payload: dict = {"chat_id": chat_id, "text": text}
         if buttons:
-            payload["reply_markup"] = {"inline_keyboard": [buttons]}
+            payload["reply_markup"] = {
+                "inline_keyboard": buttons if isinstance(buttons[0], list) else [buttons]
+            }
         body = self._post("sendMessage", payload)
         return str(body.get("result", {}).get("message_id", ""))
 
