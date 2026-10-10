@@ -18,7 +18,9 @@ audit investigations can disclose the technical detail needed for that work.
 - Show risks in ordinary language. Financial edits show “This change will require
   recertification.” Avoid repetitive policy disclaimers on ordinary metadata cards.
 - Use **Asia/Kuala_Lumpur (MYT)** for human-facing dates and times. Prefer
-  `11 Oct 2026, 1:22 am MYT`; use today/tomorrow only against an explicit local day.
+  `11 Oct 2026, 1:22 am`; omit the timezone label for Malaysian time. Include
+  a timezone label when explicitly referring to another timezone. Use today/tomorrow
+  only against an explicit local day.
   Omit seconds, fractional seconds, offsets and ISO strings unless needed for the
   decision or requested for technical work.
 - Match detail to the audience and context. Retain exact IDs and precise timestamps
@@ -66,7 +68,7 @@ Sandbox — Frequency acceptance
 
 Frequency
 Monthly → Quarterly
-Expires today at 1:22 am MYT
+Expires today at 1:22 am
 
 [✅ Apply change] [❌ Reject]
 [⏰ Later]        [View in Notion]

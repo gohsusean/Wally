@@ -2,6 +2,7 @@
 
 from dataclasses import replace
 from datetime import UTC, datetime
+from zoneinfo import ZoneInfo
 
 import pytest
 
@@ -15,10 +16,10 @@ from wally.telegram.notion_approvals import execution_outcome
 @pytest.mark.parametrize(
     "instant,expected",
     [
-        ("2026-10-10T17:22:45.123456+00:00", "11 Oct 2026, 1:22 am MYT"),
-        ("2026-10-10T15:59:59.999999+00:00", "10 Oct 2026, 11:59 pm MYT"),
-        ("2026-10-10T16:00:00+00:00", "11 Oct 2026, 12:00 am MYT"),
-        ("2026-10-11T04:00:00+00:00", "11 Oct 2026, 12:00 pm MYT"),
+        ("2026-10-10T17:22:45.123456+00:00", "11 Oct 2026, 1:22 am"),
+        ("2026-10-10T15:59:59.999999+00:00", "10 Oct 2026, 11:59 pm"),
+        ("2026-10-10T16:00:00+00:00", "11 Oct 2026, 12:00 am"),
+        ("2026-10-11T04:00:00+00:00", "11 Oct 2026, 12:00 pm"),
     ],
 )
 def test_myt_conversion_preserves_input_precision(instant, expected):
@@ -29,11 +30,17 @@ def test_myt_conversion_preserves_input_precision(instant, expected):
 
 def test_relative_expiry_uses_local_day_and_rejects_ambiguous_naive_time():
     now = datetime(2026, 10, 10, 15, 59, tzinfo=UTC)
-    assert human_time("2026-10-10T16:01:00+00:00", now=now) == "tomorrow at 12:01 am MYT"
+    assert human_time("2026-10-10T16:01:00+00:00", now=now) == "tomorrow at 12:01 am"
     now = datetime(2026, 10, 10, 16, 0, tzinfo=UTC)
-    assert human_time("2026-10-10T17:22:00+00:00", now=now) == "today at 1:22 am MYT"
+    assert human_time("2026-10-10T17:22:00+00:00", now=now) == "today at 1:22 am"
     with pytest.raises(ValueError):
         human_time(datetime(2026, 10, 11))
+
+
+def test_explicit_other_timezone_keeps_its_label():
+    instant = "2026-10-10T17:22:45.123456+00:00"
+    assert human_time(instant, timezone=ZoneInfo("UTC")) == "10 Oct 2026, 5:22 pm UTC"
+    assert human_time(instant, timezone=ZoneInfo("Asia/Kuching")) == "11 Oct 2026, 1:22 am"
 
 
 def test_simple_card_buttons_and_no_visible_ids(tmp_path):
@@ -43,7 +50,7 @@ def test_simple_card_buttons_and_no_visible_ids(tmp_path):
     assert card["text"].startswith("📝 Notion update\n\nSandbox 0\n\nAmount policy")
     assert "Fixed contract → From source" in card["text"]
     assert "Expires today at" in card["text"] or "Expires tomorrow at" in card["text"]
-    assert "MYT" in card["text"]
+    assert "MYT" not in card["text"]
     assert all(
         value not in card["text"]
         for value in [

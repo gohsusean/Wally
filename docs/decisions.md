@@ -1901,7 +1901,9 @@ Technical identifiers and policy prose in routine approval cards also hinder rev
    material recertification warnings remain visible. Exact identifiers, fingerprints,
    separate purpose-bound authorizations and precise clocks remain internal.
 2. Default user-facing time to Asia/Kuala_Lumpur (MYT), using shared presentation
-   utilities. Do not change UTC storage, security deadlines or callback lifetimes.
+   utilities. Omit the timezone label for Malaysian time; include it when explicitly
+   referring to another timezone. Do not change UTC storage, security deadlines or
+   callback lifetimes.
 3. Supersede ADR-045/046's exclusive-writer rollout requirement with
    [external reconciliation](notion-reconciliation.md). Wally cannot prevent direct
    writes outside its runtime. Read business values against prior evidence, preserve

@@ -23,15 +23,19 @@ def human_label(value: str) -> str:
     return _LABELS.get(value, value)
 
 
-def human_time(value: datetime | str, *, now: datetime | None = None) -> str:
-    """Convert an aware instant to MYT; optional relative dates use the local day."""
+def human_time(
+    value: datetime | str, *, now: datetime | None = None, timezone: ZoneInfo = USER_TIMEZONE
+) -> str:
+    """Default to Malaysian time without a label; label explicitly requested other zones."""
     instant = datetime.fromisoformat(value) if isinstance(value, str) else value
     if instant.tzinfo is None or (now is not None and now.tzinfo is None):
         raise ValueError("User-facing time requires an aware instant.")
-    local = instant.astimezone(USER_TIMEZONE)
-    clock = f"{local.hour % 12 or 12}:{local.minute:02d} {'am' if local.hour < 12 else 'pm'} MYT"
+    local = instant.astimezone(timezone)
+    clock = f"{local.hour % 12 or 12}:{local.minute:02d} {'am' if local.hour < 12 else 'pm'}"
+    if timezone.key not in {"Asia/Kuala_Lumpur", "Asia/Kuching"}:
+        clock += f" {local.tzname()}"
     if now is not None:
-        days = (local.date() - now.astimezone(USER_TIMEZONE).date()).days
+        days = (local.date() - now.astimezone(timezone).date()).days
         if days in (0, 1):
             return f"{'today' if days == 0 else 'tomorrow'} at {clock}"
     return f"{local.day} {local:%b %Y}, {clock}"
