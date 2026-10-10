@@ -1,5 +1,12 @@
 # Interface-neutral approval, centralized authorization
 
+**11 October extension:** [Telegram approvals](telegram-notion-approvals.md) under
+ADR-046 are now the default for eligible metadata edits. One exact owner callback
+supplies separate decision/execution confirmations to the existing service. Telegram
+itself has no execute/verify grant. The local native path below is retained for
+future use with `--approval-channel local`; it is not required for ordinary eligible
+edits. The earlier rollout record is historical evidence, not the active workflow.
+
 Updated 10 October 2026. [ADR-045](decisions.md#adr-045-interface-neutral-approval-centralized-authorization)
 extends the operational architecture. This is an implemented, default-disabled
 Notion metadata-edit slice, with isolated tests and an opt-in local Codex adapter.

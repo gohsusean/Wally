@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import re
+from contextlib import suppress
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 from wally.gateway.service import TELEGRAM_CHANNEL, GatewayHost, GatewayRuntime
-from wally.models.ops import ExecutionStatus, ProposalStatus
+from wally.models.ops import ExecutionStatus, ProposalIntent, ProposalStatus
 from wally.models.principal import Capability
 from wally.ops.decisions import UserDecision
 from wally.ops.request_propose import TrustedRecord
@@ -15,14 +16,16 @@ from wally.ops.store import OperationsStore
 from wally.runtime.principals import ChannelPolicy
 from wally.telegram.client import TelegramTransport
 from wally.telegram.ingress import TelegramIngress
+from wally.telegram.notion_approvals import execution_outcome
 from wally.telegram.outbox import Notification, NotificationOutbox
 
-_CALLBACK = re.compile(r"^([A-Za-z0-9_-]{8,32})\.([arn])$")
+_CALLBACK = re.compile(r"^([A-Za-z0-9_-]{8,32})\.([arnel])$")
 _DECISION_UTTERANCE = re.compile(r"^(please\s+)?(approve|reject)(\s+it)?[.!]?$", re.IGNORECASE)
-_ACTIONS = {"a": "approve", "r": "reject", "n": "not_now"}
+_ACTIONS = {"a": "approve", "r": "reject", "n": "not_now", "e": "approve_execute", "l": "later"}
 _DECISIONS = {"approve": UserDecision.APPROVE, "reject": UserDecision.REJECT}
 _ARCHIVE = frozenset({"archive", "archive that", "i dealt with this already"})
 _EXECUTION_KIND = {
+    ExecutionStatus.RUNNING.value: "execution_running",
     ExecutionStatus.EXECUTED_UNVERIFIED.value: "execution_completed",
     ExecutionStatus.VERIFIED_SUCCESS.value: "verification_completed",
     ExecutionStatus.VERIFIED_FAILURE.value: "verification_failed",
@@ -68,6 +71,7 @@ class TelegramService:
         records: tuple[TrustedRecord, ...] = (),
         *,
         message_limit: int = 8,
+        notion_approvals=None,
     ) -> None:
         self._runtime = runtime
         self._store = store
@@ -78,6 +82,7 @@ class TelegramService:
         self._ingress = TelegramIngress(store)
         self._limit = message_limit
         self._hits: list[datetime] = []
+        self._notion_approvals = notion_approvals
         if config.chat_id:
             self._ingress.remember_chat(config.chat_id)
 
@@ -93,23 +98,46 @@ class TelegramService:
     def runtime(self) -> GatewayRuntime:
         return self._runtime
 
+    def set_dispatch_guard(self, guard):
+        if self._notion_approvals is not None:
+            self._notion_approvals.dispatch_guard = guard
+
     def handle_update(self, update: dict, now: datetime | None = None) -> str:
         current = now or datetime.now(UTC)
         update_id = update.get("update_id")
         if not isinstance(update_id, int):
             return "ignored"
         if self._ingress.seen(update_id):
+            self._ingress.advance(update_id)
             return "replayed"
         outcome = self._apply(update, current)
         self._ingress.record(update_id, outcome, current)
         self._ingress.advance(update_id)
         return outcome
 
-    def sync(self, now: datetime | None = None) -> None:
+    def sync(self, now: datetime | None = None, *, refresh_reviews=False) -> None:
         current = now or datetime.now(UTC)
         chat_id = self._known_chat()
         owner = self._config.owner_user_id
+        if self._notion_approvals is not None:
+            self._notion_approvals.sync(chat_id, current, refresh_reviews=refresh_reviews)
+            for proposal in self._store.list_proposals(status=ProposalStatus.APPROVED):
+                if (
+                    proposal.intent == ProposalIntent.EDIT_NOTION_RECORD
+                    and not self._store.list_executions(proposal_id=proposal.id)
+                ):
+                    self._outbox.enqueue_status(
+                        kind="edit_awaiting_execution",
+                        execution_id=proposal.id,
+                        proposal_id=proposal.id,
+                        fingerprint=proposal.fingerprint,
+                        owner_user_id=owner,
+                        chat_id=chat_id,
+                        now=current,
+                    )
         for proposal in self._store.list_proposals(status=ProposalStatus.PROPOSED):
+            if proposal.intent == ProposalIntent.EDIT_NOTION_RECORD:
+                continue  # Never show a generic/incomplete card for a scoped edit.
             self._outbox.enqueue_decision(
                 proposal_id=proposal.id,
                 fingerprint=proposal.fingerprint,
@@ -120,6 +148,11 @@ class TelegramService:
                 now=current,
             )
         for execution in self._store.list_executions():
+            if (
+                execution.status == ExecutionStatus.RUNNING
+                and execution.intent != ProposalIntent.EDIT_NOTION_RECORD
+            ):
+                continue
             kind = _EXECUTION_KIND.get(execution.status.value)
             if kind is None:
                 continue
@@ -175,6 +208,18 @@ class TelegramService:
             self._answer(callback, "That button is not valid.")
             return "ignored"
         if not row.allows(action):
+            self._answer(callback, "That button is not valid.")
+            return "ignored"
+        if row.kind == "notion_edit_review":
+            if self._notion_approvals is None:
+                self._answer(callback, "Scoped approval is unavailable.")
+                return "ignored"
+            result = self._notion_approvals.handle(row, action, callback)
+            self._answer(callback, result[:180])
+            self.sync(now, refresh_reviews="expired" in result.casefold())
+            self.deliver_pending(now)
+            return "scoped_review"
+        if action not in {"approve", "reject", "not_now"}:
             self._answer(callback, "That button is not valid.")
             return "ignored"
         if action == "not_now":
@@ -241,7 +286,7 @@ class TelegramService:
             return self._archive(chat_id, now)
         if _is_question(norm):
             self._link_mentioned(norm, chat_id, now)
-            self.sync(now)
+            self.sync(now, refresh_reviews=True)
             self.deliver_pending(now)
             self._transport.send_message(chat_id, self._attention(norm))
             return "read"
@@ -271,9 +316,7 @@ class TelegramService:
         self._enqueue_and_deliver(proposal, result.data, chat_id, now)
         return "submitted"
 
-    def _enqueue_and_deliver(
-        self, proposal: dict, data: dict, chat_id: str, now: datetime
-    ) -> None:
+    def _enqueue_and_deliver(self, proposal: dict, data: dict, chat_id: str, now: datetime) -> None:
         row = self._outbox.enqueue_decision(
             proposal_id=str(proposal.get("id") or ""),
             fingerprint=str(proposal.get("fingerprint") or ""),
@@ -290,6 +333,9 @@ class TelegramService:
                 self._send_row(claimed, now)
 
     def _resurface(self, chat_id: str, now: datetime) -> None:
+        if self._notion_approvals is not None:
+            self.sync(now, refresh_reviews=True)
+            self.deliver_pending(now)
         row = self._pending_card(chat_id)
         if row is None:
             self._transport.send_message(chat_id, _NO_CARD)
@@ -379,13 +425,34 @@ class TelegramService:
         title = proposal.title if proposal is not None else row.kind
         suggestion = proposal.suggestion if proposal is not None else ""
         text = _card(title, suggestion, row.proposal_id or row.execution_id)
-        if row.kind == "verification_completed":
+        if row.kind == "notion_edit_review":
+            try:
+                text, buttons = self._notion_approvals.render(row)
+                if buttons is None:
+                    self._outbox.dismiss(row.id, now)
+                    return False
+            except Exception as exc:
+                self._outbox.mark_retry(row, _safe_error(exc), now)
+                return False
+        elif row.kind == "verification_completed":
             text = f"{title}\nCompleted and verified."
         elif row.kind == "verification_failed":
             text = f"{title}\nVerification failed."
         elif row.kind == "execution_completed":
             text = f"{title}\nExecution finished. Verification is still open."
-        buttons = _buttons(row) if row.callback_nonce else None
+        if row.kind != "notion_edit_review":
+            buttons = _buttons(row) if row.callback_nonce else None
+        if row.kind == "edit_awaiting_execution":
+            text = (
+                f"Proposal {row.proposal_id}\nApproved, awaiting execution. "
+                "An unused, current Approve & Execute card is required; no automatic retry."
+            )
+        if row.kind == "edit_review_result" and self._notion_approvals is not None:
+            text = self._notion_approvals.result(row.execution_id)
+        if proposal is not None and proposal.intent == ProposalIntent.EDIT_NOTION_RECORD:
+            execution = self._store.get_execution(row.execution_id) if row.execution_id else None
+            if execution is not None:
+                text = f"Proposal {proposal.id}\n" + execution_outcome(execution)
         try:
             message_id = self._transport.send_message(row.chat_id, text, buttons)
         except Exception as exc:
@@ -427,7 +494,8 @@ class TelegramService:
     def _answer(self, callback: dict, text: str) -> None:
         callback_id = str(callback.get("id") or "")
         if callback_id:
-            self._transport.answer_callback(callback_id, text)
+            with suppress(Exception):
+                self._transport.answer_callback(callback_id, text)
 
 
 def _callback_identity(callback: dict) -> tuple[str, dict]:

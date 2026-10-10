@@ -94,8 +94,13 @@ class NotificationOutbox:
         active_matter_id: str = "",
         correlation_id: str = "",
         now: datetime,
+        kind: str = "decision_required",
+        allowed_actions: str = _DECISION_ACTIONS,
+        generation: str = "",
     ) -> Notification:
-        key = f"decision_required:{proposal_id}:{fingerprint}"
+        key = f"{kind}:{proposal_id}:{fingerprint}:{generation}" if generation else (
+            f"{kind}:{proposal_id}:{fingerprint}"
+        )
         existing = self._by_dedupe(key)
         if existing is not None:
             if chat_id and not existing.chat_id and existing.status == "pending":
@@ -105,7 +110,7 @@ class NotificationOutbox:
         row = Notification(
             id=f"ntf_{uuid4().hex[:16]}",
             dedupe_key=key,
-            kind="decision_required",
+            kind=kind,
             source_entity_id=proposal_id,
             active_matter_id=active_matter_id,
             correlation_id=correlation_id,
@@ -113,7 +118,7 @@ class NotificationOutbox:
             execution_id="",
             fingerprint=fingerprint,
             callback_nonce=secrets.token_urlsafe(9),
-            allowed_actions=_DECISION_ACTIONS,
+            allowed_actions=allowed_actions,
             owner_user_id=owner_user_id,
             chat_id=chat_id,
             status="pending",
@@ -127,7 +132,7 @@ class NotificationOutbox:
             dismissed_at="",
         )
         self._insert(row)
-        return row
+        return self._by_dedupe(key)
 
     def enqueue_status(
         self,
@@ -145,6 +150,9 @@ class NotificationOutbox:
         key = f"{kind}:{execution_id}:{fingerprint}"
         existing = self._by_dedupe(key)
         if existing is not None:
+            if chat_id and not existing.chat_id and existing.status == "pending":
+                self._set_chat(existing.id, chat_id, owner_user_id)
+                return self._must(existing.id)
             return existing
         row = Notification(
             id=f"ntf_{uuid4().hex[:16]}",
@@ -171,7 +179,7 @@ class NotificationOutbox:
             dismissed_at="",
         )
         self._insert(row)
-        return row
+        return self._by_dedupe(key)
 
     def get(self, notification_id: str) -> Notification | None:
         return self._one("id", notification_id)
@@ -335,7 +343,7 @@ class NotificationOutbox:
         names = ", ".join(_COLUMNS)
         with self._store._connect() as conn:  # noqa: SLF001
             conn.execute(
-                f"INSERT INTO notification_outbox ({names}) VALUES ({placeholders})",
+                f"INSERT OR IGNORE INTO notification_outbox ({names}) VALUES ({placeholders})",
                 values,
             )
 

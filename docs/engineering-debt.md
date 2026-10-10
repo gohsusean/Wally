@@ -163,9 +163,9 @@ suspected false associations need separate operator review of preserved evidence
 
 ## D05 — Telegram processed-update/cursor crash seam (medium)
 
-**Verified:** update record and cursor advance commit separately; the seen-update
-branch returns without repairing the cursor. **Inferred consequence:** a crash
-between commits can repeatedly fetch the same update until a higher ID arrives.
+**Resolved in code, 11 October 2026:** update record and cursor still commit
+separately, but replay repairs a stale cursor without repeating effects. Synthetic
+tests exercise processed-marker/old-cursor recovery without needing another update.
 
 Evidence: [handler](../src/wally/telegram/service.py),
 [ingress commits](../src/wally/telegram/ingress.py).
@@ -179,7 +179,8 @@ Retain replay safety for crashes before the processed marker too.
 
 **Verified:** delivery reconciliation returns before elapsed-defer logic. A
 synthetic fake-store probe retained `deferred` beyond its deadline. This affects
-CLI/REPL deferral; Telegram currently has no Later/defer button.
+CLI/REPL delivery deferral; Telegram's new scoped Notion Later button releases through
+its existing proposal lifecycle. The unrelated delivery defect remains open.
 
 Evidence: [delivery reconciliation](../src/wally/ops/proposal_reconcile.py).
 
@@ -236,8 +237,9 @@ See [recovery requirements](operations.md#backuprecovery-not-established).
 
 ## D10 — Status notifications can be stranded without chat (medium)
 
-**Verified:** decision enqueue updates an empty chat after it becomes known;
-status enqueue returns the existing row without doing so. Claim requires a chat.
+**Resolved in code, 11 October 2026:** status enqueue now updates an empty chat
+when owner/private-chat discovery supplies it, like decision enqueue. Synthetic
+late-discovery and concurrent outbox tests pass. At-least-once send ambiguity remains.
 
 Evidence: [outbox](../src/wally/telegram/outbox.py).
 
@@ -247,10 +249,13 @@ key under known delivery. Test restart, ownership and late-chat discovery.
 
 ## D11 — Telegram lease/delivery reliability limits (medium)
 
-**Verified:** the lease renews at poll start, not throughout handling/delivery.
-**Inferred:** slow processing longer than 90 seconds permits another holder while
-the first still acts. Separate, **documented accepted limitation:** a crash after
-Telegram accepts sendMessage can show duplicate cards; no exactly-once guarantee.
+**11 October implementation:** the poller renews during slow handling/delivery.
+Expired/lost holders cannot renew; scoped Notion dispatch checks ownership after
+credential acquisition. Synthetic loss/takeover tests cover these boundaries.
+**Remaining limitation:** leases are per shared database, not cross-host/cross-state
+bot fencing. A crash after Telegram accepts sendMessage can show duplicate cards;
+no exactly-once delivery guarantee. Actual slow-network/process acceptance remains
+part of the Telegram rollout.
 
 Evidence: [poll loop](../src/wally/telegram/poll.py),
 [lease](../src/wally/telegram/ingress.py), [ADR-041](decisions.md#adr-041-telegram-decides-through-a-server-side-nonce).

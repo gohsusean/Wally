@@ -1444,6 +1444,11 @@ Revisit when a ChatGPT connector completes an authenticated grant without sendin
 
 ## ADR-041: Telegram decides through a server-side nonce
 
+**11 October extension:** [ADR-046](#adr-046-telegram-authorizes-eligible-scoped-notion-edits)
+retains this channel's restricted capabilities and established decision-only intents.
+Eligible scoped metadata cards additionally authorize a separate trusted worker;
+the blanket no-execution-interaction description below is historical for that class.
+
 **Status:** Accepted — implemented in v0.18.0  
 **Date:** 2026-10-04  
 **Deciders:** Founding engineer + project owner
@@ -1693,6 +1698,11 @@ The owner must validate one live chain before operational readiness is claimed.
 
 ## ADR-045: Interface-neutral approval, centralized authorization
 
+**11 October extension:** [ADR-046](#adr-046-telegram-authorizes-eligible-scoped-notion-edits)
+makes Telegram the default owner interaction for eligible metadata edits. Separate
+decision/execution confirmations remain, but share one exact button interaction.
+The native path remains dormant and hosted ChatGPT restrictions remain unchanged.
+
 **Status:** Accepted — implemented default-disabled scoped metadata slice
 
 **Date:** 2026-10-10
@@ -1788,3 +1798,79 @@ scope. Known pre-PATCH failures are distinguished from ambiguous dispatched writ
 conservative certification invalidation remains. These operational extensions add
 no interface capability or automatic recovery authority. Actual owner hardware,
 Desktop discovery and isolated Notion acceptance remain rollout prerequisites.
+
+---
+
+## ADR-046: Telegram authorizes eligible scoped Notion edits
+
+**Status:** Accepted — implemented default-disabled; live owner acceptance pending
+
+**Date:** 2026-10-11
+
+**Deciders:** Project owner's explicit Telegram-first architecture request
+
+### Context
+
+Routine registered metadata corrections should be reviewed on the owner's phone or
+Mac in Telegram without Terminal or biometrics. The existing exact-review, principal,
+proposal, scoped executor and independent verifier already supply runtime boundaries.
+This is an intentional, bounded extension of ADR-041/045, not a broad Telegram
+execution grant. Telegram account identity is weaker than biometric presence.
+
+### Decision
+
+1. Telegram is the default review channel for explicitly allowlisted existing
+   `amount_policy` and `frequency` select changes, independent of proposal origin.
+   A complete immutable card presents record/page, property IDs, old/new values,
+   version and expiry. Oversized scopes split into complete individual cards or
+   fail closed. Individual and full-scope batch buttons support partial approval.
+2. Approve & Execute is one human interaction that authorizes separate decision
+   and execution stages. Ordinary approval is inert. Existing PrincipalAuthority
+   issues/consumes distinct exact-purpose confirmations; an in-process provider
+   accepts only presentations bound to the authenticated callback. Model text,
+   persisted provenance or copied receipts grant no authority.
+3. Authenticate owner/private chat through the trusted Bot API polling transport;
+   validate server nonce, recorded delivered message, immutable scope, allowed action
+   and expiry. Durably claim a review before effects. Store owner ID, selected scope,
+   action, callback ID, timestamp, expiry and outcome as attribution. Restart never
+   reconstructs executable authority. A fresh press is necessary for an unstarted
+   write; any existing execution attempt blocks another PATCH.
+4. Telegram's capability set stays unchanged. An internal worker with no exposed
+   adapter registration holds only read/scoped Notion execute/verify. Runtime policy
+   is reloaded before each action and after credential resolution. The separate
+   Telegram gate and explicit target subset do not enable the dormant local gate.
+5. Reuse existing immutable proposals, atomic decisions/page claims, source drift
+   checks, minimal PATCH, independent semantic verification and certification
+   invalidation. No generic executor, payment, registration, certification,
+   secret/security/destructive or unregistered operation qualifies.
+6. Rejection/defer are actual proposal decisions. Deferral releases to pending,
+   requiring another review. Consumed/stale/duplicate/concurrent callbacks cannot
+   repeat execution. Poll leases renew during slow work and lost ownership fences
+   scoped dispatch. Processed update replay repairs the cursor. Delivery remains
+   at-least-once, with durable dedupe where remote acceptance is known.
+7. Uncertain/interrupted/pre-dispatch failures remain explicit and retain record
+   claims. Read-only inspection and independent re-verification never repeat PATCH.
+   RUNNING requires operator process-liveness reconciliation. No automatic recovery
+   write, lock clearing, certification restoration or obligation resolution is added.
+8. Codex defaults to proposal/read/reconciliation tools with Telegram handoff using
+   shared operations/registry/policy paths. Preserve the native seven-tool path,
+   helper and tests as opt-in dormant infrastructure. Hosted ChatGPT stays restricted;
+   its shipped HTTP composition still lacks the edit service.
+9. Ship empty registrations and both gates false. Sandbox creation needs explicit
+   owner approval; actual button/PATCH/GET acceptance remains a live deployment gate.
+   Never use the four Phase 6 records or staged September invoice for testing.
+
+### Consequences and limitations
+
+The eligible UX needs no Terminal, Touch ID or password. Telegram account takeover,
+accidental presses and bot-token compromise can authorize eligible actions, so this
+mechanism cannot satisfy stronger human-presence requirements. Bot cloud chats are
+not end-to-end encrypted; cards omit secrets and unnecessary financial information.
+The Mac must remain awake, logged in and connected; no hosting/scheduler is added.
+
+Wally cannot prevent external Notion writers or arbitrary same-owner code from
+bypassing it. GET/PATCH has no demonstrated atomic compare-and-set. Production needs
+validated effective permissions on a dedicated managed subset, a dedicated writer,
+read-only other connections/users and an accepted runtime trust model. Ordinary
+Notion use elsewhere can remain unrestricted. No permission change is made here.
+See [implementation, UX, recovery and acceptance](telegram-notion-approvals.md).

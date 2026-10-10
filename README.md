@@ -19,6 +19,13 @@ with no edit targets, no configured confirmer and writes disabled. Synthetic tes
 and Swift type-checking do not establish installed/live readiness. ChatGPT cannot
 approve merely through a bearer, pinned subject or the old confirmation flag.
 
+The [Telegram approval extension](docs/telegram-notion-approvals.md) makes private
+Telegram review the default for explicitly allowlisted Frequency/Amount Policy
+edits. **Approve & Execute** records separate decision and execution authorizations,
+then uses the existing scoped executor and independent verification. Telegram itself
+retains no execute/verify capability. Native local authentication remains dormant.
+All edit gates and target registrations ship disabled/empty; live acceptance is pending.
+
 ## Engineering handover
 
 Read [AGENTS.md](AGENTS.md), [current architecture](docs/current-architecture.md), [runtime operations](docs/operations.md), the relevant [ADRs](docs/decisions.md), and affected tests. Check [active engineering debt](docs/engineering-debt.md) before feature work; [roadmap](docs/roadmap.md) owns future delivery.

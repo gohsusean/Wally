@@ -94,13 +94,25 @@ the poller later delivers. There is no general scheduler.
 Processed updates and offset are durable. A 90-second database lease prevents
 normal duplicate consumers; it is local to this shared database, not a
 cross-machine bot lock. Restart can wait for the previous lease to expire. The
-record/advance crash seam and slow-processing lease window remain D05/D11.
+processed-marker/cursor seam is repaired on replay (D05). The lease renews while
+handling slow work; lost/expired holders cannot renew and scoped Notion dispatch
+checks ownership after credential acquisition (D11). Separate databases/hosts still
+cannot share this local lease safely.
 
 Decision notifications deduplicate by proposal/fingerprint. Sends are at-least-once:
 Telegram may accept a message before Wally records its ID, so a crash can produce
 a duplicate card. Known delivery is retained; stale sending leases recover,
 failures retry and eventually become terminal. Repeated decision buttons remain
 idempotent. `Not now` dismisses notification only; no reminder is scheduled.
+
+[Telegram scoped Notion reviews](telegram-notion-approvals.md) additionally use
+15-minute, full-scope, durable single-use cards with Approve & Execute/Reject/Later.
+Codex's default command shares this poller's state and reviewed
+`config/notion-edits.yaml`; it cannot decide/execute. Both local and Telegram write
+gates remain false with no targets. The existing LaunchAgent must load the new code;
+Codex must reload its MCP connection. A running process alone does not prove an
+owner callback or live Notion acceptance. Keep the Mac awake/online for delivery;
+offline or stale authorizations cannot trigger an automatic write.
 
 ### Read-only status inspection
 

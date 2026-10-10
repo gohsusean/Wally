@@ -54,7 +54,8 @@ class TelegramIngress:
                 """
                 INSERT INTO telegram_cursor (id, next_offset, chat_id)
                 VALUES ('poll', ?, '')
-                ON CONFLICT(id) DO UPDATE SET next_offset = excluded.next_offset
+                ON CONFLICT(id) DO UPDATE SET
+                    next_offset = MAX(telegram_cursor.next_offset, excluded.next_offset)
                 """,
                 (nxt,),
             )
@@ -115,6 +116,22 @@ class TelegramIngress:
             )
             conn.execute("COMMIT")
             return True
+
+    def renew(self, holder: str, now: datetime) -> bool:
+        """An expired/lost holder cannot revive its lease from a delayed operation."""
+        with self._store._connect() as conn:  # noqa: SLF001
+            result = conn.execute(
+                "UPDATE telegram_lease SET locked_until=? WHERE id='poll' AND holder=? "
+                "AND locked_until>?", (_iso(now + LEASE), holder, _iso(now)),
+            )
+            return result.rowcount == 1
+
+    def owns(self, holder: str, now: datetime) -> bool:
+        with self._store._connect() as conn:  # noqa: SLF001
+            return conn.execute(
+                "SELECT 1 FROM telegram_lease WHERE id='poll' AND holder=? AND locked_until>?",
+                (holder, _iso(now)),
+            ).fetchone() is not None
 
 
 def _iso(value: datetime) -> str:

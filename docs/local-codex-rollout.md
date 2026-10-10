@@ -1,5 +1,11 @@
 # Local Codex approval rollout
 
+**Historical record:** The 11 October [Telegram milestone](telegram-notion-approvals.md)
+supersedes this immediate native-authentication rollout. The helper, isolated state
+and tests are retained dormant. Installed `wally_local` arguments now select Telegram
+and shared default operations/registry/policy paths. No further biometric development
+or enrollment is required for eligible edits; production write gates remain disabled.
+
 Point-in-time setup evidence, 10 October 2026. This extends
 [ADR-045](decisions.md#adr-045-interface-neutral-approval-centralized-authorization)
 without changing the approval trust model. Production financial rollout is blocked.

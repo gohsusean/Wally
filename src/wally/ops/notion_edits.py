@@ -255,7 +255,7 @@ class NotionEditService:
 
     def review(self, proposal_id: str, *, context: RequestContext) -> dict:
         self.authority.authorize(context, Capability.READ_CONTEXT)
-        proposal, spec, _ = self._load(proposal_id)
+        proposal, spec, _ = self._load(proposal_id, historical=True)
         return {
             "proposal_id": proposal.id,
             "fingerprint": proposal.fingerprint,
@@ -265,6 +265,16 @@ class NotionEditService:
             "page_id": spec["page_id"],
             "changes": spec["changes"],
             "execution_is_separate": True,
+            "executions": [
+                {
+                    "execution_id": attempt.id,
+                    "status": attempt.status.value,
+                    "failure_category": attempt.failure_category,
+                    "outcome": attempt.outcome,
+                    "verification": attempt.verification,
+                }
+                for attempt in self.store.list_executions(proposal_id=proposal.id)
+            ],
         }
 
     @_audited_request

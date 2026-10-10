@@ -27,6 +27,10 @@ CODEX_POLICY = ChannelPolicy(
         }
     ),
 )
+CODEX_TELEGRAM_POLICY = ChannelPolicy(
+    "local_stdio",
+    frozenset({Capability.SUBMIT_REQUEST, Capability.READ_CONTEXT, Capability.VERIFY_NOTION_EDIT}),
+)
 
 
 def registration() -> AdapterRegistration:
@@ -34,9 +38,18 @@ def registration() -> AdapterRegistration:
 
 
 class CodexEditAdapter:
-    def __init__(self, runtime: GatewayRuntime, adapter: AdapterRegistration):
+    def __init__(
+        self,
+        runtime: GatewayRuntime,
+        adapter: AdapterRegistration,
+        *,
+        telegram_approval: bool = False,
+        telegram_policy_provider=None,
+    ):
         self.runtime = runtime
         self.adapter = adapter
+        self.telegram_approval = telegram_approval
+        self.telegram_policy_provider = telegram_policy_provider
 
     def handle(self, message: dict) -> dict | None:
         request_id = message.get("id")
@@ -49,6 +62,15 @@ class CodexEditAdapter:
                 "capabilities": {"tools": {}},
                 "serverInfo": {"name": "wally-scoped-edits", "version": "0.18.0"},
                 "instructions": (
+                    "Propose exact registered Notion metadata changes. Wally sends the full "
+                    "review to the owner's private Telegram chat. Only its Approve & Execute "
+                    "button can authorize eligible edits. Codex conversation text never "
+                    "approves or executes. Read get_notion_edit afterward for execution IDs "
+                    "and status; only verified_success "
+                    "proves completion. Never use direct Notion writes on Wally-managed records."
+                )
+                if self.telegram_approval
+                else (
                     "Wally authorizes only exact registered proposal versions. First read "
                     "get_notion_edit_status. Show get_notion_edit's exact changes to the owner. "
                     "decide_notion_edits requires native review and fresh biometrics; it does "
@@ -61,13 +83,13 @@ class CodexEditAdapter:
         elif method == "ping":
             result = {}
         elif method == "tools/list":
-            result = {"tools": tools()}
+            result = {"tools": self._tools()}
         elif method == "tools/call":
             params = message.get("params", {})
             if not isinstance(params, dict):
                 return _error(request_id, "Invalid tool request.")
             name, body = params.get("name"), params.get("arguments", {})
-            if name not in {t["name"] for t in tools()} or not isinstance(body, dict):
+            if name not in {t["name"] for t in self._tools()} or not isinstance(body, dict):
                 return _error(request_id, "Unknown tool or malformed arguments.")
             response = self.runtime.dispatch(
                 adapter_id=self.adapter.adapter_id,
@@ -75,6 +97,13 @@ class CodexEditAdapter:
                 op=name,
                 body=body,
             )
+            if self.telegram_approval and response.ok and name == "get_notion_edit_status":
+                response.data["approval_channel"] = "telegram"
+                response.data["combined_owner_interaction"] = "Approve & Execute"
+                if self.telegram_policy_provider is not None:
+                    policy = self.telegram_policy_provider()
+                    response.data["telegram_writes_enabled"] = policy.telegram_writes_enabled
+                    response.data["telegram_targets"] = list(policy.telegram_targets)
             result = {
                 "isError": not response.ok,
                 "content": [
@@ -93,6 +122,18 @@ class CodexEditAdapter:
         else:
             return _error(request_id, "Unknown method.")
         return {"jsonrpc": "2.0", "id": request_id, "result": result}
+
+    def _tools(self):
+        return [
+            tool
+            for tool in tools()
+            if not self.telegram_approval
+            or tool["name"]
+            not in {
+                "decide_notion_edits",
+                "execute_notion_edit",
+            }
+        ]
 
 
 def _error(request_id, text):

@@ -8,6 +8,12 @@ The 10 October extension adds default-disabled scoped Notion edits under ADR-045
 see [interface-neutral approvals](interface-neutral-approvals.md) for tested code
 and remaining deployment/confirmation gates.
 
+The 11 October [Telegram extension](telegram-notion-approvals.md), ADR-046, makes
+Telegram the default review/authorization interface for explicitly eligible scoped
+metadata edits. One owner interaction produces separate decision and execution
+confirmations; the trusted worker alone holds scoped execute/verify capability.
+Native local confirmation stays dormant. All write gates remain default-disabled.
+
 Code and tests take precedence over this description. Runtime observations are
 point-in-time evidence, not deployment guarantees. See [operations](operations.md)
 for machine prerequisites and [engineering debt](engineering-debt.md) for known
@@ -192,15 +198,18 @@ interface-neutral, with additional ChatGPT host checks on decisions.
   No execute/verify capabilities. Exact-edit read/staging translations exist but
   the shipped HTTP composition does not attach the edit service.
 - **Local Codex stdio:** explicit `python -m wally.codex` restricted runtime. Only
-  submit/read/decide and scoped Notion execute/verify capabilities; no general
-  financial execution/certification. Exact decisions and execution require a
-  trusted native review plus fresh biometrics. Policy ships empty/disabled;
-  helper enrollment/installation and the Desktop connection are unvalidated.
+  submit/read/scoped reconciliation in default Telegram mode; no decision/execute
+  tools or broad financial execution/certification. The seven-tool native path
+  remains dormant behind explicit local mode. Policy ships empty/disabled; Desktop
+  discovery and actual Telegram/Notion acceptance remain unvalidated.
 - **Telegram:** owner numeric ID in a private chat, fixed channel; submit/read/
   link/decide only. Groups/edits ignored. Nonce-backed Approve/Reject checks bind
   owner, chat, proposal and fingerprint; repeats do not decide again. `Not now`
-  dismisses the card only; text approval redisplays a card. No Later/defer button,
-  execution, verification, reasoner, scheduler, or public webhook.
+  dismisses established-intent cards only; text approval cannot decide. Eligible
+  metadata cards under ADR-046 support exact Approve & Execute/Reject/Later and full
+  batches. Separate scoped worker authorization/execution/verification uses the
+  existing service; Telegram itself gets no execution capability. No reasoner,
+  general scheduler or public webhook is introduced.
 - **Generic Unix socket:** transport library with registration-dependent
   permissions, exercised by tests; not a currently deployed standalone server.
 - **Home Assistant/Alexa:** no implemented Wally interface. Configuration stubs

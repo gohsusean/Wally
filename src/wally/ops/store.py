@@ -94,6 +94,12 @@ class OperationsStore:
                     provenance TEXT NOT NULL, created_at TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS human_confirmations (
                     id TEXT PRIMARY KEY, record TEXT NOT NULL, presentation TEXT NOT NULL);
+                CREATE TABLE IF NOT EXISTS telegram_edit_reviews (
+                    notification_id TEXT PRIMARY KEY, scope TEXT NOT NULL,
+                    expires_at REAL NOT NULL, state TEXT NOT NULL DEFAULT 'open',
+                    action TEXT NOT NULL DEFAULT '', callback_id TEXT NOT NULL DEFAULT '',
+                    authorized_at REAL, owner_user_id TEXT NOT NULL,
+                    result TEXT NOT NULL DEFAULT '');
             """)
             conn.execute(
                 """

@@ -16,6 +16,8 @@ class EditConfig:
     writes_enabled: bool = False
     targets: tuple[EditTarget, ...] = ()
     confirmer: MacOSBiometricConfirmation | None = None
+    telegram_targets: tuple[str, ...] = ()
+    telegram_writes_enabled: bool = False
 
 
 def load_config(path: Path) -> EditConfig:
@@ -26,8 +28,17 @@ def load_config(path: Path) -> EditConfig:
         if (
             not isinstance(data, dict)
             or data.get("schema_version") != 1
-            or set(data) - {"schema_version", "writes_enabled", "targets", "macos_confirmation"}
+            or set(data)
+            - {
+                "schema_version",
+                "writes_enabled",
+                "targets",
+                "macos_confirmation",
+                "telegram_targets",
+                "telegram_writes_enabled",
+            }
             or type(data.get("writes_enabled", False)) is not bool
+            or type(data.get("telegram_writes_enabled", False)) is not bool
         ):
             raise ValueError
         targets = []
@@ -45,6 +56,22 @@ def load_config(path: Path) -> EditConfig:
             targets.append(EditTarget(**raw))
         if len({t.key for t in targets}) != len(targets):
             raise ValueError
+        eligible = data.get("telegram_targets", [])
+        if (
+            not isinstance(eligible, list)
+            or any(not isinstance(key, str) for key in eligible)
+            or len(set(eligible)) != len(eligible)
+            or not set(eligible) <= {t.key for t in targets}
+        ):
+            raise ValueError
+        for target in targets:
+            if target.key in eligible and (
+                not target.properties
+                or any(
+                    rule.field not in {"amount_policy", "frequency"} for rule in target.properties
+                )
+            ):
+                raise ValueError
         confirmer = None
         native = data.get("macos_confirmation")
         if native is not None:
@@ -68,7 +95,13 @@ def load_config(path: Path) -> EditConfig:
                 helper_sha256=fingerprint,
                 owner_uid=native["owner_uid"],
             )
-        return EditConfig(data.get("writes_enabled", False), tuple(targets), confirmer)
+        return EditConfig(
+            data.get("writes_enabled", False),
+            tuple(targets),
+            confirmer,
+            tuple(eligible),
+            data.get("telegram_writes_enabled", False),
+        )
     except (ValueError, TypeError, KeyError, AttributeError, OSError, yaml.YAMLError):
         raise EditError("Invalid reviewed Notion edit configuration.") from None
 

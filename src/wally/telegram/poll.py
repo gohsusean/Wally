@@ -8,10 +8,14 @@ import secrets
 import sys
 import time
 from datetime import UTC, datetime
+from pathlib import Path
+from threading import Event, Thread
 from uuid import uuid4
 
 from wally.audit.logger import AuditLogger
 from wally.chatgpt.http import load_trusted_records
+from wally.codex.__main__ import build_edit_service
+from wally.codex.config import load_config
 from wally.config.loader import Settings
 from wally.exceptions import ProviderUnavailableError
 from wally.gateway.service import TELEGRAM_CHANNEL, AdapterRegistration, GatewayRuntime
@@ -21,6 +25,12 @@ from wally.providers.secrets import SecretsProvider
 from wally.runtime.principals import LOCAL_OPERATOR_CHANNELS, PrincipalAuthority
 from wally.runtime.secrets_safety import evaluate_secret_reference
 from wally.telegram.client import BotClient, TelegramTransientError, TelegramTransport
+from wally.telegram.notion_approvals import (
+    WORKER_CHANNEL,
+    WORKER_POLICY,
+    TelegramEditConfirmation,
+    TelegramNotionApprovals,
+)
 from wally.telegram.outbox import OUTBOUND_SEMANTICS
 from wally.telegram.service import TelegramConfig, TelegramService, telegram_policy
 
@@ -83,10 +93,25 @@ def build_service(
     settings: Settings,
     config: TelegramConfig,
     transport: TelegramTransport,
+    *,
+    policy_path: Path | None = None,
 ) -> TelegramService:
     store = OperationsStore(settings.ops_database)
+    policy_path = policy_path or settings.project_root / "config" / "notion-edits.yaml"
+    confirmation = TelegramEditConfirmation()
     authority = PrincipalAuthority(
-        {**LOCAL_OPERATOR_CHANNELS, TELEGRAM_CHANNEL: telegram_policy()}
+        {
+            **LOCAL_OPERATOR_CHANNELS,
+            TELEGRAM_CHANNEL: telegram_policy(),
+            WORKER_CHANNEL: WORKER_POLICY,
+        },
+        human_confirmers={TELEGRAM_CHANNEL: confirmation, WORKER_CHANNEL: confirmation},
+    )
+    edits = build_edit_service(
+        settings, store, authority, policy_path, telegram_gate=confirmation.dispatch_allowed
+    )
+    approvals = TelegramNotionApprovals(
+        edits, confirmation, lambda: load_config(policy_path), config.owner_user_id
     )
     audit = AuditLogger(settings.audit_directory)
     ops = ObserveBriefService(store, audit=audit, authority=authority)
@@ -99,19 +124,46 @@ def build_service(
         audit=audit,
         trusted_records=records,
     )
-    return TelegramService(runtime, store, config, transport, records)
+    return TelegramService(runtime, store, config, transport, records, notion_approvals=approvals)
 
 
 def poll_once(service: TelegramService, transport: TelegramTransport, holder: str) -> bool:
     now = datetime.now(UTC)
     if not service.ingress.try_acquire(holder, now):
         return False
-    service.sync(now)
-    updates = transport.get_updates(service.ingress.offset())
-    for update in updates:
-        service.handle_update(update, now)
-    service.deliver_pending(now)
-    return True
+    stopped, lost = Event(), Event()
+
+    def renew():
+        while not stopped.wait(20):
+            try:
+                if not service.ingress.renew(holder, datetime.now(UTC)):
+                    lost.set()
+                    return
+            except Exception:
+                lost.set()
+                return
+
+    def owned():
+        return not lost.is_set() and service.ingress.owns(holder, datetime.now(UTC))
+
+    service.set_dispatch_guard(owned)
+    thread = Thread(target=renew, daemon=True)
+    thread.start()
+    try:
+        service.sync()
+        updates = transport.get_updates(service.ingress.offset())
+        for update in updates:
+            if not owned():
+                return False
+            service.handle_update(update)
+        if not owned():
+            return False
+        service.deliver_pending()
+        return True
+    finally:
+        stopped.set()
+        thread.join(timeout=2)
+        service.set_dispatch_guard(lambda: False)
 
 
 def poll_forever(service: TelegramService, transport: TelegramTransport) -> None:
