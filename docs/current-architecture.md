@@ -4,6 +4,9 @@
 the 5 October 2026 handover audit. Documentation updated 6 October 2026.
 The D01/D02 stabilization updates the legacy finance boundary under ADR-043.
 D03 adds the certified financial catalog under ADR-044; live validation is pending.
+The 10 October extension adds default-disabled scoped Notion edits under ADR-045;
+see [interface-neutral approvals](interface-neutral-approvals.md) for tested code
+and remaining deployment/confirmation gates.
 
 Code and tests take precedence over this description. Runtime observations are
 point-in-time evidence, not deployment guarantees. See [operations](operations.md)
@@ -120,7 +123,9 @@ and ADR-034 for the scoped rationale; D03 is implemented in code; its separately
 
 ## Proposal, decision, execution, verification
 
-Current intents: `prepare_for_event`, `review_bill`, `deliver_document`.
+Current intents: `prepare_for_event`, `review_bill`, `deliver_document`,
+`edit_notion_record`. The edit intent references a separately stored immutable
+review specification; proposals themselves remain non-dispatchable.
 Proposals contain reference identifiers and display-only advice, not URLs,
 credentials, provider arguments, amounts, or dispatchable tool names.
 Fingerprints bind material inputs; display/prioritization/provenance does not
@@ -140,7 +145,7 @@ decision. Elapsed defer normally clears the decision and returns to proposed;
 delivery currently skips this release logic (D06). No current user command
 enters proposal `dismissed`; Telegram notification dismissal is a separate state.
 
-Only `review_bill` has an operational executor: portal login/review, not payment.
+The generic Act & Verify executor supports `review_bill` only: portal login/review, not payment.
 Preflight rereads the enabled certified financial chain and occurrence evidence,
 checks the approval fingerprint, and builds a typed plan
 using certified canonical provider/account/profile configuration and an auth success
@@ -164,9 +169,10 @@ metadata supplies no authority. Code/fixture validation does not establish live 
 
 ## Identity and interface boundaries
 
-PrincipalAuthority owns a per-process HMAC key and grants seven capabilities:
+PrincipalAuthority owns a per-process HMAC key and grants nine capabilities:
 submit request, read context, link channel, decide proposal, execute proposal,
-verify execution, and local-owner financial certification. Grants bind principal/channel/authentication and are neither
+verify execution, local-owner financial certification, scoped Notion edit execution
+and scoped Notion edit verification. Grants bind principal/channel/authentication and are neither
 persisted nor copied into proposal fingerprints. The system is single-owner;
 local terminal identity assumes that operator is the owner.
 
@@ -175,16 +181,21 @@ rejects identity claims in payloads, issues context, checks capability, and call
 the service. Execute also requires an approval-capable adapter. It is primarily
 interface-neutral, with additional ChatGPT host checks on decisions.
 
-- **CLI/REPL commands:** all six capabilities; approve/reject/defer and explicit
+- **CLI/REPL commands:** existing local operator capabilities; approve/reject/defer and explicit
   execute/verify. Natural-language REPL tools use the separate legacy path above.
 - **ChatGPT MCP/HTTP:** loopback only; initialize returns no private state, tool
   listing/calls require bearer authentication. Local owner-secret/PKCE-style JSON
   grant mints in-memory bearer tokens with no implemented expiry/revoke. Reads
-  default on; submit/link/visibility writes are opt-in. Decisions need writes,
-  allowlisted subject, both secrets, and operator confirmation configuration.
-  Caller `_meta` is not cryptographically authenticated OpenAI identity; the
-  configuration flag is not per-call proof of a click. Hosted auth/confirmation
-  remains unvalidated; keep decisions disabled. No execute/verify capabilities.
+  default on; submit/link/visibility writes are opt-in. Hosted decisions are disabled
+  in code even when the old confirmation flag is set. Caller metadata, bearer
+  authentication and a configuration flag do not prove a human's exact decision.
+  No execute/verify capabilities. Exact-edit read/staging translations exist but
+  the shipped HTTP composition does not attach the edit service.
+- **Local Codex stdio:** explicit `python -m wally.codex` restricted runtime. Only
+  submit/read/decide and scoped Notion execute/verify capabilities; no general
+  financial execution/certification. Exact decisions and execution require a
+  trusted native review plus fresh biometrics. Policy ships empty/disabled;
+  helper enrollment/installation and the Desktop connection are unvalidated.
 - **Telegram:** owner numeric ID in a private chat, fixed channel; submit/read/
   link/decide only. Groups/edits ignored. Nonce-backed Approve/Reject checks bind
   owner, chat, proposal and fingerprint; repeats do not decide again. `Not now`
@@ -238,3 +249,25 @@ expected occurrences free of payable facts; issued amounts use exact decimals.
 Finance edits invalidate certification and produce same-period observation revisions.
 Receipts remain FYI; no payment/settlement/scheduler is introduced. The separately
 authorized first utility/property chain remains necessary before live readiness.
+
+
+## Interface-neutral scoped Notion edits
+
+[ADR-045](decisions.md#adr-045-interface-neutral-approval-centralized-authorization)
+establishes **interface-neutral approval, centralized authorization**. The shared
+`NotionEditService` retains proposal decisions in the existing operational rows,
+uses exact immutable specifications for selected versions, and requires runtime
+human confirmation in addition to channel authentication. Scoped batches commit
+atomically; approval never starts execution. Current metadata scope is existing
+select options for amount policy/frequency. Unknown/truncated protected state
+fails closed. Re-read after human confirmation and credential acquisition; claim
+the canonical page before a write; independently verify expected business state.
+Financial certification is invalidated, never silently retained or reissued.
+
+New additive specifications, claims and human-review audit tables preserve existing
+state. Default policy registers no target or confirmer and enables no write. The
+local native provider is implemented/type-checked and boundary-tested; hosted
+confirmation remains unimplemented. Notion external-writer concurrency and actual
+UI/enrollment/provider readiness are explicit rollout gates in the
+[implementation guide](interface-neutral-approvals.md). No new payment/scheduler
+or external approval endpoint is introduced.

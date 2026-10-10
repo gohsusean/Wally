@@ -1402,7 +1402,7 @@ Revisit when the first real adapter (ChatGPT) is registered, when that adapter n
 **Date:** 2026-10-04  
 **Deciders:** Founding engineer + project owner
 
-**Current scope / supersession:** Hosted authentication/confirmation remains unvalidated. Subject/org metadata is supplied by the bearer caller, not an independently authenticated OpenAI assertion, and the confirmation flag is operator attestation rather than per-call proof. Keep decisions disabled pending D15 in [engineering debt](engineering-debt.md). Execute/verify remain absent.
+**Current scope / supersession:** Hosted authentication/confirmation remains unvalidated. Subject/org metadata is supplied by the bearer caller, not an independently authenticated OpenAI assertion, and the confirmation flag is operator attestation rather than per-call proof. Keep decisions disabled pending D15 in [engineering debt](engineering-debt.md). [ADR-045](#adr-045-interface-neutral-approval-centralized-authorization) supersedes flag-based enablement and now enforces disabled decisions in code. Execute/verify remain absent.
 
 ### Context
 
@@ -1688,3 +1688,89 @@ Notion-shaped transport tests. Full safe tests and adversarial review are requir
 Finance revisions address the applicable part of D07; calendar debt remains.
 Snapshot reads cannot prove remote transactional immutability or document truth.
 The owner must validate one live chain before operational readiness is claimed.
+
+---
+
+## ADR-045: Interface-neutral approval, centralized authorization
+
+**Status:** Accepted — implemented default-disabled scoped metadata slice
+
+**Date:** 2026-10-10
+
+**Deciders:** Project owner request + implementation review
+
+### Context
+
+The owner should be able to review Notion corrections in ChatGPT or Codex without
+using Terminal. Existing proposal decisions and PrincipalAuthority can be reused,
+but an authenticated agent call or a pinned subject does not prove that a human
+approved the exact change. ADR-040's operator confirmation flag is insufficient
+as per-action evidence. Financial certification and uncertain execution outcomes
+must remain distinct from record editing.
+
+### Decision
+
+1. **Approvals are interface-neutral; authorization is centralized in Wally.**
+   Extend the operational proposal lifecycle with reference-only
+   `edit_notion_record` advice and separate immutable reviewed specifications.
+   Existing proposal rows remain the decision of record; there is no second
+   approval inbox or external decision store.
+2. **Action-specific human interaction is a separate authority requirement.**
+   PrincipalAuthority constructs an immutable exact review, calls a trusted
+   registered provider, and issues a process-local single-use confirmation.
+   Bind owner, purpose, context, selected IDs/fingerprints, target and old/new values,
+   expiry and nonce. Persist attribution only. An interface/tool cannot submit a
+   boolean, model assertion or self-issued receipt as human authorization.
+3. **Approval remains inert.** Scoped batches may approve/reject/defer individual
+   exact versions, leaving omitted proposals pending. Revalidate after the prompt
+   and commit the selected batch atomically. Execution is a separate authenticated
+   request with another fresh review; verification is an independent provider read.
+4. **Use narrow capabilities.** `EXECUTE_NOTION_EDIT` and `VERIFY_NOTION_EDIT`
+   grant this metadata workflow without granting broad proposal execution,
+   financial verification/certification, payments or portal access. Initially
+   permit only existing select options for amount policy and frequency.
+5. **Fail closed for hosted ChatGPT.** This supersedes ADR-040's opt-in flag-based
+   decision path: even a configured confirmation flag and pinned subject cannot
+   enable `record_decision`. No verified hosted human attestation exists in the
+   inspected integration. Keep hosted decisions and execution/verification disabled.
+6. **Implement an opt-in local Codex path.** A restricted stdio MCP adapter invokes
+   the same Gateway/service. A pinned macOS native helper presents the exact review
+   and requires fresh biometrics. Its owner UID/enrollment binding and installed
+   client behavior need operator validation. This is a local owner trust model,
+   not protection against arbitrary same-owner code. No helper, MCP connection,
+   listener or live provider was installed/started for development.
+7. **Constrain writes and uncertainty.** Re-read classification, source/schema,
+   material state, approved version, Matter and target policy after confirmation
+   and after action credential acquisition. Atomically claim proposal and normalized
+   page identity before attempting a write. Never retry an uncertain outcome,
+   including by substituting a new proposal. Report success only after comparing
+   expected edits and all protected business properties. Ignore only system audit
+   metadata and explicitly registered nonbusiness `Audit History` text.
+8. **Certification is independent.** Invalidate canonical financial certification
+   before potentially material writes; never certify from update or verification.
+   Preserve history and existing dependency checks. Receipts remain FYI, and no
+   obligation, invoice, payment chain or scheduler is created/enabled.
+9. **Default disabled and additive.** New edit/review/claim tables share the
+   operational database; never reset state. Empty targets, no confirmer, and writes
+   off ship in a new reviewed policy. Existing Terminal/Telegram behavior remains;
+   Telegram gets no new execution/verification authority. Live rollout requires
+   demonstrated confirmation, controlled external writers and reviewed recovery.
+
+### Consequences
+
+The shared service and local stdio interaction are exercised with synthetic Notion
+records; the Swift helper type-checks and its Python boundary has failure tests.
+Actual biometric enrollment/UX, Codex MCP installation and live provider behavior
+remain unvalidated. Hosted confirmation and broader edits remain unimplemented.
+Notion's inspected PATCH contract supplies no demonstrated atomic conditional
+write: immediate semantic checks cannot fence external writers. Keep writes off
+until a controlled writer/access policy or adequate provider concurrency is proven.
+
+See the [implementation and rollout guide](interface-neutral-approvals.md) for exact
+component boundaries, investigated platform mechanisms and remaining limitations.
+
+### Review trigger
+
+A trustworthy hosted per-action attestation, a new property/type or payment-related
+capability, a different authentication method, external concurrent writers, or a
+manual uncertain-attempt recovery API requires review and updated rationale.

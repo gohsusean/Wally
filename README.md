@@ -6,11 +6,18 @@ Wally is not a chatbot. It is not a home automation platform.
 
 ## Status
 
-**Status:** **v0.18.0 — Telegram inbox.** Telegram long-polls from this Mac and reaches Wally through the Gateway. The owner is one numeric Telegram user id in a private chat. Approval buttons carry a server-side nonce. `Not now` dismisses that card and leaves the proposal pending. Approve records a decision and does not execute. ChatGPT v0.17 stays implemented, with `record_decision` still disabled until a hosted connection can authenticate and confirm that call. Act & Verify supports bill portal login/review only, on a separate authorized request, and never pays. The older conversational ToolRegistry path remains callable: financial dispatch now requires authenticated runtime authority, canonical finance metadata and fresh human approval under ADR-043. The Act & Verify limit is not a system-wide no-payment guarantee. Nothing runs on a schedule.
+**Status:** **v0.18.0 — Telegram inbox.** Telegram long-polls from this Mac and reaches Wally through the Gateway. The owner is one numeric Telegram user id in a private chat. Approval buttons carry a server-side nonce. `Not now` dismisses that card and leaves the proposal pending. Approve records a decision and does not execute. ChatGPT v0.17 stays implemented, with `record_decision` disabled in code until hosted action-specific human confirmation is implemented. Act & Verify supports bill portal login/review only, on a separate authorized request, and never pays. The older conversational ToolRegistry path remains callable: financial dispatch now requires authenticated runtime authority, canonical finance metadata and fresh human approval under ADR-043. The Act & Verify limit is not a system-wide no-payment guarantee. Nothing runs on a schedule.
 
 Complete: v0.10 browser automation, v0.11.1 secrets hardening, v0.12 Observe & Brief, v0.13 Assess & Propose, v0.14 Approval Inbox, v0.15 Act & Verify, v0.16 Gateway, v0.17 ChatGPT interface, v0.18 Telegram inbox.
 
 Future: scheduling and proactive triggers, notification UX hardening, more supported action types, and a validated hosted ChatGPT connection. Current service implementations are not proof of live provider readiness; D03 now supplies a typed certified financial catalog with local-owner certification under [ADR-044](docs/decisions.md#adr-044-certified-financial-identities-and-local-owner-certification). Live chain validation and other acceptance gaps remain in [engineering debt](docs/engineering-debt.md). Remote execution from ChatGPT is not part of this release.
+
+The [interface-neutral approval slice](docs/interface-neutral-approvals.md) adds a
+restricted local Codex stdio adapter, exact scoped batches, a native biometric
+confirmation provider and independently verified Notion metadata edits. It ships
+with no edit targets, no configured confirmer and writes disabled. Synthetic tests
+and Swift type-checking do not establish installed/live readiness. ChatGPT cannot
+approve merely through a bearer, pinned subject or the old confirmation flag.
 
 ## Engineering handover
 

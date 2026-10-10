@@ -161,7 +161,8 @@ Python, then restart the poller. This document does not authorize rotation.
 Environment token injection is used only when no Telegram reference is set.
 The poller uses a configured Gateway credential or a random process-local one.
 ChatGPT separately needs owner/Gateway secrets, optional subject/org allowlists
-and write/confirmation flags; bearer grants stay in memory. Its localhost flow
+and write flags; the old confirmation flag cannot enable hosted decisions.
+Bearer grants stay in memory. Its localhost flow
 is not a validated hosted connector. Keep decision tools disabled until D15 is
 resolved; never expose the owner-secret grant through a tunnel as a shortcut.
 
@@ -216,3 +217,23 @@ or overlapping identity coordinates block affected namespaces and dependencies.
 Never skip such rows to claim uniqueness. Fixing an observed ambiguity does not
 restore certificates or enablement; recertify affected records and enable the exact
 new binding. See the guide's incremental-certification rules before preparing data.
+
+
+## Scoped Notion edits: disabled rollout
+
+[Interface-neutral approvals](interface-neutral-approvals.md) documents the new
+local stdio command, native biometric confirmation, exact write scope, semantic
+verification and deployment gates. `config/notion-edits.yaml` ships with empty
+targets, no configured native helper and writes off. `python -m wally.codex` is an
+explicit startup operation; normal App/ChatGPT/Telegram startup does not run it.
+Like existing runtimes it performs additive database initialization, so it is not
+a read-only audit command. It does not refresh providers or financial certification
+at startup. Existing ignored state and the Phase 6 checkpoint are preserved.
+
+The local helper must be separately reviewed, built, pinned and validated with the
+owner's enrolled biometrics before writes can be enabled. Desktop MCP settings,
+credentials, services and live financial data were not changed in development.
+External Notion writers are not fenced by SQLite; establish a controlled writer
+policy and uncertain-attempt recovery first. Never clear unresolved page claims
+or re-certify a record as an incidental retry. Hosted ChatGPT decisions remain
+hard-disabled pending D15; no public/tunneled approval endpoint is provided.

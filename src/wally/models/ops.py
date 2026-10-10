@@ -93,6 +93,7 @@ class ProposalIntent(StrEnum):
     PREPARE_FOR_EVENT = "prepare_for_event"
     REVIEW_BILL = "review_bill"
     DELIVER_DOCUMENT = "deliver_document"
+    EDIT_NOTION_RECORD = "edit_notion_record"
 
 
 class ProposalStatus(StrEnum):

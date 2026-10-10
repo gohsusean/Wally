@@ -1,0 +1,9 @@
+# Reviewed runtime policy, never caller-supplied authorization.
+schema_version: 1
+writes_enabled: false
+# An operator must build/review/pin the native helper and bind the enrolled Mac
+# biometrics to the Wally owner before enabling this local confirmation path.
+macos_confirmation: null
+# Explicit synthetic/live target registrations belong here only after review.
+# No Phase 6 record is registered for editing by this change.
+targets: []

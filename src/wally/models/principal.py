@@ -30,6 +30,8 @@ class Capability(StrEnum):
     DECIDE_PROPOSAL = "decide_proposal"
     EXECUTE_PROPOSAL = "execute_proposal"
     VERIFY_EXECUTION = "verify_execution"
+    EXECUTE_NOTION_EDIT = "execute_notion_edit"
+    VERIFY_NOTION_EDIT = "verify_notion_edit"
     CERTIFY_FINANCIAL_DATA = "certify_financial_data"
 
 

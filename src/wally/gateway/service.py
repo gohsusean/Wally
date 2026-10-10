@@ -31,6 +31,7 @@ from wally.models.ops import Matter, ProposalExecution, ProposedAction, Verifica
 from wally.models.principal import Capability, RequestContext, RequestProvenance, clean_ref
 from wally.ops.act import ActVerifyService, ExecutionLifecycle, ExecutionReport
 from wally.ops.decisions import UserDecision
+from wally.ops.notion_edits import DecisionSelection, NotionEditService
 from wally.ops.request_propose import (
     GroundingError,
     TrustedRecord,
@@ -44,14 +45,17 @@ from wally.runtime.principals import PrincipalAuthority, new_correlation_id
 GATEWAY_INGRESS = "gateway_ingress"
 _LOCAL_CHANNELS = frozenset({"cli", "repl"})
 _AUTH_FAILURE = "Gateway authentication failed."
-_CLAIM_FAILURE = (
-    "External payloads cannot set channel, principal, subject, grant, or capabilities."
-)
+_CLAIM_FAILURE = "External payloads cannot set channel, principal, subject, grant, or capabilities."
 CHATGPT_CHANNEL = "chatgpt"
 TELEGRAM_CHANNEL = "telegram"
 _NO_APPROVAL = "Execution requires an approval adapter for this channel. Nothing ran."
 
 _OPS: dict[str, Capability] = {
+    "propose_notion_edit": Capability.SUBMIT_REQUEST,
+    "get_notion_edit": Capability.READ_CONTEXT,
+    "decide_notion_edits": Capability.DECIDE_PROPOSAL,
+    "execute_notion_edit": Capability.EXECUTE_NOTION_EDIT,
+    "verify_notion_edit": Capability.VERIFY_NOTION_EDIT,
     "submit_request": Capability.SUBMIT_REQUEST,
     "get_context": Capability.READ_CONTEXT,
     "list_proposals": Capability.READ_CONTEXT,
@@ -113,6 +117,7 @@ class GatewayRuntime:
         *,
         ops: ObserveBriefService | None = None,
         act: ActVerifyService | None = None,
+        notion_edits: NotionEditService | None = None,
         audit: Any = None,
         trusted_records: tuple[TrustedRecord, ...] = (),
         owner_subjects: frozenset[str] = frozenset(),
@@ -122,6 +127,11 @@ class GatewayRuntime:
         self._authority = authority
         self._ops = ops
         self._act = act
+        self._notion_edits = notion_edits
+        if notion_edits is not None and (
+            notion_edits.authority is not authority or notion_edits.store is not store
+        ):
+            raise GatewayError("Notion edits must use the Gateway authority and store.")
         self._audit = audit
         self._records = trusted_records
         self._owner_subjects = owner_subjects
@@ -186,6 +196,11 @@ class GatewayRuntime:
         now: datetime,
     ) -> GatewayResult:
         handler: dict[str, Callable[[AdapterRegistration, dict, datetime], GatewayResult]] = {
+            "propose_notion_edit": self._propose_notion_edit,
+            "get_notion_edit": self._get_notion_edit,
+            "decide_notion_edits": self._decide_notion_edits,
+            "execute_notion_edit": self._execute_notion_edit,
+            "verify_notion_edit": self._verify_notion_edit,
             "submit_request": self._submit,
             "get_context": self._context,
             "list_proposals": self._proposals,
@@ -202,9 +217,90 @@ class GatewayRuntime:
         self._authority.authorize(context, capability)
         return handler[op](adapter, body, now)
 
-    def _submit(
-        self, adapter: AdapterRegistration, body: dict, now: datetime
-    ) -> GatewayResult:
+    def _edits(self) -> NotionEditService:
+        if self._notion_edits is None:
+            raise GatewayError("Scoped Notion edits are not configured; no writes are enabled.")
+        return self._notion_edits
+
+    @staticmethod
+    def _edit_fields(body, required):
+        allowed = set(required) | {"external_session_ref", "external_request_ref"}
+        if set(body) - allowed or not set(required) <= set(body):
+            raise GatewayError("Invalid scoped Notion request fields.")
+
+    def _propose_notion_edit(self, adapter, body, now):
+        self._edit_fields(body, ("target_key", "replacements"))
+        if not isinstance(body["target_key"], str) or not isinstance(body["replacements"], dict):
+            raise GatewayError("Target and replacements are required.")
+        proposal = self._edits().propose(
+            body["target_key"],
+            body["replacements"],
+            context=self._issued_for_body(adapter, body),
+        )
+        return GatewayResult(ok=True, data=_public_proposal(proposal))
+
+    def _get_notion_edit(self, adapter, body, now):
+        self._edit_fields(body, ("proposal_id",))
+        return GatewayResult(
+            ok=True,
+            data=self._edits().review(
+                clean_ref(body["proposal_id"]),
+                context=self._issued_for_body(adapter, body),
+            ),
+        )
+
+    def _decide_notion_edits(self, adapter, body, now):
+        self._edit_fields(body, ("selections",))
+        raw = body["selections"]
+        if not isinstance(raw, list) or not 1 <= len(raw) <= 20:
+            raise GatewayError("Select 1–20 exact proposals.")
+        selections = []
+        try:
+            for item in raw:
+                if not isinstance(item, dict) or set(item) - {
+                    "proposal_id",
+                    "fingerprint",
+                    "decision",
+                    "defer_until",
+                }:
+                    raise ValueError
+                selections.append(
+                    DecisionSelection(
+                        item["proposal_id"],
+                        item["fingerprint"],
+                        UserDecision(item["decision"]),
+                        item.get("defer_until", ""),
+                    )
+                )
+                if any(not isinstance(value, str) for value in item.values()):
+                    raise ValueError
+        except (ValueError, KeyError, TypeError):
+            raise GatewayError("Invalid exact proposal selection.") from None
+        decided = self._edits().decide(
+            tuple(selections),
+            context=self._issued_for_body(adapter, body),
+        )
+        return GatewayResult(ok=True, data={"proposals": [_public_proposal(p) for p in decided]})
+
+    def _execute_notion_edit(self, adapter, body, now):
+        self._edit_fields(body, ("proposal_id",))
+        if not adapter.approval_adapter:
+            raise GatewayError(_NO_APPROVAL)
+        execution = self._edits().execute(
+            clean_ref(body["proposal_id"]),
+            context=self._issued_for_body(adapter, body),
+        )
+        return GatewayResult(ok=True, data=_public_execution(execution))
+
+    def _verify_notion_edit(self, adapter, body, now):
+        self._edit_fields(body, ("execution_id",))
+        execution = self._edits().verify(
+            clean_ref(body["execution_id"]),
+            context=self._issued_for_body(adapter, body),
+        )
+        return GatewayResult(ok=True, data=_public_execution(execution))
+
+    def _submit(self, adapter: AdapterRegistration, body: dict, now: datetime) -> GatewayResult:
         try:
             evidence = parse_evidence(body.get("evidence"))
         except ValueError as exc:
@@ -360,6 +456,9 @@ class GatewayRuntime:
         if not expected:
             raise GatewayError("A decision needs the exact proposal fingerprint.")
         self._match_fingerprint(proposal_id, expected)
+        raise GatewayError(
+            "Hosted ChatGPT decisions are disabled: no verified action-specific human confirmation."
+        )
 
     def _match_fingerprint(self, proposal_id: str, expected: str) -> None:
         proposal = self._store.get_proposal(proposal_id)
@@ -376,9 +475,7 @@ class GatewayRuntime:
             raise GatewayError("That correlation belongs to a different active matter.")
         return continued
 
-    def _context(
-        self, adapter: AdapterRegistration, body: dict, now: datetime
-    ) -> GatewayResult:
+    def _context(self, adapter: AdapterRegistration, body: dict, now: datetime) -> GatewayResult:
         del adapter, now
         matter_id = clean_ref(body.get("matter_id"))
         correlation_id = clean_ref(body.get("correlation_id"))
@@ -407,9 +504,7 @@ class GatewayRuntime:
             },
         )
 
-    def _proposals(
-        self, adapter: AdapterRegistration, body: dict, now: datetime
-    ) -> GatewayResult:
+    def _proposals(self, adapter: AdapterRegistration, body: dict, now: datetime) -> GatewayResult:
         del adapter, now
         matter_id = clean_ref(body.get("matter_id")) or None
         proposals = self._store.list_proposals(matter_id=matter_id)
@@ -419,9 +514,7 @@ class GatewayRuntime:
             data={"proposals": [_public_proposal(item) for item in proposals]},
         )
 
-    def _active(
-        self, adapter: AdapterRegistration, body: dict, now: datetime
-    ) -> GatewayResult:
+    def _active(self, adapter: AdapterRegistration, body: dict, now: datetime) -> GatewayResult:
         del adapter, now
         raw = clean_ref(body.get("visibility"))
         visibility = None
@@ -437,9 +530,7 @@ class GatewayRuntime:
             data={"active_matters": [_public_handle(item) for item in handles]},
         )
 
-    def _lifecycle(
-        self, adapter: AdapterRegistration, body: dict, now: datetime
-    ) -> GatewayResult:
+    def _lifecycle(self, adapter: AdapterRegistration, body: dict, now: datetime) -> GatewayResult:
         del adapter, now
         execution_id = clean_ref(body.get("execution_id"))
         correlation_id = clean_ref(body.get("correlation_id"))
@@ -464,9 +555,7 @@ class GatewayRuntime:
             },
         )
 
-    def _decide(
-        self, adapter: AdapterRegistration, body: dict, now: datetime
-    ) -> GatewayResult:
+    def _decide(self, adapter: AdapterRegistration, body: dict, now: datetime) -> GatewayResult:
         if self._ops is None:
             raise GatewayError("Decisions are unavailable.")
         proposal_id = clean_ref(body.get("proposal_id"))
@@ -505,9 +594,7 @@ class GatewayRuntime:
         )
         return GatewayResult(ok=True, data=_public_proposal(stored))
 
-    def _execute(
-        self, adapter: AdapterRegistration, body: dict, now: datetime
-    ) -> GatewayResult:
+    def _execute(self, adapter: AdapterRegistration, body: dict, now: datetime) -> GatewayResult:
         if not adapter.approval_adapter:
             return self._denied(adapter.channel, "", "execute", (), _NO_APPROVAL)
         if self._act is None:
@@ -527,9 +614,7 @@ class GatewayRuntime:
         )
         return GatewayResult(ok=True, data=_public_report(report))
 
-    def _verify(
-        self, adapter: AdapterRegistration, body: dict, now: datetime
-    ) -> GatewayResult:
+    def _verify(self, adapter: AdapterRegistration, body: dict, now: datetime) -> GatewayResult:
         if self._act is None:
             raise GatewayError("Verification is unavailable.")
         execution_id = clean_ref(body.get("execution_id"))
@@ -571,9 +656,7 @@ class GatewayRuntime:
         self._audit_call(True, "", "", "", "open_active", ())
         return GatewayResult(ok=True, data=_public_handle(handle))
 
-    def _link(
-        self, adapter: AdapterRegistration, body: dict, now: datetime
-    ) -> GatewayResult:
+    def _link(self, adapter: AdapterRegistration, body: dict, now: datetime) -> GatewayResult:
         active_id = clean_ref(body.get("active_matter_id"))
         session_ref = clean_ref(body.get("external_session_ref"))
         if not active_id or not session_ref:
@@ -591,9 +674,7 @@ class GatewayRuntime:
         self._audit_call(True, adapter.channel, "", "", "link_channel", ())
         return GatewayResult(ok=True, data=_public_handle(handle))
 
-    def _visibility(
-        self, adapter: AdapterRegistration, body: dict, now: datetime
-    ) -> GatewayResult:
+    def _visibility(self, adapter: AdapterRegistration, body: dict, now: datetime) -> GatewayResult:
         del adapter
         active_id = clean_ref(body.get("active_matter_id"))
         try:
@@ -794,7 +875,7 @@ def _public_request(record: GatewayRequestRecord) -> dict[str, Any]:
         "active_matter_id": record.active_matter_id,
         "channel": record.channel,
         "evidence_count": len(record.evidence),
-                "evidence_hashes": [item.content_hash for item in record.evidence],
+        "evidence_hashes": [item.content_hash for item in record.evidence],
     }
 
 

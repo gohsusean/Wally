@@ -304,7 +304,8 @@ prompts with behavioral validation in a separate change, never as incidental doc
 ## D15 — Hosted ChatGPT authentication/confirmation unvalidated (deployment gate)
 
 **Verified:** custom loopback owner-secret grant; caller-supplied subject metadata,
-operator-attested confirmation flag, in-memory tokens without expiry/revocation.
+in-memory tokens without expiry/revocation. ADR-045 now makes hosted decisions
+hard-disabled; the old operator confirmation flag cannot enable them.
 **Documented:** hosted connectivity/confirmation remains unvalidated. Current
 execute/verify absence is deliberate, not a defect.
 
@@ -313,6 +314,13 @@ connection, independently trustworthy identity/confirmation constraints, lifecyc
 and token handling, and rejection of forged metadata/stale versions. Record the
 deployment rationale. Keep decisions disabled and execute/verify unavailable until
 separately reviewed; do not tunnel the local owner-secret grant as a workaround.
+
+**10 October implementation evidence:** the shared exact-review contract, scoped
+Notion mutation/verification and local Codex stdio/native-biometric provider are
+implemented default-disabled and tested synthetically. No hosted per-action proof
+verifier was delivered; D15 stays open. Local enrollment/UI/installation, external
+writer control and uncertain-attempt recovery are separate rollout gates in the
+[approval guide](interface-neutral-approvals.md).
 
 ## D16 — Dormant socket transport and claim-validation limits (low)
 

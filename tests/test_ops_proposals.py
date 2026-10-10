@@ -104,6 +104,7 @@ def test_intents_are_the_allowlist() -> None:
         "prepare_for_event",
         "review_bill",
         "deliver_document",
+        "edit_notion_record",
     }
 
 

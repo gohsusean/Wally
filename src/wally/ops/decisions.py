@@ -12,7 +12,7 @@ from datetime import UTC, datetime
 from enum import StrEnum
 
 from wally.exceptions import AuthorizationError, ProposalDecisionError
-from wally.models.ops import ProposalStatus, ProposedAction
+from wally.models.ops import ProposalIntent, ProposalStatus, ProposedAction
 from wally.models.principal import Capability, RequestContext
 from wally.ops.priority import parse_time
 from wally.ops.store import OperationsStore
@@ -86,6 +86,10 @@ def apply_user_decision(
     proposal = store.get_proposal(proposal_id)
     if proposal is None:
         raise ProposalDecisionError(f"No proposal with id {proposal_id}.")
+    if proposal.intent == ProposalIntent.EDIT_NOTION_RECORD:
+        raise ProposalDecisionError(
+            "Notion edits require an exact scoped review through NotionEditService."
+        )
     if proposal.status != ProposalStatus.PROPOSED:
         raise ProposalDecisionError(
             f"Proposal {proposal_id} is {proposal.status.value} and is not awaiting a decision."

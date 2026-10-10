@@ -107,6 +107,8 @@ def build_inbox(
 
 
 def _execution_note(store: OperationsStore, proposal: ProposedAction) -> str:
+    if proposal.intent == ProposalIntent.EDIT_NOTION_RECORD:
+        return "Scoped Notion edit: separate execution and fresh owner confirmation are required."
     if not execution_supported(proposal):
         return UNSUPPORTED_EXECUTION_MESSAGE
     attempts = [

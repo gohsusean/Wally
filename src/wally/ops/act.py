@@ -188,8 +188,13 @@ class ActVerifyService:
                 raise ExecutionRequestError("Certified finance catalog unavailable.")
             self._finance_catalog._owner(context)
         current = _clock(now)
-        if self._store.get_proposal(proposal_id) is None:
+        initial = self._store.get_proposal(proposal_id)
+        if initial is None:
             raise ExecutionRequestError(f"Unknown proposal: {proposal_id}")
+        if initial.intent == ProposalIntent.EDIT_NOTION_RECORD:
+            raise ExecutionRequestError(
+                "Use the scoped Notion edit interface; nothing was attempted."
+            )
         self._log("execution_requested", proposal_id=proposal_id, **_trace(context))
 
         self._reconcile(current)
@@ -296,6 +301,10 @@ class ActVerifyService:
         execution = self._store.get_execution(execution_id)
         if execution is None:
             raise ExecutionRequestError(f"Unknown execution: {execution_id}")
+        if execution.intent == ProposalIntent.EDIT_NOTION_RECORD:
+            raise ExecutionRequestError(
+                "Notion edits require independent NotionEditService verification."
+            )
         verifier = context.provenance()
         self._log_execution("execution_verify_requested", execution, context=verifier)
         if execution.status not in UNCERTAIN_EXECUTION_STATUSES:

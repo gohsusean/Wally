@@ -464,6 +464,13 @@ See ADR-040.
 
 ---
 
+**10 October scope correction:** [ADR-045](decisions.md#adr-045-interface-neutral-approval-centralized-authorization)
+supersedes the v0.17 confirmation-flag path described above. Hosted decisions are
+now hard-disabled until action-specific human evidence is demonstrated. The
+[local Codex scoped-edit path](interface-neutral-approvals.md) is implemented with
+native biometric confirmation and default-disabled writes; live/Desktop readiness
+and hosted confirmation remain deployment work.
+
 ## v0.18.0 — Telegram inbox ✓
 
 **Goal:** Telegram is the private place Wally can open a conversation. The owner sees one approval card, decides with a button, and can ask what is going on in the same chat. Approve records a decision. It does not execute.

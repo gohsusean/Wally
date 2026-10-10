@@ -4,8 +4,8 @@ Connection authentication is a bearer token issued only after the local owner
 secret completes an OAuth-style grant. ``openai/subject`` is checked as well
 for decisions. A subject string alone never becomes the Wally owner.
 
-``record_decision`` is omitted unless the operator has confirmed that the
-ChatGPT host prompts before that write. Model invocation is not that prompt.
+``record_decision`` remains unavailable. The old operator flag and pinned
+subject cannot establish action-specific human confirmation.
 """
 
 from __future__ import annotations
@@ -58,13 +58,10 @@ class ChatGPTConfig:
 
     @property
     def decisions_enabled(self) -> bool:
-        return bool(
-            self.write_enabled
-            and self.decision_confirmation
-            and self.allowed_subjects
-            and self.owner_secret
-            and self.gateway_credential
-        )
+        # A connection, caller metadata and an operator flag do not establish a
+        # human's confirmation of this action. Retain config compatibility while
+        # enforcing the unvalidated hosted boundary in code (ADR-045).
+        return False
 
 
 @dataclass
@@ -144,9 +141,9 @@ class ChatGPTAdapter:
         return self._connection
 
     def tools(self) -> list[dict]:
-        listed = [_attention(), _matter(), _proposals(), _lifecycle()]
+        listed = [_attention(), _matter(), _proposals(), _lifecycle(), _notion_review()]
         if self._config.write_enabled:
-            listed.extend([_submit(), _link(), _visibility()])
+            listed.extend([_submit(), _link(), _visibility(), _notion_propose()])
         if self._config.decisions_enabled:
             listed.append(_decision())
         return listed
@@ -199,6 +196,8 @@ class ChatGPTAdapter:
         if name == "record_decision":
             return self._decision(arguments, host)
         dispatch = {
+            "get_notion_edit": lambda args, host: self._read("get_notion_edit", args, host),
+            "propose_notion_edit": lambda args, host: self._read("propose_notion_edit", args, host),
             "list_attention": self._attention,
             "get_matter": self._matter,
             "list_proposals": self._proposals,
@@ -353,6 +352,38 @@ def _meta_value(meta: dict, key: str) -> str:
 
 def _forbidden(arguments: dict) -> bool:
     return any(str(key).lower() in FORBIDDEN_CLAIM_KEYS for key in arguments)
+
+
+def _notion_review() -> dict:
+    return _spec(
+        "get_notion_edit",
+        "Read the exact scoped edit. Reading grants no approval or execution.",
+        {
+            "type": "object",
+            "properties": {"proposal_id": {"type": "string"}},
+            "required": ["proposal_id"],
+            "additionalProperties": False,
+        },
+        _READ_ONLY,
+    )
+
+
+def _notion_propose() -> dict:
+    return _spec(
+        "propose_notion_edit",
+        "Stage inert metadata advice for a registered target. Human confirmation is separate; "
+        "ChatGPT has no Notion edit decision, execution or verification authority.",
+        {
+            "type": "object",
+            "properties": {
+                "target_key": {"type": "string"},
+                "replacements": {"type": "object", "additionalProperties": {"type": "string"}},
+            },
+            "required": ["target_key", "replacements"],
+            "additionalProperties": False,
+        },
+        _WRITE,
+    )
 
 
 def _attention() -> dict:
@@ -512,10 +543,7 @@ def _brief(data: dict) -> str:
             f"({proposal.get('intent')}). Fingerprint {proposal.get('fingerprint')}."
         )
     if "proposals" in data and "active_matters" in data:
-        return (
-            f"{len(data['active_matters'])} active handles, "
-            f"{len(data['proposals'])} proposals."
-        )
+        return f"{len(data['active_matters'])} active handles, {len(data['proposals'])} proposals."
     if "id" in data and "fingerprint" in data:
         return f"Proposal {data['id']} is {data.get('status')}."
     return "Wally returned stored status."

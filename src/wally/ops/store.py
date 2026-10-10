@@ -4,6 +4,9 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import time
+from dataclasses import asdict
+from datetime import UTC, datetime
 from pathlib import Path
 
 from wally.exceptions import ProposalTransitionError
@@ -81,6 +84,17 @@ class OperationsStore:
 
     def _init_db(self) -> None:
         with self._connect() as conn:
+            conn.executescript("""
+                CREATE TABLE IF NOT EXISTS notion_edit_specs (
+                    proposal_id TEXT PRIMARY KEY, specification TEXT NOT NULL);
+                CREATE TABLE IF NOT EXISTS notion_edit_claims (
+                    page_id TEXT PRIMARY KEY, execution_id TEXT UNIQUE NOT NULL);
+                CREATE TABLE IF NOT EXISTS human_review_events (
+                    id INTEGER PRIMARY KEY, event TEXT NOT NULL, details TEXT NOT NULL,
+                    provenance TEXT NOT NULL, created_at TEXT NOT NULL);
+                CREATE TABLE IF NOT EXISTS human_confirmations (
+                    id TEXT PRIMARY KEY, record TEXT NOT NULL, presentation TEXT NOT NULL);
+            """)
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS observations (
@@ -347,9 +361,7 @@ class OperationsStore:
 
     def get_matter(self, matter_id: str) -> Matter | None:
         with self._connect() as conn:
-            row = conn.execute(
-                "SELECT * FROM matters WHERE id = ?", (matter_id,)
-            ).fetchone()
+            row = conn.execute("SELECT * FROM matters WHERE id = ?", (matter_id,)).fetchone()
         return _matter_from_row(row) if row else None
 
     def get_matter_by_fingerprint(self, fingerprint: str) -> Matter | None:
@@ -398,9 +410,7 @@ class OperationsStore:
             matter.recurrence_key,
         )
         with self._connect() as conn:
-            existing = conn.execute(
-                "SELECT id FROM matters WHERE id = ?", (matter.id,)
-            ).fetchone()
+            existing = conn.execute("SELECT id FROM matters WHERE id = ?", (matter.id,)).fetchone()
             if existing:
                 conn.execute(
                     """
@@ -661,9 +671,7 @@ class OperationsStore:
         exactly one row changed.
         """
         if status not in _SYSTEM_TERMINAL_STATUSES:
-            raise ProposalTransitionError(
-                "close_proposal only applies a system terminal status"
-            )
+            raise ProposalTransitionError("close_proposal only applies a system terminal status")
         with self._connect() as conn:
             cursor = _close_active_proposal(
                 conn,
@@ -703,10 +711,207 @@ class OperationsStore:
             )
             if cursor.rowcount != 1:
                 raise ProposalTransitionError(
-                    f"proposal {predecessor_id} is no longer active; "
-                    f"{cursor.rowcount} rows matched"
+                    f"proposal {predecessor_id} is no longer active; {cursor.rowcount} rows matched"
                 )
             _insert_proposal(conn, _proposal_payload(successor))
+
+    def insert_notion_edit(self, proposal: ProposedAction, spec: dict) -> None:
+        """Insert immutable edit intent and supersede its open predecessor atomically."""
+        with self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            conn.execute(
+                "UPDATE proposals SET status='superseded', superseded_by=?, updated_at=?, "
+                "status_reason='new Notion edit version' WHERE matter_id=? AND intent=? "
+                "AND status IN ('proposed','approved','deferred')",
+                (proposal.id, proposal.updated_at, proposal.matter_id, proposal.intent.value),
+            )
+            _insert_proposal(conn, _proposal_payload(proposal))
+            conn.execute(
+                "INSERT INTO notion_edit_specs VALUES (?,?)",
+                (proposal.id, json.dumps(spec, sort_keys=True)),
+            )
+            self._edit_event(
+                conn,
+                "edit_proposed",
+                {
+                    "proposal_id": proposal.id,
+                    "fingerprint": proposal.fingerprint,
+                },
+                proposal.request_provenance,
+            )
+
+    def get_notion_edit(self, proposal_id: str) -> dict | None:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT specification FROM notion_edit_specs WHERE proposal_id=?", (proposal_id,)
+            ).fetchone()
+        return json.loads(row[0]) if row else None
+
+    def latest_notion_edit(self, material_digest: str) -> ProposedAction | None:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT proposal_id FROM notion_edit_specs "
+                "WHERE json_extract(specification,'$.material_digest')=? "
+                "ORDER BY rowid DESC LIMIT 1",
+                (material_digest,),
+            ).fetchone()
+        return self.get_proposal(row[0]) if row else None
+
+    @staticmethod
+    def _edit_event(conn, event, details, provenance) -> None:
+        conn.execute(
+            "INSERT INTO human_review_events(event,details,provenance,created_at) VALUES (?,?,?,?)",
+            (
+                event,
+                json.dumps(details, sort_keys=True),
+                json.dumps(provenance.as_dict()),
+                datetime.now(UTC).isoformat(),
+            ),
+        )
+
+    def note_edit_event(self, event, details, provenance) -> None:
+        with self._connect() as conn:
+            self._edit_event(conn, event, details, provenance)
+
+    @staticmethod
+    def _confirmation(conn, confirmation, presentation) -> None:
+        if time.time() >= confirmation.expires_at:
+            raise ProposalTransitionError("Human confirmation expired before commit.")
+        # UNIQUE id makes replay fail closed. Records are attribution, not bearer
+        # credentials. Only the service's synchronous authority callback supplies one.
+        conn.execute(
+            "INSERT INTO human_confirmations VALUES (?,?,?)",
+            (
+                confirmation.id,
+                json.dumps(asdict(confirmation), sort_keys=True),
+                json.dumps(presentation, sort_keys=True),
+            ),
+        )
+
+    def record_edit_decisions(self, selections, confirmation, presentation) -> None:
+        from wally.models.principal import RequestProvenance
+        from wally.ops.decisions import UserDecision, parse_defer_until
+
+        provenance = RequestProvenance(
+            principal=confirmation.principal,
+            channel=confirmation.channel,
+            correlation_id=confirmation.correlation_id,
+        )
+        statuses = {
+            UserDecision.APPROVE: "approved",
+            UserDecision.REJECT: "rejected",
+            UserDecision.DEFER: "deferred",
+        }
+        now = datetime.now(UTC)
+        with self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            self._confirmation(conn, confirmation, presentation)
+            for selection in selections:
+                status = statuses[selection.decision]
+                until = (
+                    parse_defer_until(selection.defer_until, now=now)
+                    if selection.decision == UserDecision.DEFER
+                    else ""
+                )
+                cursor = conn.execute(
+                    "UPDATE proposals SET status=?, decision=?, decided_at=?, updated_at=?, "
+                    "decision_origin=?, decision_principal=?, decision_correlation_id=?, "
+                    "decision_fingerprint=fingerprint, defer_until=?, status_reason=? "
+                    "WHERE id=? AND fingerprint=? AND status='proposed' "
+                    "AND intent='edit_notion_record' AND expires_at>? "
+                    "AND EXISTS (SELECT 1 FROM matters WHERE matters.id=proposals.matter_id "
+                    "AND matters.status='open')",
+                    (
+                        status,
+                        status,
+                        now.isoformat(),
+                        now.isoformat(),
+                        confirmation.channel,
+                        confirmation.principal,
+                        confirmation.correlation_id,
+                        until,
+                        "user " + status,
+                        selection.proposal_id,
+                        selection.fingerprint,
+                        now.isoformat(),
+                    ),
+                )
+                if cursor.rowcount != 1:
+                    raise ProposalTransitionError("Batch changed; no decisions recorded.")
+            self._edit_event(
+                conn,
+                "edit_decisions_recorded",
+                {
+                    "confirmation_id": confirmation.id,
+                    "selections": presentation["selections"],
+                },
+                provenance,
+            )
+
+    def start_notion_edit(self, execution, page_id, confirmation, presentation) -> None:
+        with self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            proposal = conn.execute(
+                "SELECT * FROM proposals WHERE id=? AND fingerprint=? AND status='approved' "
+                "AND decision='approved' AND decision_fingerprint=fingerprint "
+                "AND expires_at>? AND EXISTS (SELECT 1 FROM matters "
+                "WHERE matters.id=proposals.matter_id AND matters.status='open')",
+                (
+                    execution.proposal_id,
+                    execution.proposal_fingerprint,
+                    datetime.now(UTC).isoformat(),
+                ),
+            ).fetchone()
+            if (
+                proposal is None
+                or conn.execute(
+                    "SELECT 1 FROM executions WHERE proposal_id=?", (execution.proposal_id,)
+                ).fetchone()
+            ):
+                raise ProposalTransitionError("Approval changed or execution already attempted.")
+            self._confirmation(conn, confirmation, presentation)
+            conn.execute("INSERT INTO notion_edit_claims VALUES (?,?)", (page_id, execution.id))
+            conn.execute(
+                f"INSERT INTO executions ({_EXECUTION_COLUMN_LIST}) "
+                f"VALUES ({','.join('?' for _ in _execution_payload(execution))})",
+                _execution_payload(execution),
+            )
+            self._edit_event(
+                conn,
+                "edit_execution_started",
+                {
+                    "execution_id": execution.id,
+                    "confirmation_id": confirmation.id,
+                    "proposal_id": execution.proposal_id,
+                    "fingerprint": execution.proposal_fingerprint,
+                },
+                execution.request_provenance,
+            )
+
+    def finish_notion_edit(self, execution, page_id) -> None:
+        with self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            payload = _execution_payload(execution)
+            assignments = ", ".join(f"{name} = ?" for name in _EXECUTION_COLUMNS[1:])
+            cursor = conn.execute(
+                f"UPDATE executions SET {assignments} WHERE id=? AND status='executed_unverified'",
+                payload[1:] + (execution.id,),
+            )
+            if cursor.rowcount != 1:
+                raise ProposalTransitionError("Execution changed during verification.")
+            conn.execute(
+                "DELETE FROM notion_edit_claims WHERE page_id=? AND execution_id=?",
+                (page_id, execution.id),
+            )
+            self._edit_event(
+                conn,
+                "edit_verified",
+                {
+                    "execution_id": execution.id,
+                    "evidence": execution.evidence,
+                },
+                execution.verification_provenance,
+            )
 
     def insert_execution(self, execution: ProposalExecution) -> bool:
         """Insert an execution attempt.
@@ -747,9 +952,7 @@ class OperationsStore:
 
     def get_execution(self, execution_id: str) -> ProposalExecution | None:
         with self._connect() as conn:
-            row = conn.execute(
-                "SELECT * FROM executions WHERE id = ?", (execution_id,)
-            ).fetchone()
+            row = conn.execute("SELECT * FROM executions WHERE id = ?", (execution_id,)).fetchone()
         return _execution_from_row(row) if row else None
 
     def list_executions(self, *, proposal_id: str | None = None) -> list[ProposalExecution]:

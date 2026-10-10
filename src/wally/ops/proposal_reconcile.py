@@ -131,9 +131,7 @@ class ProposalReconciler:
         if candidate is not None and candidate.fingerprint == proposal.fingerprint:
             result.unchanged.append(proposal.id)
             return
-        self._close(
-            proposal, ProposalStatus.INVALIDATED, REASON_EVIDENCE_INELIGIBLE, now, result
-        )
+        self._close(proposal, ProposalStatus.INVALIDATED, REASON_EVIDENCE_INELIGIBLE, now, result)
 
     def _support_for(
         self, matter: Matter, observations: dict[str, Observation]
@@ -164,6 +162,20 @@ class ProposalReconciler:
         matter = matters.get(proposal.matter_id)
         if matter is None or matter.status != MatterStatus.OPEN:
             self._close(proposal, ProposalStatus.INVALIDATED, REASON_MATTER_CLOSED, now, result)
+            return
+
+        if proposal.intent == ProposalIntent.EDIT_NOTION_RECORD:
+            # Provider semantic checks belong to the edit service, not the generic
+            # bill/calendar generator. History is never recreated from a Matter.
+            if self._defer_has_elapsed(proposal, now):
+                self._store.release_defer(
+                    proposal.id,
+                    updated_at=_iso(now),
+                    status_reason=REASON_DEFER_ELAPSED,
+                )
+                result.defer_elapsed.append(proposal.id)
+            else:
+                result.unchanged.append(proposal.id)
             return
 
         if proposal.intent == ProposalIntent.DELIVER_DOCUMENT:
@@ -272,8 +284,15 @@ class ProposalReconciler:
             result.decisions_voided.append(proposal.id)
 
     def _has_expired(self, proposal: ProposedAction, now: datetime) -> bool:
-        """Timed expiry is calendar-only, so a bill proposal never expires."""
-        if proposal.intent != ProposalIntent.PREPARE_FOR_EVENT or not proposal.expires_at:
+        """Calendar and exact-edit reviews expire; bill reviews have no timed expiry."""
+        if (
+            proposal.intent
+            not in {
+                ProposalIntent.PREPARE_FOR_EVENT,
+                ProposalIntent.EDIT_NOTION_RECORD,
+            }
+            or not proposal.expires_at
+        ):
             return False
         expiry = parse_time(proposal.expires_at)
         return expiry is not None and expiry <= now

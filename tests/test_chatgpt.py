@@ -20,6 +20,7 @@ from wally.chatgpt.service import (
 )
 from wally.cli import build_parser
 from wally.gateway.service import GatewayHost, GatewayRuntime
+from wally.models.principal import Capability
 from wally.ops.proposal_reconcile import ProposalReconciler
 from wally.ops.request_propose import TrustedRecord
 from wally.ops.service import ObserveBriefService
@@ -119,6 +120,7 @@ def test_read_only_connection_persists_nothing(tmp_path: Path) -> None:
         "get_matter",
         "list_proposals",
         "get_lifecycle",
+        "get_notion_edit",
     }
     result = _call(
         adapter,
@@ -209,10 +211,13 @@ def test_decision_tool_stays_off_without_host_confirmation(tmp_path: Path) -> No
     assert "record_decision" not in _names(confirmed, _token(confirmed))
 
 
-def test_record_decision_checks_fingerprint_and_subject(tmp_path: Path) -> None:
+def test_operator_flag_and_pinned_subject_cannot_enable_human_decisions(tmp_path: Path) -> None:
     config = _config(decision_confirmation=True)
     store, adapter = _adapter(tmp_path, config)
     token = _token(adapter)
+    assert not config.decisions_enabled
+    assert "record_decision" not in _names(adapter, token)
+    assert Capability.DECIDE_PROPOSAL not in chatgpt_policy(config).capabilities
     created = _call(
         adapter,
         "submit_request",
@@ -224,54 +229,24 @@ def test_record_decision_checks_fingerprint_and_subject(tmp_path: Path) -> None:
         token=token,
     )
     proposal = created["result"]["structuredContent"]["proposal"]
-    tool = next(item for item in adapter.tools() if item["name"] == "record_decision")
-    assert tool["annotations"]["readOnlyHint"] is False
-    assert tool["annotations"]["destructiveHint"] is True
-    stale = _call(
-        adapter,
-        "record_decision",
-        {
-            "proposal_id": proposal["id"],
-            "expected_fingerprint": "matter:deliver_document:nope",
-            "decision": "approve",
-        },
-        token=token,
-    )
-    assert stale["result"]["isError"] is True
+    for meta in (
+        {"openai/session": SESSION, "openai/subject": SUBJECT},
+        {"openai/session": SESSION, "openai/subject": OTHER},
+    ):
+        denied = _call(
+            adapter,
+            "record_decision",
+            {
+                "proposal_id": proposal["id"],
+                "expected_fingerprint": proposal["fingerprint"],
+                "decision": "approve",
+                "human_approved": True,
+            },
+            token=token,
+            meta=meta,
+        )
+        assert denied["result"]["isError"]
     assert store.get_proposal(proposal["id"]).status.value == "proposed"
-    wrong_person = _call(
-        adapter,
-        "record_decision",
-        {
-            "proposal_id": proposal["id"],
-            "expected_fingerprint": proposal["fingerprint"],
-            "decision": "approve",
-        },
-        token=token,
-        meta={"openai/session": SESSION, "openai/subject": OTHER},
-    )
-    assert wrong_person["result"]["isError"] is True
-    assert store.get_proposal(proposal["id"]).status.value == "proposed"
-    decided = _call(
-        adapter,
-        "record_decision",
-        {
-            "proposal_id": proposal["id"],
-            "expected_fingerprint": proposal["fingerprint"],
-            "decision": "approve",
-        },
-        token=token,
-    )
-    assert decided["result"]["isError"] is False
-    stored = store.get_proposal(proposal["id"])
-    assert stored is not None
-    assert stored.status.value == "approved"
-    assert stored.decision_origin == "chatgpt"
-    assert stored.decision_principal == "owner"
-    assert stored.decision_fingerprint == proposal["fingerprint"]
-    blob = json.dumps(decided)
-    assert OWNER not in blob
-    assert GATEWAY not in blob
 
 
 def test_one_session_can_hold_two_matters_and_a_matter_can_span_sessions(tmp_path: Path) -> None:

@@ -28,6 +28,8 @@ unimplemented files or live integration tests.
   execution/verification and OperationsStore.
 - `gateway/`: fixed-channel authenticated adapter boundary and socket library.
 - `chatgpt/`: local HTTP/MCP adapter and token/host checks.
+- `codex/`: explicit local stdio MCP for default-disabled scoped Notion edits.
+- `adapters/macos/`: pinned native review/fresh biometric helper and boundary.
 - `telegram/`: owner/private-chat handling, polling, outbox, cursor/lease,
   credential lifecycle and LaunchAgent helper.
 - `orchestrator/`: conversational LLM/context/tool/response loop.
@@ -53,6 +55,7 @@ or LLM prompt. Changing `prompts/` or config can change behavior.
 - `config/notion.yaml`: platform defaults/overrides; classifications are in SQLite.
 - `config/chatgpt.yaml`: static canonical document/recipient catalog used by both
   current external adapters.
+- `config/notion-edits.yaml`: empty/default-disabled target and native-review policy.
 - `config/workflows.yaml`: registered execution capabilities/webhook paths.
 - `config/proactive.yaml`, `entities.yaml`: dormant historical HA/proactive designs.
 - `prompts/`: versioned application prompts, not engineering-agent rules.
