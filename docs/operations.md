@@ -234,6 +234,13 @@ new binding. See the guide's incremental-certification rules before preparing da
 
 ## Scoped Notion edits: disabled rollout
 
+The [first financial reconciliation preparation](phase6-first-reconciliation.md)
+stages exact Casaman DBKL initialization reviews in private database copies. Production
+policy remains empty/disabled; primary-original validation and scope/concurrency
+acceptance precede any supervised rollout. No process reload was performed for this
+development task. Use fresh reviews after loading the reviewed code; staged previews
+and ordinary chat statements do not authorize production PATCH.
+
 [Interface-neutral approvals](interface-neutral-approvals.md) documents the new
 local stdio command, native biometric confirmation, exact write scope, semantic
 verification and deployment gates. `config/notion-edits.yaml` ships with empty

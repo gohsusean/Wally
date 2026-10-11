@@ -4,6 +4,12 @@ Checked 11 October 2026. Malaysian time is the display default, with no timezone
 suffix. This is a point-in-time operational assessment, not permission to edit
 production records or enable financial actions.
 
+Subsequent [first reconciliation preparation](phase6-first-reconciliation.md)
+implements narrow initialization and the owner's final HTML emphasis/result
+refinements. Casaman DBKL is provisionally selected with nine exact typed changes;
+primary-original verification and production approval remain pending. The historical
+capability gaps below describe this earlier readiness read, not the later code.
+
 ## Operational result
 
 - Reloaded the existing Telegram LaunchAgent using its existing configuration.

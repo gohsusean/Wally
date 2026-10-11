@@ -9,6 +9,7 @@ from dataclasses import asdict
 from datetime import UTC, datetime
 
 from wally.models.ops import ExecutionStatus
+from wally.ops.notion_contracts import edit_type
 from wally.runtime.confirmation import canonical, digest
 
 
@@ -77,7 +78,7 @@ class NotionReconciliation:
                     for change in spec["changes"]:
                         initial["values"][change["property_id"]] = change["after"]
                         initial["hashes"][change["property_id"]] = digest(
-                            ["select", change["after"]]
+                            [edit_type(change["field"]), change["after"]]
                         )
                     execution_id, target_digest = attempt.id, spec["target_digest"]
                     break

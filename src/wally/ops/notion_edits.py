@@ -33,6 +33,7 @@ from wally.models.ops import (
 from wally.models.principal import Capability, RequestContext
 from wally.ops.decisions import UserDecision, parse_defer_until
 from wally.ops.execution import approval_problem
+from wally.ops.notion_contracts import EDIT_VALUES, edit_type
 from wally.ops.notion_reconcile import NotionReconciliation
 from wally.ops.store import OperationsStore
 from wally.runtime.confirmation import digest
@@ -52,6 +53,7 @@ class PropertyRule:
     field: str
     property_id: str
     values: tuple[str, ...]
+    allow_missing: bool = False
 
 
 @dataclass(frozen=True)
@@ -65,8 +67,21 @@ class EditTarget:
     properties: tuple[PropertyRule, ...]
     audit_property_ids: tuple[str, ...] = ()
     finance_id: str = ""
+    finance_issue_digest: str = ""
+    evidence_summary: str = ""
+    evidence_digest: str = ""
 
     def __post_init__(self):
+        for value in (self.finance_issue_digest, self.evidence_digest):
+            if not isinstance(value, str) or (
+                value
+                and (len(value) != 64 or any(char not in "0123456789abcdef" for char in value))
+            ):
+                raise EditError("Invalid reviewed evidence or incomplete-row fingerprint.")
+        if type(self.evidence_summary) is not str or bool(self.evidence_summary) != bool(
+            self.evidence_digest
+        ):
+            raise EditError("Evidence summary requires an exact fingerprint.")
         # All aliases for a Notion UUID must share the same durable record lock.
         for name in ("database_id", "data_source_id", "page_id"):
             object.__setattr__(self, name, str(UUID(getattr(self, name))))
@@ -81,14 +96,23 @@ class EditTarget:
 
     @property
     def fingerprint(self) -> str:
-        return digest(asdict(self))
+        data = asdict(self)
+        # Additive contracts retain existing exact reviews when all new options
+        # are absent. Explicit initialization/evidence changes still bind anew.
+        for key in ("finance_issue_digest", "evidence_summary", "evidence_digest"):
+            if not data[key]:
+                del data[key]
+        for rule in data["properties"]:
+            if not rule["allow_missing"]:
+                del rule["allow_missing"]
+        return digest(data)
 
 
 @dataclass(frozen=True)
 class RecordSnapshot:
-    """Only enum values and hashes of protected business properties persist."""
+    """Only finite metadata/null values and protected business hashes persist."""
 
-    values: dict[str, str]
+    values: dict[str, str | None]
     hashes: dict[str, str]
     schema_digest: str
     finance_version: str = ""
@@ -203,6 +227,11 @@ class NotionEditService:
             "before": asdict(before),
             "changes": changes,
         }
+        if target.evidence_digest:
+            spec["evidence_summary"] = target.evidence_summary
+            spec["evidence_digest"] = target.evidence_digest
+        if target.finance_id:
+            spec["certification_required"] = True
         material_digest = digest(spec)
         prior = self.store.latest_notion_edit(material_digest)
         if prior is not None and prior.status not in {
@@ -529,7 +558,9 @@ class NotionEditService:
                 )["verification_current"]
             expected = dict(spec["before"]["hashes"])
             for change in spec["changes"]:
-                expected[change["property_id"]] = digest(["select", change["after"]])
+                expected[change["property_id"]] = digest(
+                    [edit_type(change["field"]), change["after"]]
+                )
             if (
                 actual.schema_digest != spec["before"]["schema_digest"]
                 or actual.finance_version != spec["before"]["finance_version"]
@@ -575,7 +606,9 @@ class NotionEditService:
             actual = self.backend.read(target)
             expected = dict(spec["before"]["hashes"])
             for change in spec["changes"]:
-                expected[change["property_id"]] = digest(["select", change["after"]])
+                expected[change["property_id"]] = digest(
+                    [edit_type(change["field"]), change["after"]]
+                )
             if (
                 execution.plan_digest != digest(spec)
                 or actual.hashes != expected
@@ -597,7 +630,9 @@ class NotionEditService:
             actual = self.backend.read(target)
             expected = dict(spec["before"]["hashes"])
             for change in spec["changes"]:
-                expected[change["property_id"]] = digest(["select", change["after"]])
+                expected[change["property_id"]] = digest(
+                    [edit_type(change["field"]), change["after"]]
+                )
             success = (
                 actual.hashes == expected
                 and actual.schema_digest == spec["before"]["schema_digest"]
@@ -703,6 +738,14 @@ class NotionEditService:
     @staticmethod
     def _validate(target, replacements):
         rules = {r.property_id: r for r in target.properties}
+        for rule in target.properties:
+            if (
+                rule.field not in EDIT_VALUES
+                or not rule.values
+                or not set(rule.values) <= EDIT_VALUES[rule.field]
+                or type(rule.allow_missing) is not bool
+            ):
+                raise EditError("Property is outside the finite metadata contract.")
         if (
             not isinstance(replacements, dict)
             or not replacements

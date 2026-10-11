@@ -8,6 +8,7 @@ from pathlib import Path
 import yaml
 
 from wally.adapters.macos.confirmation import MacOSBiometricConfirmation
+from wally.ops.notion_contracts import EDIT_VALUES
 from wally.ops.notion_edits import EditError, EditTarget, PropertyRule
 
 
@@ -67,9 +68,7 @@ def load_config(path: Path) -> EditConfig:
         for target in targets:
             if target.key in eligible and (
                 not target.properties
-                or any(
-                    rule.field not in {"amount_policy", "frequency"} for rule in target.properties
-                )
+                or any(rule.field not in EDIT_VALUES for rule in target.properties)
             ):
                 raise ValueError
         confirmer = None

@@ -148,7 +148,7 @@ def test_readonly_change_notice_has_review_link_later_and_no_execution_button(tm
     alert = next(
         item for item in state[2].sent if item["text"].startswith("📝 Notion change detected")
     )
-    assert "From source → Fixed contract" in alert["text"]
+    assert "From source → <b>Fixed contract</b>" in alert["text"]
     assert "last verified record" in alert["text"]
     assert proposal.id not in alert["text"] and proposal.fingerprint not in alert["text"]
     assert alert["buttons"][0][0]["text"] == "Review in Notion"

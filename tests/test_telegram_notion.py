@@ -6,6 +6,7 @@ import json
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
+from html import escape
 
 import httpx
 import pytest
@@ -124,7 +125,7 @@ def callback(world, card=0, code="e", update_id=1):
             item["text"].startswith("📝 Notion updates")
             if card == 2
             else (
-                "\n" + world[4][0].targets[card].key + "\n" in item["text"]
+                "\n" + escape(world[4][0].targets[card].key) + "\n" in item["text"]
                 and item["text"].startswith("📝 Notion update\n")
             )
         )
@@ -150,7 +151,7 @@ def test_codex_to_telegram_independent_http_verification_and_benign_audit(tmp_pa
     edits, telegram, transport, _, _, adapter = state
     proposal = propose(state)
     card = cards(state)[0]
-    assert "Fixed contract → From source" in card["text"]
+    assert "Fixed contract → <b>From source</b>" in card["text"]
     assert "Amount policy" in card["text"]
     assert proposal.fingerprint not in card["text"]
     assert "PATCH" not in api.calls
@@ -162,7 +163,8 @@ def test_codex_to_telegram_independent_http_verification_and_benign_audit(tmp_pa
     assert api.patch_body == {"properties": {"policy": {"select": {"name": "source_defined"}}}}
     assert edits.store.get_proposal(proposal.id).decision_origin == "telegram"
     assert attempt.origin == WORKER_CHANNEL
-    assert any("Verified successfully" in item["text"] for item in transport.sent)
+    assert any(item["text"].startswith("✅ Notion updated") for item in transport.sent)
+    assert all("Verified successfully" not in item["text"] for item in transport.sent)
     with edits.store._connect() as conn:  # noqa: SLF001
         receipts = conn.execute("SELECT record,presentation FROM human_confirmations").fetchall()
         row = conn.execute("SELECT * FROM telegram_edit_reviews").fetchone()
@@ -200,7 +202,12 @@ def test_reject_and_defer_are_durable_and_never_execute(tmp_path, code, status):
     telegram.handle_update(callback(state, code=code))
     assert edits.store.get_proposal(proposal.id).status == status
     assert edits.backend.writes == []
-    assert any("No changes made" in item["text"] for item in transport.sent)
+    if code == "r":
+        assert any(
+            "Amount policy remains <b>Fixed contract</b>" in m["text"] for m in transport.sent
+        )
+    else:
+        assert any("No changes made" in item["text"] for item in transport.sent)
     telegram.handle_update(callback(state, code="e", update_id=2))
     assert edits.backend.writes == []
     if code == "l":

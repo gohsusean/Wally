@@ -1900,6 +1900,9 @@ Technical identifiers and policy prose in routine approval cards also hinder rev
    starting with scoped Telegram reviews/results. Complete human-readable scope and
    material recertification warnings remain visible. Exact identifiers, fingerprints,
    separate purpose-bound authorizations and precise clocks remain internal.
+   Remove redundant success/rejection sentences; selectively emphasize proposed
+   values with escaped Telegram HTML. Retain recertification, pending execution,
+   failed verification and uncertainty. Verification/audit semantics are unchanged.
 2. Default user-facing time to Asia/Kuala_Lumpur (MYT), using shared presentation
    utilities. Omit the timezone label for Malaysian time; include it when explicitly
    referring to another timezone. Do not change UTC storage, security deadlines or
@@ -1935,3 +1938,24 @@ Isolated tests cover presentation, MYT midnight/expiry boundaries, exact authori
 read-only drift detection, unrelated changes, affected certificates, fresh re-verification,
 additive baseline recovery, audit retention and source races. No live permissions,
 finance records, staged invoices or services are changed by this milestone.
+
+### First reconciliation initialization extension, 11 October 2026
+
+Owner-requested [Casaman assessment preparation](phase6-first-reconciliation.md)
+extends ADR-045/046's finite metadata contract with explicit null initialization
+and only the assessment fields/values required. Exact taxonomy text is allowed,
+not general rich-text editing. Incomplete rows require a pinned read-issue locator,
+designated mapping and reviewed evidence digest. A canonical object at that locator
+must use the normal canonical path. Initialization establishes no financial identity,
+uniqueness, certificate, payable fact or chain readiness. No persisted diagnostic or
+provenance reference authenticates the owner.
+
+Per-property before/null/after values, evidence, policy and reviewed version remain
+bound to fresh authenticated private-owner callbacks and the separate scoped worker.
+Uncertain writes retain claims and require independent recovery reads; PATCH is not
+retried. Immediate rereads, protected-state verification and canonical certification
+invalidation remain. Catalog/uniqueness and local-owner certification gates are
+unchanged. GET/PATCH risk needs scope-specific owner acceptance before enablement.
+Primary-original verification remains pending. Staged proposals confer no authority;
+production policy stays empty with both gates disabled. No other channel gains
+execution, certification or payment authority.

@@ -7,6 +7,8 @@ from typing import Protocol
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
+from wally.presentation import TelegramHTML
+
 
 class TelegramTransientError(TimeoutError):
     """Network, timeout, or Telegram 5xx. The poller retries without exiting."""
@@ -36,6 +38,8 @@ class BotClient:
         buttons: list[dict[str, str]] | list[list[dict[str, str]]] | None = None,
     ) -> str:
         payload: dict = {"chat_id": chat_id, "text": text}
+        if isinstance(text, TelegramHTML):
+            payload["parse_mode"] = "HTML"
         if buttons:
             payload["reply_markup"] = {
                 "inline_keyboard": buttons if isinstance(buttons[0], list) else [buttons]

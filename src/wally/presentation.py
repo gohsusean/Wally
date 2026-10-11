@@ -1,6 +1,7 @@
 """Human-facing conventions. Never use these strings for authorization or storage."""
 
 from datetime import datetime
+from html import escape
 from zoneinfo import ZoneInfo
 
 USER_TIMEZONE = ZoneInfo("Asia/Kuala_Lumpur")
@@ -16,10 +17,29 @@ _LABELS = {
     "source_defined": "From source",
     "semiannual": "Every six months",
     "statement_driven": "When a statement arrives",
+    "namespace": "Identifier namespace",
+    "responsibility": "Responsibility",
+    "charge_key": "Charge key",
+    "obligation_type": "Obligation type",
+    "currency": "Currency",
+    "evidence_mode": "Evidence mode",
+    "due_mode": "Due mode",
+    "assessment_account": "Assessment account",
+    "owner": "Owner",
+    "assessment_tax": "Assessment tax",
+    "property_tax": "Property tax",
+    "issued_bill": "Issued bill",
+    "from_document": "From document",
 }
 
 
-def human_label(value: str) -> str:
+class TelegramHTML(str):
+    """Trusted renderer output. Plain messages never opt into HTML parsing."""
+
+
+def human_label(value: str | None) -> str:
+    if value is None:
+        return "Missing"
     return _LABELS.get(value, value)
 
 
@@ -41,11 +61,18 @@ def human_time(
     return f"{local.day} {local:%b %Y}, {clock}"
 
 
-def change_lines(changes: list[dict]) -> list[str]:
+def change_lines(changes: list[dict], *, telegram_html=False, unchanged=False) -> list[str]:
     lines = []
     for change in changes:
-        lines += [
-            human_label(change["field"]),
-            f"{human_label(change['before'])} → {human_label(change['after'])}",
-        ]
+        label = human_label(change["field"])
+        before, after = human_label(change["before"]), human_label(change["after"])
+        if telegram_html:
+            label, before, after = escape(label), escape(before), escape(after)
+            after = f"<b>{after}</b>"
+        if unchanged:
+            if telegram_html:
+                before = f"<b>{before}</b>"
+            lines.append(f"{label} remains {before}")
+        else:
+            lines += [label, f"{before} → {after}"]
     return lines

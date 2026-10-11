@@ -268,8 +268,11 @@ establishes **interface-neutral approval, centralized authorization**. The share
 `NotionEditService` retains proposal decisions in the existing operational rows,
 uses exact immutable specifications for selected versions, and requires runtime
 human confirmation in addition to channel authentication. Scoped batches commit
-atomically; approval never starts execution. Current metadata scope is existing
-select options for amount policy/frequency. Unknown/truncated protected state
+atomically; approval never starts execution. Finite registered metadata includes
+amount policy/frequency and [assessment initialization](phase6-first-reconciliation.md):
+explicit missing states, exact taxonomy text and four additional select fields.
+Incomplete rows require pinned diagnostics and designated stable mappings; no
+canonical identity or certificate is created. Unknown/truncated protected state
 fails closed. Re-read after human confirmation and credential acquisition; claim
 the canonical page before a write; independently verify expected business state.
 Financial certification is invalidated, never silently retained or reissued.

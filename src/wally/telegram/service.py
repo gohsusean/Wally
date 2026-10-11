@@ -214,7 +214,7 @@ class TelegramService:
                 self._answer(callback, "Scoped approval is unavailable.")
                 return "ignored"
             result = self._notion_approvals.handle(row, action, callback)
-            self._answer(callback, result[:180])
+            self._answer(callback, result.split("\n", 1)[0][:180])
             self.sync(now, refresh_reviews="expired" in result.casefold())
             self.deliver_pending(now)
             return "scoped_review"

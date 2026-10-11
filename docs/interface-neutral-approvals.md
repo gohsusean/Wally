@@ -20,18 +20,25 @@ The existing `Principal`, `RequestContext`, `PrincipalAuthority`, proposal rows,
 Matter lifecycle, rejection/deferral semantics and `executions` table remain the
 foundation. `NotionEditService` adds the `edit_notion_record` intent. Its
 `ProposedAction` holds identifiers and advice, never executable provider arguments.
-A separate immutable specification records exact before/after enum values,
+A separate immutable specification records exact before/after finite metadata values,
 normalized Notion page/data-source identifiers, the reviewed target policy,
 protected-property hashes, schema fingerprint and canonical finance version.
 The specification's digest binds the proposal fingerprint; it grants no authority.
 
-The initial code-owned write scope supports existing **select** options for
+The original code-owned write scope supports existing **select** options for
 `amount_policy` and `frequency`, including `source_defined` and `statement_driven`.
 It supports neither free text nor monetary amounts, payment/paid status, relations,
 credentials, governance classification, arbitrary properties or new select options.
+The [first assessment preparation](phase6-first-reconciliation.md) adds explicit
+per-property null initialization, four narrowly controlled selects and three exact
+assessment taxonomy texts. An incomplete financial row binds its designated mapping,
+exact persisted read diagnostic and reviewed evidence; no catalog identity or
+certificate is created. Unknown existing values still fail closed. The selected
+stream's original-document validation and production rollout approval remain pending.
 Additional reconciliation/classification/metadata operations remain future work.
 Registered targets must belong to owner-approved operational knowledge. Financial
-sources additionally require existing designation, canonical identity and stable
+sources additionally require existing designation, canonical identity (or the narrow
+incomplete-row binding above) and stable
 property mappings. Pending/governance knowledge cannot be edited.
 
 The separation is enforced as follows:

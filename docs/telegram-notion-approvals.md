@@ -66,9 +66,12 @@ for read-only reconciliation.
 and no native confirmer. The gates are independent: a Telegram sandbox does not
 enable local execution. The explicit Telegram key subset must reference registered
 targets. Runtime reloads policy at confirmation and dispatch, including after action
-credential acquisition. Only select properties mapped to `amount_policy` or
-`frequency` and finite code-owned existing options qualify. Another field requires
-explicit code/policy/test changes. Model risk assessments grant nothing. Use a
+credential acquisition. Finite code-owned options for `amount_policy`/`frequency`
+and the [first assessment initialization](phase6-first-reconciliation.md) qualify.
+New fields allow only its exact taxonomy text and owner/MYR/issued_bill/from_document
+selects. Missing values require explicit per-property initialization policy;
+incomplete financial rows require exact designated diagnostic/evidence bindings.
+Any further field requires explicit code/policy/test changes. Model risk assessments grant nothing. Use a
 readable configured record label without unnecessary sensitive information.
 
 Classification and financial designation/canonical mapping checks remain in the

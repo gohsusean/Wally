@@ -12,27 +12,14 @@ from urllib.parse import quote, unquote
 
 import httpx
 
+from wally.finance.models import Kind
 from wally.finance.models import digest as finance_digest
 from wally.finance.notion import VERSION, NotionFinanceReader, notion_id
 from wally.models.knowledge import KnowledgeClass
+from wally.ops.notion_contracts import EDIT_VALUES, TEXT_FIELDS, edit_type
 from wally.ops.notion_edits import EditError, EditNotDispatched, EditTarget, RecordSnapshot
 from wally.runtime.confirmation import digest
 
-# Code-owned initial scope. Expanding it requires review, tests and target policy.
-EDIT_VALUES = {
-    "amount_policy": frozenset({"fixed_contract", "source_defined"}),
-    "frequency": frozenset(
-        {
-            "once",
-            "monthly",
-            "quarterly",
-            "semiannual",
-            "annual",
-            "irregular",
-            "statement_driven",
-        }
-    ),
-}
 _SYSTEM_PROPERTIES = frozenset({"created_time", "last_edited_time", "created_by", "last_edited_by"})
 _SIMPLE_PROPERTIES = frozenset({"checkbox", "number", "url", "email", "phone_number", "date"})
 
@@ -63,37 +50,38 @@ class NotionEditBackend:
         if not ids or len(ids) != len(set(ids)) or set(ids) & set(target.audit_property_ids):
             raise EditError("Ambiguous edit property policy.")
         for rule in target.properties:
-            if rule.field not in EDIT_VALUES or not set(rule.values) <= EDIT_VALUES[rule.field]:
+            if (
+                rule.field not in EDIT_VALUES
+                or not rule.values
+                or not set(rule.values) <= EDIT_VALUES[rule.field]
+                or type(rule.allow_missing) is not bool
+            ):
                 raise EditError("Property is outside the metadata-edit capability.")
         finance_sources = [
             s
             for s in self.finance.sources()
             if notion_id(s.database_id) == notion_id(target.database_id)
         ]
-        if record.role == "finance" or finance_sources or target.finance_id:
+        if (
+            record.role == "finance"
+            or finance_sources
+            or target.finance_id
+            or target.finance_issue_digest
+        ):
             sources = [
                 s
                 for s in finance_sources
                 if notion_id(s.data_source_id) == notion_id(target.data_source_id)
             ]
-            if len(sources) != 1 or not target.finance_id:
+            if len(sources) != 1 or bool(target.finance_id) == bool(target.finance_issue_digest):
                 raise EditError("A designated canonical financial target is required.")
             source = sources[0]
             self.finance._source_gate(source)
-            current = self.finance.store.get(target.finance_id)
-            locator = current.candidate.locator
-            if (
-                locator.system != "notion"
-                or notion_id(locator.page) != notion_id(target.page_id)
-                or notion_id(locator.database) != notion_id(target.database_id)
-                or notion_id(locator.data_source) != notion_id(target.data_source_id)
-            ):
-                raise EditError("Canonical financial target mismatch.")
             for rule in target.properties:
                 mapping = source.fields.get(rule.field)
                 if (
                     mapping is None
-                    or mapping.type != "select"
+                    or mapping.type != edit_type(rule.field)
                     or unquote(mapping.property_id) != rule.property_id
                 ):
                     raise EditError("Edit does not match the canonical financial property.")
@@ -101,6 +89,50 @@ class NotionEditBackend:
                 unquote(f.property_id) for f in source.fields.values()
             }:
                 raise EditError("Business fields cannot be excluded as audit metadata.")
+            if target.finance_issue_digest:
+                if not target.evidence_digest:
+                    raise EditError("Financial initialization requires reviewed evidence.")
+                # An incomplete locator is attribution, never certified identity.
+                # Pin the existing diagnostic and designated mapping; do not mint
+                # provisional/certified objects or skip complete-inventory gates.
+                issues = self.finance.store.read_issues()
+                if source.kind not in {Kind.ACCOUNT, Kind.DEFINITION} or any(
+                    issue.source == source.key and issue.locator is None for issue in issues
+                ):
+                    raise EditError("Incomplete financial source is unavailable.")
+                matches = [
+                    issue
+                    for issue in issues
+                    if issue.source == source.key
+                    and issue.kind == source.kind
+                    and issue.locator is not None
+                    and issue.locator.system == "notion"
+                    and notion_id(issue.locator.page) == target.page_id
+                    and notion_id(issue.locator.database) == target.database_id
+                    and notion_id(issue.locator.data_source) == target.data_source_id
+                    and issue.reason == "record_invalid"
+                ]
+                if (
+                    len(matches) != 1
+                    or finance_digest(asdict(matches[0])) != target.finance_issue_digest
+                    or any(
+                        r.candidate.locator.key == matches[0].locator.key
+                        for r in self.finance.store.records()
+                    )
+                ):
+                    raise EditError("Incomplete financial target changed or became canonical.")
+                return finance_digest(
+                    ("incomplete", source.fingerprint, target.finance_issue_digest)
+                )
+            current = self.finance.store.get(target.finance_id)
+            locator = current.candidate.locator
+            if (
+                locator.system != "notion"
+                or notion_id(locator.page) != target.page_id
+                or notion_id(locator.database) != target.database_id
+                or notion_id(locator.data_source) != target.data_source_id
+            ):
+                raise EditError("Canonical financial target mismatch.")
             return finance_digest((current.id, current.version, current.candidate.fingerprint))
         return ""
 
@@ -146,20 +178,28 @@ class NotionEditBackend:
             hashes[key] = digest([kind, value])
         for rule in target.properties:
             prop = properties.get(rule.property_id, {})
-            if prop.get("type") != "select":
-                raise EditError("Editable metadata must be a typed select property.")
-            current = _semantic(prop)
+            if prop.get("type") != edit_type(rule.field):
+                raise EditError("Editable metadata property type changed.")
+            current = _editable(prop, rule.field)
             # Never persist unknown/raw values, which might contain confidential text.
-            if current not in EDIT_VALUES[rule.field]:
+            if current is None:
+                if not rule.allow_missing:
+                    raise EditError("Missing metadata requires explicit initialization policy.")
+            elif current not in EDIT_VALUES[rule.field]:
                 raise EditError("Current metadata needs separate review.")
-            options = schema_properties[rule.property_id].get("select", {}).get("options", [])
-            names = [option.get("name") for option in options]
-            if len(names) != len(set(names)) or not set(rule.values) <= set(names):
-                raise EditError("Approved replacement options are missing or ambiguous.")
+            if rule.field not in TEXT_FIELDS:
+                options = schema_properties[rule.property_id].get("select", {}).get("options", [])
+                names = [option.get("name") for option in options]
+                if len(names) != len(set(names)) or not set(rule.values) <= set(names):
+                    raise EditError("Approved replacement options are missing or ambiguous.")
             values[rule.property_id] = current
+            hashes[rule.property_id] = digest([edit_type(rule.field), current])
         return RecordSnapshot(values, hashes, digest(schema_properties), version)
 
     def catalog_snapshot(self, target, snapshot):
+        if target.finance_issue_digest:
+            self._gate(target)
+            return snapshot  # No certified projection exists for this locator.
         if not target.finance_id:
             return snapshot
         facts = asdict(self.finance.store.get(target.finance_id).candidate.facts)
@@ -167,10 +207,13 @@ class NotionEditBackend:
         for rule in target.properties:
             if rule.field in facts and facts[rule.field] in EDIT_VALUES[rule.field]:
                 values[rule.property_id] = facts[rule.field]
-                hashes[rule.property_id] = digest(["select", facts[rule.field]])
+                hashes[rule.property_id] = digest([edit_type(rule.field), facts[rule.field]])
         return RecordSnapshot(values, hashes, snapshot.schema_digest, snapshot.finance_version)
 
     def reconcile_certification(self, target, changed_ids, *, snapshot, baseline_finance_version):
+        if target.finance_issue_digest:
+            self._gate(target)
+            return False  # No canonical record/certificate exists; never create one.
         if not target.finance_id:
             return False
         current_version = self._gate(target)
@@ -225,7 +268,14 @@ class NotionEditBackend:
                 raise EditError("Write exceeds registered property scope.")
             if any(value not in rules[key].values for key, value in replacements.items()):
                 raise EditError("Write exceeds registered replacement scope.")
-            payload = {key: {"select": {"name": value}} for key, value in replacements.items()}
+            payload = {
+                key: (
+                    {"rich_text": [{"type": "text", "text": {"content": value}}]}
+                    if rules[key].field in TEXT_FIELDS
+                    else {"select": {"name": value}}
+                )
+                for key, value in replacements.items()
+            }
             with self.write_client() as client:
                 revalidate()
                 if asdict(self.read(target)) != asdict(expected):
@@ -284,3 +334,25 @@ def _semantic(prop: dict):
             return sorted(v["name"] for v in value)
         return value
     raise EditError("Unsupported protected property; extend semantic verification before editing.")
+
+
+def _editable(prop: dict, field: str):
+    value = _semantic(prop)
+    if field not in TEXT_FIELDS:
+        return value
+    if not value:
+        return None  # Only an actual empty rich-text list represents missing text.
+    if len(value) != 1 or value[0].get("type") != "text":
+        raise EditError("Taxonomy text needs separate review.")
+    span = value[0]
+    if (
+        span.get("href")
+        or span.get("text", {}).get("link")
+        or any(v for k, v in span.get("annotations", {}).items() if k != "color")
+        or span.get("annotations", {}).get("color", "default") != "default"
+    ):
+        raise EditError("Formatted taxonomy text needs separate review.")
+    result = span.get("text", {}).get("content")
+    if not isinstance(result, str) or not result:
+        raise EditError("Malformed taxonomy text.")
+    return result

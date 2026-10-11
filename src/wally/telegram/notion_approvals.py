@@ -13,16 +13,17 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
+from html import escape
 from uuid import uuid4
 
-from wally.adapters.notion.edits import EDIT_VALUES
 from wally.codex.config import EditConfig
 from wally.exceptions import WallyError
 from wally.models.ops import ExecutionStatus, ProposalIntent, ProposalStatus
 from wally.models.principal import Capability
 from wally.ops.decisions import UserDecision
+from wally.ops.notion_contracts import EDIT_VALUES
 from wally.ops.notion_edits import DecisionSelection, EditError, NotionEditService
-from wally.presentation import change_lines, human_time
+from wally.presentation import TelegramHTML, change_lines, human_time
 from wally.runtime.confirmation import canonical, digest
 from wally.runtime.principals import ChannelPolicy
 from wally.telegram.outbox import Notification, NotificationOutbox
@@ -40,7 +41,7 @@ MESSAGE_LIMIT = 3900  # UTF-16 units, leaving margin below Telegram's limit.
 
 def execution_outcome(attempt):
     if attempt.status == ExecutionStatus.VERIFIED_SUCCESS:
-        return "✅ Notion updated", "Verified successfully."
+        return "✅ Notion updated", ""
     if attempt.status == ExecutionStatus.RUNNING:
         return (
             "⏳ Change in progress",
@@ -146,10 +147,11 @@ class TelegramNotionApprovals:
                 rule = rules.get(change["property_id"])
                 if (
                     rule is None
-                    or rule.field not in {"amount_policy", "frequency"}
+                    or rule.field not in EDIT_VALUES
                     or rule.field != change["field"]
                     or not set(rule.values) <= EDIT_VALUES[rule.field]
                     or change["after"] not in rule.values
+                    or (change["before"] is None and not rule.allow_missing)
                 ):
                     raise EditError("Change is outside Telegram's metadata policy.")
 
@@ -311,7 +313,7 @@ class TelegramNotionApprovals:
                     [[{"text": f"View record {n}", "url": self._link(item)}]]
                     for n, item in enumerate(scope, 1)
                 )
-        return text, buttons
+        return TelegramHTML(text), buttons
 
     @staticmethod
     def _fits(text):
@@ -325,10 +327,19 @@ class TelegramNotionApprovals:
         lines = ["📝 Notion update" if len(scope) == 1 else "📝 Notion updates — apply all shown"]
         targets = {target.key: target for target in self.policy().targets}
         for item in scope:
-            lines += ["", item["target"], "", *change_lines(item["changes"])]
+            lines += [
+                "",
+                escape(item["target"]),
+                "",
+                *change_lines(item["changes"], telegram_html=True),
+            ]
             target = targets.get(item["target"])
+            if target is not None and target.evidence_summary:
+                lines += ["", escape(target.evidence_summary)]
             if target is not None and target.finance_id:
                 lines += ["⚠️ This change will require recertification."]
+            elif target is not None and target.finance_issue_digest:
+                lines += ["Certification remains a separate review."]
         return "\n".join(lines)
 
     def change_notification(self, row):
@@ -341,9 +352,9 @@ class TelegramNotionApprovals:
         lines = [
             "📝 Notion change detected",
             "",
-            event["target"],
+            escape(event["target"]),
             "",
-            *change_lines(event["changes"]),
+            *change_lines(event["changes"], telegram_html=True),
         ]
         if event["other_business_changes"]:
             lines += ["Other record information also changed. Review the record in Notion."]
@@ -361,7 +372,7 @@ class TelegramNotionApprovals:
         text = "\n".join(lines)
         if not self._fits(text):
             raise EditError("Complete change notice exceeds the message limit.")
-        return text, [
+        return TelegramHTML(text), [
             [
                 {"text": "Review in Notion", "url": self._link(event)},
                 {"text": "Later", "callback_data": row.callback_nonce + ".n"},
@@ -391,10 +402,20 @@ class TelegramNotionApprovals:
                     "Review its current values before relying on it."
                 )
         if spec is None:
-            return heading + "\n\n" + outcome
-        return "\n".join(
-            [heading, "", spec["target"], "", *change_lines(spec["changes"]), "", outcome]
-        )
+            return TelegramHTML(heading + ("\n\n" + outcome if outcome else ""))
+        lines = [
+            heading,
+            "",
+            escape(spec["target"]),
+            "",
+            *change_lines(spec["changes"], telegram_html=True),
+        ]
+        if outcome:
+            lines += ["", outcome]
+        target = next((t for t in self.policy().targets if t.key == spec["target"]), None)
+        if spec.get("certification_required") or (target and target.finance_id):
+            lines += ["⚠️ This change will require recertification."]
+        return TelegramHTML("\n".join(lines))
 
     def handle(self, row: Notification, action: str, callback: dict) -> str:
         message = callback.get("message", {})
@@ -559,8 +580,18 @@ class TelegramNotionApprovals:
                 else:
                     result = (
                         "❌ Change rejected\n\n"
-                        + "\n".join(item["target"] for item in scope)
-                        + "\n\nNo changes made."
+                        + "\n\n".join(
+                            "\n".join(
+                                [
+                                    escape(item["target"]),
+                                    "",
+                                    *change_lines(
+                                        item["changes"], telegram_html=True, unchanged=True
+                                    ),
+                                ]
+                            )
+                            for item in scope
+                        )
                         if action == "reject"
                         else (
                             "⏰ Review postponed for 1 hour. No changes made. "
@@ -578,7 +609,7 @@ class TelegramNotionApprovals:
                 conn.execute(
                     "UPDATE telegram_edit_reviews SET state='finished', result=? "
                     "WHERE notification_id=?",
-                    (result, row.id),
+                    (canonical({"format": "telegram_html_v1", "text": result}), row.id),
                 )
             if action != "approve_execute" or not any(
                 self.store.list_executions(proposal_id=item["proposal_id"]) for item in scope
@@ -602,4 +633,12 @@ class TelegramNotionApprovals:
                 "SELECT result FROM telegram_edit_reviews WHERE notification_id=?",
                 (notification_id,),
             ).fetchone()
-        return row["result"] if row else "Review outcome unavailable; no write retry."
+        if not row:
+            return "Review outcome unavailable; no write retry."
+        try:
+            body = json.loads(row["result"])
+        except ValueError:
+            return row["result"]  # Historical plain results retain plain transport.
+        if isinstance(body, dict) and body.get("format") == "telegram_html_v1":
+            return TelegramHTML(body["text"])
+        return row["result"]

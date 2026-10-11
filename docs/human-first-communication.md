@@ -8,6 +8,14 @@ audit investigations can disclose the technical detail needed for that work.
 ## Shared conventions
 
 - Lead with the outcome or the decision needed. Use concise, natural language.
+- Avoid repeating an outcome already conveyed by its primary status. Verified
+  success needs no second “Verified successfully.” sentence. Rejection shows the
+  reviewed value that remains. Preserve pending execution, failure, uncertainty,
+  intervention and certification consequences.
+- Selectively bold decision-critical variables: proposed values, future amounts
+  and recipients, or appointment dates/times. This confers no action capability.
+  Telegram uses escaped HTML `<b>` emphasis, never literal Markdown stars. Escape
+  all source names/values; plain messages and historical results retain plain transport.
 - Use meaningful record and property names. Keep internal IDs, hashes, authorization
   vocabulary and provider exception text in runtime records, not ordinary messages.
 - Disclose every material change and consequence. Progressive disclosure is for
@@ -67,7 +75,7 @@ After (the actual new renderer's layout with that record and change):
 Sandbox — Frequency acceptance
 
 Frequency
-Monthly → Quarterly
+Monthly → **Quarterly**
 Expires today at 1:22 am
 
 [✅ Apply change] [❌ Reject]
@@ -90,12 +98,13 @@ under [ADR-046](decisions.md#adr-046-telegram-authorizes-eligible-scoped-notion-
 Sandbox — Frequency acceptance
 
 Frequency
-Monthly → Quarterly
-
-Verified successfully.
+Monthly → **Quarterly**
 ```
 
-Rejection names the affected records and says `❌ Change rejected` / `No changes made.`
+Rejection names the affected records and says `❌ Change rejected` /
+`Frequency remains Monthly`, emphasizing the remaining value. Missing values show
+`Missing` while retaining explicit null internally. Example stars illustrate visual
+emphasis; the actual Telegram transport uses supported HTML.
 Deferral says the review was postponed for one hour and no changes were made.
 An approved, unstarted change says `⏳ Change approved` / `Awaiting execution`.
 Known pre-dispatch failures say no change was sent and request a new review.
