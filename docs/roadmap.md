@@ -86,7 +86,7 @@ Wally's primary responsibilities:
 | v0.17 | ChatGPT interface | Local authenticated MCP adapter; hosted deployment gated |
 | v0.18 | Telegram inbox | Owner/private-chat polling, decisions, outbox, login LaunchAgent/Keychain |
 | v0.18.1 | Local continuity and reliability | Basic hourly iCloud copy; elapsed delivery defer and complete calendar results |
-| v0.19 | Read-only proactive loop | Periodic observation and due reminders; approval remains inert |
+| v0.19 | Reasoned Grounding | Interpret owner requests against trusted records; clarify ambiguity before proposals |
 | v1.0 later | Phase 5 | Scheduling, proactive triggers, notification UX and daily-driver hardening |
 | v1.0+ | Retrieval Router | Runtime-owned retrieval policy (see below) |
 | v1.x+ | Optional providers | Travel, property depth; HA read-only context |
@@ -504,7 +504,7 @@ See ADR-041.
 
 - [x] Implement an hourly copy of essential SQLite databases, audit history and
   original/structured payment evidence to a dedicated local iCloud Drive folder.
-  On-host copy/agent installation awaits specific private-payload approval.
+  Owner-approved initial transfer and hourly-agent run verified on 11 October.
 - [x] Use SQLite's backup API; keep working paths unchanged and exclude secrets,
   credentials, caches, process logs and staging/acceptance artifacts.
 - [x] Release elapsed document-delivery deferrals with decision clearing and audit
@@ -512,27 +512,33 @@ See ADR-041.
 - [x] Read all Calendar API pages, reject incomplete results as absence evidence,
   capture material event revisions and guard rolling/shrinking horizons (D07).
 
-Acceptance checks local file placement and consistent standalone databases,
-without claiming completed cloud upload. No snapshots/versioning, retention, restoration
+Live acceptance checked local files and standalone database integrity; Apple
+reported every copied item uploaded and unshared. The hourly run exited with code 0.
+See [acceptance evidence and limitations](operations.md#local-icloud-sync).
+v0.18.1 is complete; the evidence is point-in-time, not monitoring. No snapshots/versioning, retention, restoration
 procedures/drills, monitoring/alerts, new encryption/credential recovery systems or
 other backup providers. [D09](engineering-debt.md#d09--basic-local-icloud-copy-v0181-scope)
 is limited to this copy; no further backup acceptance blocks the next milestone.
 
-## v0.19 — Read-only proactive loop (next)
+## v0.19 — Reasoned Grounding (next)
 
-Proceed next with periodic read-only observation and due reminder delivery through
-the existing operational services and Telegram outbox. This is the next delivery
-scope, not an implemented scheduler or validated live deployment.
+The owner selected Reasoned Grounding as the next milestone on 11 October 2026.
+The [implementation plan](reasoned-grounding.md) starts with document delivery:
+understand ordinary request wording against existing trusted record candidates,
+validate selected identities in the runtime, and ask concise clarification when
+ambiguous. Only the existing reference-only pending proposal may be created.
 
-- [ ] A single local periodic observe runner; explicit configuration and existing
-  provider reads only. Preserve complete-source and uncertainty rules.
-- [ ] Due deferrals reconcile before notification selection; reminders need
-  explicit deduplication and restart-safe delivery through the existing outbox.
-- [ ] Owner-facing notification timing/noise controls and isolated restart checks.
-- [ ] Separately authorized live mailbox/calendar acceptance before claiming readiness.
+- [ ] Typed advisory result and deterministic candidate/identity validation.
+- [ ] Dedicated reasoning component behind the existing LLM abstraction, outside
+  the legacy ToolRegistry; exact matching remains available on reasoner failure.
+- [ ] Shared authenticated submission and concise Telegram clarification.
+- [ ] Injection, ambiguity, fabricated identity, drift and replay regressions.
+- [ ] Separately authorized owner/model acceptance before claiming live readiness.
 
-Approval remains inert; no payment, provider write, automatic execution or hosted
-ChatGPT authorization expansion. Backup additions are not prerequisites.
+Approval remains inert. Current channel/execution restrictions, financial evidence
+rules and bounded untrusted provenance remain intact. Scheduling/proactive triggers
+and reminder delivery stay later Phase 5 work. No new backup requirements or broader
+data collection are prerequisites.
 
 ---
 

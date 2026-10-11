@@ -35,7 +35,10 @@ def _publish(source: Path, destination: Path) -> None:
     destination.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     if destination.parent.is_symlink() or destination.is_symlink():
         raise ValueError("Sync destination must not be a symlink.")
-    fd, name = tempfile.mkstemp(prefix=".wally-copy-", dir=destination.parent)
+    # Stage outside iCloud so partial files are never eligible for upload.
+    # The default macOS temporary directory and iCloud Drive share a volume;
+    # replace fails safely rather than copying partially across volumes.
+    fd, name = tempfile.mkstemp(prefix="wally-copy-")
     os.close(fd)
     temporary = Path(name)
     try:

@@ -229,9 +229,12 @@ audit history and original/structured manual-payment evidence. SQLite's backup
 API exports active databases consistently; the hourly login LaunchAgent uses the
 existing Python environment. Working paths and runtime state remain in place.
 
-**Acceptance:** files present in the local iCloud Drive Wally folder; standalone
-copies pass SQLite integrity checks. Local placement does not prove cloud upload.
-See [local sync](operations.md#local-icloud-sync) for the basic check.
+**Accepted, 11 October 2026:** the hourly LaunchAgent completed with exit code 0;
+25 allowlisted files were checked locally, all three SQLite integrity checks passed,
+and Apple's per-item metadata confirmed in-iCloud/unshared/uploaded state without
+upload errors or conflicts. Latest copy: 11:39:19 pm MYT; verified: 11:40:28 pm MYT.
+[Live acceptance and locked-Mac limitation](operations.md#local-icloud-sync)
+distinguish cloud confirmation from local placement and future-run health.
 
 The owner explicitly removed snapshots/versioning, retention, restore procedures
 or drills, monitoring/alerts, encryption/credential recovery work and other backup

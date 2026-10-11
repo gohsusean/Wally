@@ -233,7 +233,8 @@ Scheduling/proactive triggers, more executors, hosted ChatGPT completion, contac
 and optional HA context remain [roadmap](roadmap.md) work. Semantic/vector retrieval,
 federation and retriever/store extraction are historical proposals; current recall
 is SQLite FTS5. n8n exports remain missing. A basic hourly local iCloud copy is implemented;
-cloud upload completion and restoration are not claimed (D09).
+macOS confirmed per-item cloud upload during acceptance; restoration and future
+run health are not claimed (D09).
 The [backlog](engineering-debt.md) records defects without claiming fixes.
 
 ## Certified finance catalog

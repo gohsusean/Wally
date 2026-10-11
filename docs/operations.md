@@ -206,7 +206,9 @@ Essential local records copied:
 The three database paths match both tracked profiles. A future working-path change
 must update this explicit allowlist. SQLite's backup API reads committed state,
 including WAL, into local temporary files; only closed standalone databases are
-published to iCloud. Each current file replaces its previous copy. This ensures
+published to iCloud. Publication stages outside iCloud and atomically moves each
+completed file onto the same local volume; partial temporary files never belong
+to the sync scope. Each current file replaces its previous copy. This ensures
 per-database consistency, not an atomic checkpoint across the whole application.
 
 Excluded: `.env`, credential/token files, 1Password/Keychain, configuration,
@@ -229,10 +231,31 @@ retry loop, monitoring or alerts. The existing Telegram agent is unaffected.
 To stop this copy job, unload its LaunchAgent with `launchctl bootout gui/$(id -u)/com.wally.local-sync` and remove its plist from
 `~/Library/LaunchAgents/`. Reinstall explicitly after moving the checkout.
 
-The basic acceptance check verifies files and standalone database integrity in the
-local iCloud folder. On-host copy and hourly-agent installation are pending owner
-approval of the specific private-record payload. **Local placement is not proof of completed cloud upload.**
-iCloud handles upload separately; no cloud completion claim is made.
+**Live acceptance, 11 October 2026:** the owner explicitly approved private
+conversations, financial/payment records and supporting evidence for the initial
+and subsequent hourly copies. The dedicated folder was created at the private
+account's iCloud Drive root; Apple's native metadata reports it and every copied
+item as in iCloud and not shared.
+
+The LaunchAgent is installed with a 3,600-second interval. Its corrected background
+run exited with code 0; the latest completed file copy was **11 October 2026,
+11:39:19 pm MYT**. At **11:40:28 pm MYT**, all 25 allowlisted files were present,
+all three standalone SQLite databases passed integrity checks, payment evidence
+matched byte-for-byte and audit copies matched complete source prefixes. No
+credential stores, caches, process logs, sidecars or staging files were present.
+
+Apple Foundation's `isUbiquitousItem`, `ubiquitousItemIsShared`,
+`ubiquitousItemIsUploaded`, `ubiquitousItemIsUploading`, upload-error and conflict
+resource values reported every folder/file in iCloud, unshared, uploaded, no active
+upload, no upload error and no conflict. This is macOS's per-item cloud-upload
+confirmation, beyond local placement; it is not a second-device download or a
+restoration drill. The [Apple upload-status definition](https://developer.apple.com/documentation/foundation/urlresourcevalues/ubiquitousitemisuploaded)
+describes the distinction. The check is point-in-time acceptance, not monitoring.
+
+During acceptance, a background replacement waited while the Mac was locked and
+completed after owner unlock. That observation does not establish reliable
+completion while locked, asleep or logged out; it is not a new backup requirement.
+The current uploaded copy remains distinct from the health of later hourly runs.
 
 Owner-directed scope: no dated/versioned snapshots, retention policies,
 restoration procedures/drills, monitoring/alerts, new encryption or credential

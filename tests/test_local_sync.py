@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from wally.local_sync import DATABASES, agent_spec, icloud_destination, sync_local_data
+from wally.local_sync import DATABASES, _publish, agent_spec, icloud_destination, sync_local_data
 
 
 def _repo(tmp_path: Path) -> Path:
@@ -102,3 +102,24 @@ def test_missing_icloud_drive_is_not_created_as_a_plain_folder(tmp_path: Path) -
     with pytest.raises(FileNotFoundError):
         icloud_destination(tmp_path)
     assert not (tmp_path / "Library").exists()
+
+
+def test_failed_publication_keeps_previous_copy_and_no_cloud_staging(tmp_path, monkeypatch):
+    source = tmp_path / "source.db"
+    source.write_bytes(b"new complete database")
+    destination = tmp_path / "icloud/state.db"
+    destination.parent.mkdir()
+    destination.write_bytes(b"previous complete database")
+
+    def interrupted_replace(path, target):
+        # Even at the publish boundary no partial/staging file is in iCloud.
+        assert list(destination.parent.iterdir()) == [destination]
+        assert destination.read_bytes() == b"previous complete database"
+        assert path.read_bytes() == source.read_bytes()
+        raise OSError("publication interrupted")
+
+    monkeypatch.setattr(Path, "replace", interrupted_replace)
+    with pytest.raises(OSError, match="publication interrupted"):
+        _publish(source, destination)
+    assert destination.read_bytes() == b"previous complete database"
+    assert list(destination.parent.iterdir()) == [destination]
