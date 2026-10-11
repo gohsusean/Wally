@@ -14,6 +14,8 @@ def add_parser(sub):
     parser = sub.add_parser("finance", help="Local-owner financial catalog/certification")
     commands = parser.add_subparsers(dest="finance_command", required=True)
     commands.add_parser("status", help="Read candidate IDs, versions and readiness")
+    coverage = commands.add_parser("coverage", help="Refresh baseline coverage; never certifies")
+    coverage.add_argument("--reviews", type=Path, help="Exact-version field evidence worklist")
     designate = commands.add_parser("designate", help="Confirm a reviewed source mapping")
     designate.add_argument("source_key")
     for verb in ("certify", "enable", "revoke"):
@@ -26,6 +28,9 @@ def add_parser(sub):
                 type=Path,
                 required=True,
                 help="JSON evidence references/hashes and owner attestations",
+            )
+            command.add_argument(
+                "--reviews", type=Path, help="Require complete field evidence review"
             )
     register = commands.add_parser(
         "intake", help="Register provisional facts or revise a local instance"
@@ -69,6 +74,10 @@ def run(app, args, *, channel="cli") -> int:
         verb = args.finance_command
         if verb == "status":
             result = catalog.status()
+        elif verb == "coverage":
+            from wally.finance.coverage import coverage
+
+            result = coverage(catalog, _json(args.reviews) if args.reviews else None)
         elif verb == "designate":
             catalog.designate(args.source_key, context=context)
             result = {"source": "designated", "rows": "provisional"}
@@ -83,6 +92,13 @@ def run(app, args, *, channel="cli") -> int:
             proof = _json(args.proof)
             if set(proof) != {"evidence", "attestations"}:
                 raise FinanceError("Proof needs evidence and owner attestations only.")
+            if args.reviews:
+                from wally.finance.coverage import reviewed_proof
+
+                reviewed = reviewed_proof(catalog, args.object_id, _json(args.reviews))
+                if proof["evidence"] != reviewed["evidence"]:
+                    raise FinanceError("Proof differs from reviewed field evidence.")
+                proof.update(reviewed)
             certificate = catalog.certify(
                 args.object_id, Scope(args.scope), context=context, **proof
             )

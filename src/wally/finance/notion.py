@@ -54,6 +54,8 @@ class SourceMapping:
     fields: dict[str, FieldMapping]
     constants: dict[str, Any] = field(default_factory=dict)
     role: str = "finance"
+    personal_subjects: dict[str, str] = field(default_factory=dict)
+    review_fields: dict[str, FieldMapping] = field(default_factory=dict)
 
     @property
     def key(self) -> str:
@@ -61,10 +63,45 @@ class SourceMapping:
 
     @property
     def fingerprint(self) -> str:
-        return digest(asdict(self))
+        data = asdict(self)
+        if not self.personal_subjects:
+            data.pop("personal_subjects")  # Preserve existing designations.
+        if not self.review_fields:
+            data.pop("review_fields")
+        return digest(data)
 
     def validate(self) -> None:
         _ = self.key
+        if not isinstance(self.personal_subjects, dict):
+            raise FinanceError("Personal exceptions must be an explicit page mapping.")
+        if not isinstance(self.review_fields, dict) or any(
+            name
+            not in {
+                "obligation_notes",
+                "legacy_frequency",
+                "statement_cycle",
+                "payment_arrangement",
+            }
+            or mapping.type not in {"rich_text", "select"}
+            for name, mapping in self.review_fields.items()
+        ):
+            raise FinanceError("Unknown financial review-only field mapping.")
+        if self.personal_subjects:
+            if (
+                self.kind != Kind.ACCOUNT
+                or "subject" not in self.fields
+                or not self.fields["subject"].optional
+                or self.constants.get("subject_kind") != "property"
+                or not isinstance(self.personal_subjects, dict)
+            ):
+                raise FinanceError("Personal exceptions require an optional property relation.")
+            for page, subject in self.personal_subjects.items():
+                if (
+                    notion_id(page) != page
+                    or not isinstance(subject, str)
+                    or not subject.startswith("fin_")
+                ):
+                    raise FinanceError("Personal exceptions need exact page and entity IDs.")
         if (
             not isinstance(self.kind, Kind)
             or (set(self.fields) | set(self.constants))
@@ -92,7 +129,9 @@ class SourceMapping:
             raise FinanceError("Unknown finance source role or record kind.")
         if set(self.fields) & set(self.constants):
             raise FinanceError("Mapped fields conflict with constants.")
-        ids = [unquote(m.property_id) for m in self.fields.values()]
+        ids = [
+            unquote(m.property_id) for m in (*self.fields.values(), *self.review_fields.values())
+        ]
         if len(set(ids)) != len(ids) or any(not i for i in ids):
             raise FinanceError("Ambiguous stable property mapping.")
         if any(m.type not in SUPPORTED for m in self.fields.values()):
@@ -145,7 +184,7 @@ class NotionFinanceReader:
         props = schema.get("properties")
         if not isinstance(props, dict):
             raise FinanceError("Missing finance schema.")
-        for mapping in source.fields.values():
+        for mapping in (*source.fields.values(), *source.review_fields.values()):
             matches = [
                 p
                 for p in props.values()
@@ -219,6 +258,14 @@ class NotionFinanceReader:
                         target = by_source.get(notion_id(source.fields[name].target_data_source))
                         if target is None or target.kind not in kinds:
                             raise FinanceError("Relation mapping targets the wrong record kind.")
+                        if (
+                            name == "subject"
+                            and source.personal_subjects
+                            and target.kind != Kind.PROPERTY
+                        ):
+                            raise FinanceError(
+                                "Personal exceptions require a property source mapping."
+                            )
                 if source.key in (rejected or set()):
                     raise FinanceError("Source authority unavailable.")
                 self.validate_schema(source)
@@ -287,7 +334,15 @@ class NotionFinanceReader:
             if source.kind == Kind.ACCOUNT and "subject" in source.fields:
                 target = by_source[notion_id(source.fields["subject"].target_data_source)]
                 expected = {"property"} if target.kind == Kind.PROPERTY else {"personal", "entity"}
-                if (
+                personal = source.personal_subjects.get(page_id)
+                if personal and raw.get("subject") == "":
+                    raw["subject"] = personal
+                    raw["subject_kind"] = "personal"
+                elif personal:
+                    # An exception cannot conceal a newly added or unreadable property.
+                    raw.pop("subject", None)
+                    invalid.add(page_id)
+                elif (
                     not isinstance(raw.get("subject_kind"), str)
                     or raw["subject_kind"] not in expected
                 ):
@@ -295,12 +350,31 @@ class NotionFinanceReader:
                     raw.pop("subject", None)
                     invalid.add(page_id)
             raw_rows[page_id] = raw
+        card_accounts = {
+            raw.get("account")
+            for page_id, raw in raw_rows.items()
+            if pages[page_id][0].kind == Kind.DEFINITION
+            and raw.get("obligation_type") == "credit_card_payment"
+            and isinstance(raw.get("account"), str)
+        }
         candidates = []
         for page_id, (source, page) in pages.items():
             raw = raw_rows[page_id]
             locator = self.locator(source, page_id)
             try:
+                # A namespace edit cannot disguise a full card number as a
+                # generic customer reference and persist it before graph checks.
+                if (
+                    source.kind == Kind.ACCOUNT
+                    and locator.key in card_accounts
+                    and raw.get("namespace") != "credit_card_last4"
+                ):
+                    raise FinanceError("Card accounts require the safe identifier namespace.")
                 facts = parse_facts(source.kind, raw)
+                reviewed = {
+                    name: self.value(page, mapping)
+                    for name, mapping in source.review_fields.items()
+                }
                 if page_id in invalid:
                     raise FinanceError("Financial row unavailable.")
             except (FinanceError, TypeError, AttributeError, KeyError):
@@ -319,7 +393,13 @@ class NotionFinanceReader:
                 )
                 continue
             candidates.append(
-                Candidate(source.kind, locator, facts, str(page.get("last_edited_time", "")))
+                Candidate(
+                    source.kind,
+                    locator,
+                    facts,
+                    str(page.get("last_edited_time", "")),
+                    review_fingerprint=digest(reviewed) if reviewed else "",
+                )
             )
         return ReadSnapshot(candidates, issues)
 

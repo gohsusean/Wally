@@ -418,4 +418,5 @@ def decode(raw: str) -> Candidate:
         parse_facts(Kind(data["kind"]), data["facts"]),
         data["source_revision"],
         data["schema_version"],
+        data.get("review_fingerprint", ""),
     )

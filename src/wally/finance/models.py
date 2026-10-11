@@ -223,6 +223,10 @@ def parse_facts(kind: Kind, raw: dict) -> Facts:
         for name in ("provider", "subject", "namespace", "identifier"):
             data[name] = text(data[name])
         data["subject_kind"] = choice(obj.subject_kind, {"property", "personal", "entity"})
+        if obj.namespace.startswith("credit_card") and (
+            obj.namespace != "credit_card_last4" or not re.fullmatch(r"[0-9]{4}", obj.identifier)
+        ):
+            raise FinanceError("Card identity requires the safe last-four namespace and digits.")
         data["responsibility"] = choice(
             obj.responsibility, {"owner", "administration_only", "other", "unconfirmed"}
         )
@@ -258,6 +262,13 @@ def parse_facts(kind: Kind, raw: dict) -> Facts:
         data["due_mode"] = choice(
             obj.due_mode, {"from_document", "calendar_pattern", "oneoff_date"}
         )
+        if obj.obligation_type == "credit_card_payment" and (
+            obj.amount_policy != "source_defined"
+            or obj.evidence_mode != "statement"
+            or obj.due_mode != "from_document"
+            or obj.frequency not in {"monthly", "statement_driven"}
+        ):
+            raise FinanceError("Cards require variable statement-defined amounts and due dates.")
         if type(obj.active) is not bool:
             raise FinanceError("Active must be a boolean.")
         if obj.amount_policy == "fixed_contract":
@@ -356,17 +367,19 @@ class Candidate:
     facts: Facts = field(repr=False)
     source_revision: str = ""
     schema_version: int = SCHEMA_VERSION
+    review_fingerprint: str = ""
 
     @property
     def fingerprint(self) -> str:
-        return digest(
-            {
-                "kind": self.kind,
-                "locator": asdict(self.locator),
-                "facts": asdict(self.facts),
-                "schema": self.schema_version,
-            }
-        )
+        data = {
+            "kind": self.kind,
+            "locator": asdict(self.locator),
+            "facts": asdict(self.facts),
+            "schema": self.schema_version,
+        }
+        if self.review_fingerprint:
+            data["review_fingerprint"] = self.review_fingerprint
+        return digest(data)
 
 
 def dependencies(facts: Facts) -> tuple[str, ...]:

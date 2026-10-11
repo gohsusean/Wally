@@ -1,0 +1,112 @@
+# v0.18.2 financial certification rollout
+
+The workflow prepares an evidence-backed recurring baseline using the existing
+ADR-044 catalog and local-owner certification service. It does not enable any
+chain, portal access, payment, scheduler or v0.19 capability. The live rollout is
+**incomplete**. Coverage includes every Bill Provider, Bill Account and Recurring
+Bill, including inactive rows and personal credit cards; property/entity records
+are certification prerequisites and reported separately.
+
+## Reusable operator workflow
+
+1. Refresh directly from the designated Notion sources with `wally finance coverage`.
+   This uses complete pagination and the existing classification, mapping,
+   duplicate and dependency checks. A source failure reports an explicit inventory
+   exception; the displayed known-record count is not a full inventory in that case.
+   A new row is provisional or needs attention, never implicitly certified.
+2. Reuse valid certificates and primary evidence. Collect evidence references and
+   hashes for remaining records, compare applicable fields, and make a restricted
+   JSON worklist keyed by canonical `fin_…` ID. Each entry contains exactly:
+   `fingerprint`, `evidence`, `checks`, `discrepancies`, `owner_decisions`.
+   `checks` maps each reviewed field to a nonempty list of zero-based evidence
+   indices. The coverage output lists `missing_checks`. Discrepancies and owner
+   decisions are field names, not copied document contents or model authority.
+   Evidence has the existing `source`, `reference`, `content_hash`, `kind` shape.
+   Hash the retained document bytes, or explicitly identify a complete extracted
+   representation and hash those exact bytes. Partial extraction, a notification,
+   a receipt or a configured provider is insufficient for missing obligation facts.
+3. Run `wally finance coverage --reviews <restricted-worklist.json>`. The report
+   separates certified primary evidence, reviewed-but-uncertified, missing evidence
+   and unresolved discrepancies. A partial field review still reports missing
+   evidence. A stale worklist cannot prepare certification. It is an advisory
+   artifact, not another certificate or privileged Notion property.
+4. Correct ordinary metadata using the authenticated owner's Notion connection;
+   independently fetch the resulting records. Reconcile/refresh Wally afterward.
+   Governance and pending/unclassified records remain protected. Telegram's
+   optional scoped metadata executor can only handle its registered properties;
+   it cannot certify financial facts. Do not expand its grant for this rollout.
+5. Prepare the normal proof containing only `evidence` and the three explicit
+   owner attestations documented in [finance-catalog.md](finance-catalog.md).
+   Certify prerequisites first, then providers/accounts/definitions using
+   `wally finance certify <fin-ID> --proof <proof.json> --reviews <worklist.json>`.
+   This calls the existing certification service. It requires complete field
+   review with no unresolved decisions, identical proof evidence, a matching
+   current fingerprint, authenticated terminal authority and fresh owner
+   confirmation. The service rereads sources and dependencies after the prompt.
+   The worklist never supplies attestations automatically or authenticates itself.
+6. Refresh coverage again. Do not declare completion with an uncertified row,
+   missing evidence or an incomplete-source exception. Certification does not
+   perform chain enablement, instance intake or a transaction.
+
+## Personal obligations and direct Notion edits
+
+Keep the existing provider → subject → account → definition → instance model.
+Create/certify the personal subject through existing local `finance intake entity`
+with a restricted `entity_key`; no new Notion entity database is required. A
+reviewed account source may make its existing property relation optional and add
+`personal_subjects`, an exact Notion page UUID → local canonical entity ID map.
+The core checks that the entity actually exists and is local-owner intake.
+Only those explicit pages with a completely readable empty property relation
+become personal accounts. Other missing properties remain unresolved scope. An
+added property contradicts the personal binding and invalidates it; failed reads
+and multi-relations cannot select the exception. Re-designate changed source
+mappings through the existing fresh terminal confirmation.
+
+Material typed edits already revise the candidate and permanently invalidate
+certification, including direct Notion edits and later reversions. To observe
+material notes or legacy cadence without inventing new Notion properties, a source
+can specify `review_fields` using stable existing property IDs. Supported names
+are `obligation_notes`, `legacy_frequency`, `statement_cycle`, `payment_arrangement`;
+only plain text/select values are supported. They contribute a content hash to
+candidate versions; raw notes are absent from the catalog, status and prompts.
+Use Bill Account Notes for statement-cycle/arrangement or owner planning notes,
+and Recurring Bills Frequency for legacy cadence. A changed/deleted/unreadable
+mapped review field invalidates certification and dependent chains. Empty mappings
+preserve existing fingerprints/designations. New mappings require designation and
+fresh certification. Nothing infers privileged instructions from notes.
+
+This remains read-time/pre-action reconciliation. An unobserved edit, or an edit
+reverted between reads, is unknown. The current live mapping does not yet watch
+these supplemental fields; an inert prepared mapping is retained with the private
+rollout artifacts. Do not claim continuous monitoring or installed personal-card
+readiness before entity intake and source re-designation are complete.
+
+## Credit cards
+
+Use `credit_card_last4` with exactly four digits, preserving leading zeros. Never
+register full PANs, CVVs, passwords or other payment secrets. A
+`credit_card_payment` definition must reference a safe card account and use
+`source_defined` amounts, `statement` evidence, `from_document` due dates and
+monthly or statement-driven frequency. The field review also requires
+`statement_cycle` and `payment_arrangement`; an evidenced unspecified arrangement
+is acceptable, but automatic debit or amount selection must not be invented.
+Use the existing notes mapping for supplemental configuration when evidenced.
+Individual statement balances, minimum payments and actual payments belong to
+separate occurrences/payment records; they are rejected as definition fields.
+
+Owner policy confirmed on 12 October: Casaman and Tropicana management retain
+quarterly cadence, with all three months planned for settlement by the first
+month's issuer due date. Issuer documents still contain distinct monthly dates.
+This planning preference is neither an altered issuer deadline nor authorization
+to pay. Notes were added to both existing account notes and recurring pages and
+independently read back.
+
+## Point-in-time rollout results
+
+See [the current coverage report](financial-certification-coverage.md). Restricted
+inventory, source searches, evidence extractions, original retained PDFs,
+independent readbacks, exact field reviews and an inert proposed mapping are in
+ignored `data/financial-certification/2026-10-12/`. They must not be committed.
+The audit uses the existing runtime database and preserves historical certificates,
+versions and audit events. A SQLite backup of the pre-audit operations database
+is retained there; it must not be restored to resurrect authority.

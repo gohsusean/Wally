@@ -151,11 +151,20 @@ class FinanceService:
                 if (
                     issue.locator is not None
                     and issue.kind == Kind.ACCOUNT
-                    and "subject" in source.constants
+                    and (
+                        "subject" in source.constants
+                        or issue.locator.page in source.personal_subjects
+                    )
                 ):
                     try:
-                        subject = self.store.get(source.constants["subject"])
-                        if subject.candidate.kind == Kind.ENTITY:
+                        subject = self.store.get(
+                            source.personal_subjects.get(issue.locator.page)
+                            or source.constants["subject"]
+                        )
+                        if subject.candidate.kind == Kind.ENTITY and (
+                            issue.locator.page not in source.personal_subjects
+                            or issue.constraints.get("subject") == (digest(subject.id),)
+                        ):
                             issues[index] = replace(
                                 issue,
                                 constraints={
@@ -192,7 +201,13 @@ class FinanceService:
                         == f"notion:{candidate.locator.database}:{candidate.locator.data_source}"
                     )
                     for name in ("provider", "subject", "account"):
-                        if name not in raw or name in source.fields:
+                        if name not in raw or (
+                            name in source.fields
+                            and not (
+                                name == "subject"
+                                and candidate.locator.page in source.personal_subjects
+                            )
+                        ):
                             continue
                         value = raw.pop(name)
                         if name == "subject":
@@ -252,8 +267,14 @@ class FinanceService:
         }.get(candidate.kind, ()):
             if not facts.get(name):
                 continue
-            if name not in source.fields:
-                if name != "subject" or self.store.get(facts[name]).candidate.kind != Kind.ENTITY:
+            personal = name == "subject" and candidate.locator.page in source.personal_subjects
+            if name not in source.fields or personal:
+                subject = self.store.get(facts[name]) if name == "subject" else None
+                if (
+                    subject is None
+                    or subject.candidate.kind != Kind.ENTITY
+                    or (personal and subject.candidate.locator.system != "local_owner")
+                ):
                     raise FinanceError(
                         "Only explicit local entity subjects may be constant relations."
                     )
@@ -288,6 +309,10 @@ class FinanceService:
             account = self.store.get(facts.account)
             if account.candidate.kind != Kind.ACCOUNT:
                 raise FinanceError("Definition requires a bill account.")
+            if facts.obligation_type == "credit_card_payment" and (
+                account.candidate.facts.namespace != "credit_card_last4"
+            ):
+                raise FinanceError("Credit card definitions require safe card account identity.")
             if facts.redundant_property and (
                 account.candidate.facts.subject_kind != "property"
                 or facts.redundant_property != account.candidate.facts.subject
@@ -410,11 +435,14 @@ class FinanceService:
         evidence: list[dict],
         attestations: dict[str, bool],
         context: RequestContext,
+        reviewed_fingerprint: str = "",
     ) -> str:
         ctx = self._owner(context)
         self.refresh()
         record = self.store.get(object_id)
         self._base(record)
+        if reviewed_fingerprint and record.candidate.fingerprint != reviewed_fingerprint:
+            raise FinanceError("Reviewed financial facts have changed.")
         proofs = [asdict(Evidence.parse(e)) for e in evidence]
         if (
             not proofs
