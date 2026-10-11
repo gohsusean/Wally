@@ -23,17 +23,58 @@ production records or enable financial actions.
   Desktop refresh is pending: Settings → MCP servers → Wally → Restart/refresh.
   Desktop computer-use control is unavailable for Codex itself. No Terminal
   operation or new authentication is needed for this refresh.
-- The new code is active in the replacement Telegram process. Its actual new
-  approval/completion cards have **not yet been visually or interactively
-  validated**. The earlier sandbox acceptance predates this presentation update.
+- The new code is active in the replacement Telegram process. The live button
+  acceptance below passed. Visual acceptance awaits the owner's display check;
+  desktop inspection was unavailable because the Mac was locked.
 
-The existing synthetic records are readable and retain their expected values:
+At the initial readiness read, the synthetic records retained their expected values:
 frequency acceptance is Quarterly; rejection acceptance is Monthly. Their write
 registration was removed after the earlier test. Owner approval is required to
 temporarily register only those two records, test Quarterly → Monthly with a
 real owner press, reject a separate Monthly → Quarterly proposal, inspect the
 actual cards/completion, independently read Notion, and restore disabled writes.
-This test must never use the four certified financial records.
+The subsequently authorized test below used neither the four certified financial
+records nor the privately staged invoice.
+
+## Authorized live button acceptance
+
+On 11 October the owner authorized the final two-record test. The prior rejection
+record was Monthly and became the new apply target; the prior frequency record was
+Quarterly and became the new rejection target. No preparatory Notion edit was needed.
+Only their Frequency fields and the two values Monthly/Quarterly were registered.
+The local write gate stayed closed throughout; only the synthetic Telegram gate
+was temporarily enabled.
+
+- The owner pressed **Apply change** for Monthly → Quarterly. Wally recorded
+  separate exact-purpose decision/execution confirmations, made one execution
+  attempt, and independently verified success. Its completion message states
+  `Notion updated` / `Monthly → Quarterly` / `Verified successfully.`
+- The owner pressed **Reject** on the separate Quarterly → Monthly proposal.
+  No execution attempt exists for that proposal. Its result states
+  `Change rejected` / `No changes made.`
+- Additional independent Notion reads confirmed the applied value, unchanged
+  other properties, and the rejected record's complete unchanged property set.
+- The cards' recorded presentations contain full changes and readable test names,
+  two compact button rows, correct synthetic Notion links and local Malaysian
+  expiry times (4:00 pm and 4:06 pm) without timezone suffixes or technical IDs.
+  Synthetic targets have no financial recertification warning. This presentation
+  inspection is distinct from the owner's still-pending visual confirmation.
+- Both gates are disabled again. The exact original policy was restored, including
+  empty target registrations. No unresolved record claim remains. Every financial
+  table and all five finance files match the pre-test snapshot byte-for-byte or,
+  for database tables, as complete logical contents. No certification, invoice,
+  chain or payment state was changed.
+
+An initial helper response-field error stopped before execution and restored the
+policy; the helper was corrected and reused the pending proposal. A desktop UI
+attempt then stalled on the locked Mac; that test window expired without an edit
+and restored disabled policy automatically. Once the owner confirmed readiness,
+Wally issued a fresh complete review. Intermittent Telegram delivery errors delayed
+the rejection card; a sender using its exact durable outbox claim delivered it
+without another update consumer or another PATCH. Delivery can still duplicate
+messages when remote acceptance is unknown; callback identity and single-use review
+checks remain intact. This is a delivery reliability limitation, not proof of a
+second execution. There was exactly one applied execution.
 
 ## Minimum production rollout
 
@@ -187,3 +228,8 @@ authorization, exact reviews, source drift, concurrency/claims, replay, uncertai
 independent verification, presentation and timezone cases using isolated fixtures.
 These checks are not a claim of live UI acceptance. This report is committed
 separately from the five preserved finance changes.
+
+After the authorized live button test, 66 focused Telegram, reconciliation and
+human-communication tests passed. Ruff, documentation links/fences and whitespace
+checks passed again. The only tracked change from this acceptance is this report;
+temporary helper/evidence files stay outside versioned application code.
