@@ -1,7 +1,7 @@
 # Wally — Roadmap
 
-**Version:** 0.18.0  
-**Last updated:** 2026-10-06
+**Version:** 0.18.1
+**Last updated:** 2026-10-11
 
 Wally is a **personal Chief of Staff** and **personal AI operating system** — not a home automation platform.
 
@@ -85,6 +85,8 @@ Wally's primary responsibilities:
 | v0.16 | Gateway | Local trust boundary so a future interface can call the runtime without choosing its own channel |
 | v0.17 | ChatGPT interface | Local authenticated MCP adapter; hosted deployment gated |
 | v0.18 | Telegram inbox | Owner/private-chat polling, decisions, outbox, login LaunchAgent/Keychain |
+| v0.18.1 | Local continuity and reliability | Basic hourly iCloud copy; elapsed delivery defer and complete calendar results |
+| v0.19 | Read-only proactive loop | Periodic observation and due reminders; approval remains inert |
 | v1.0 later | Phase 5 | Scheduling, proactive triggers, notification UX and daily-driver hardening |
 | v1.0+ | Retrieval Router | Runtime-owned retrieval policy (see below) |
 | v1.x+ | Optional providers | Travel, property depth; HA read-only context |
@@ -498,6 +500,42 @@ See ADR-041.
 
 ---
 
+## v0.18.1 — Local continuity and reliability ✓
+
+- [x] Implement an hourly copy of essential SQLite databases, audit history and
+  original/structured payment evidence to a dedicated local iCloud Drive folder.
+  On-host copy/agent installation awaits specific private-payload approval.
+- [x] Use SQLite's backup API; keep working paths unchanged and exclude secrets,
+  credentials, caches, process logs and staging/acceptance artifacts.
+- [x] Release elapsed document-delivery deferrals with decision clearing and audit
+  preservation; stale/closed reviews cannot return to pending (D06).
+- [x] Read all Calendar API pages, reject incomplete results as absence evidence,
+  capture material event revisions and guard rolling/shrinking horizons (D07).
+
+Acceptance checks local file placement and consistent standalone databases,
+without claiming completed cloud upload. No snapshots/versioning, retention, restoration
+procedures/drills, monitoring/alerts, new encryption/credential recovery systems or
+other backup providers. [D09](engineering-debt.md#d09--basic-local-icloud-copy-v0181-scope)
+is limited to this copy; no further backup acceptance blocks the next milestone.
+
+## v0.19 — Read-only proactive loop (next)
+
+Proceed next with periodic read-only observation and due reminder delivery through
+the existing operational services and Telegram outbox. This is the next delivery
+scope, not an implemented scheduler or validated live deployment.
+
+- [ ] A single local periodic observe runner; explicit configuration and existing
+  provider reads only. Preserve complete-source and uncertainty rules.
+- [ ] Due deferrals reconcile before notification selection; reminders need
+  explicit deduplication and restart-safe delivery through the existing outbox.
+- [ ] Owner-facing notification timing/noise controls and isolated restart checks.
+- [ ] Separately authorized live mailbox/calendar acceptance before claiming readiness.
+
+Approval remains inert; no payment, provider write, automatic execution or hosted
+ChatGPT authorization expansion. Backup additions are not prerequisites.
+
+---
+
 ## v1.0 later — Phase 5 (future)
 
 **Phase 5 — Daily-driver hardening:** scheduling and proactive triggers, notification UX, noise control, broader action-type support.
@@ -513,7 +551,8 @@ Do not treat n8n as the Chief-of-Staff state machine. Live mailbox tests remain 
 **Deliverables:**
 - Comprehensive documentation (user guide, operator guide)
 - Mac Mini deployment guide and launchd service
-- Proven backup and recovery procedures (sessions, registry, operations, audit and credential sources); currently unresolved under D09
+- Essential local state copied to iCloud Drive under the bounded v0.18.1 scope;
+  further backup/recovery engineering is not a roadmap gate
 - Health monitoring script
 - All v0.2–v0.9 capabilities stable
 - Performance baseline established

@@ -18,6 +18,7 @@ from wally.models.communications import (
     AvailabilitySlot,
     CalendarCreateResult,
     CalendarEvent,
+    CalendarEvents,
     EmailDraftResult,
     EmailMessage,
     EmailSendResult,
@@ -279,37 +280,59 @@ class GoogleCommunicationsAdapter:
         self, *, start: str, end: str, calendar_id: str | None = None
     ) -> list[CalendarEvent]:
         cal_id = calendar_id or self._calendar_id
-        result = self._request(
-            "GET",
-            f"{CALENDAR_API}/calendars/{cal_id}/events",
-            params={
-                "timeMin": start,
-                "timeMax": end,
-                "singleEvents": "true",
-                "orderBy": "startTime",
-            },
-        )
+        params = {
+            "timeMin": start,
+            "timeMax": end,
+            "singleEvents": "true",
+            "orderBy": "startTime",
+        }
         events: list[CalendarEvent] = []
-        for item in result.get("items", []):
-            start_info = item.get("start", {})
-            end_info = item.get("end", {})
-            attendees = tuple(
-                attendee.get("email", "")
-                for attendee in item.get("attendees", [])
-                if attendee.get("email")
+        seen_tokens: set[str] = set()
+        while True:
+            result = self._request(
+                "GET", f"{CALENDAR_API}/calendars/{cal_id}/events", params=dict(params)
             )
-            events.append(
-                CalendarEvent(
-                    event_id=item.get("id", ""),
-                    summary=item.get("summary", "(no title)"),
-                    start=start_info.get("dateTime") or start_info.get("date", ""),
-                    end=end_info.get("dateTime") or end_info.get("date", ""),
-                    location=item.get("location", ""),
-                    description=item.get("description", ""),
-                    attendees=attendees,
+            # Never return a successful prefix after a failed/malformed page.
+            if (
+                not isinstance(result, dict)
+                or ("items" not in result and result.get("kind") != "calendar#events")
+                or not isinstance(result.get("items", []), list)
+            ):
+                raise ProviderUnavailableError(self.name, "Incomplete calendar response.")
+            for item in result.get("items", []):
+                if not isinstance(item, dict):
+                    raise ProviderUnavailableError(self.name, "Incomplete calendar event.")
+                start_info = item.get("start", {})
+                end_info = item.get("end", {})
+                if not isinstance(start_info, dict) or not isinstance(end_info, dict):
+                    raise ProviderUnavailableError(self.name, "Incomplete calendar event.")
+                event_start = start_info.get("dateTime") or start_info.get("date", "")
+                event_end = end_info.get("dateTime") or end_info.get("date", "")
+                if not item.get("id") or not event_start or not event_end:
+                    raise ProviderUnavailableError(self.name, "Incomplete calendar event.")
+                attendees = tuple(
+                    attendee["email"]
+                    for attendee in item.get("attendees", [])
+                    if attendee.get("email")
                 )
-            )
-        return events
+                events.append(
+                    CalendarEvent(
+                        event_id=item["id"],
+                        summary=item.get("summary", "(no title)"),
+                        start=event_start,
+                        end=event_end,
+                        location=item.get("location", ""),
+                        description=item.get("description", ""),
+                        attendees=attendees,
+                    )
+                )
+            token = result.get("nextPageToken")
+            if not token:
+                return CalendarEvents(events, complete=True)
+            if not isinstance(token, str) or token in seen_tokens:
+                raise ProviderUnavailableError(self.name, "Incomplete calendar pagination.")
+            seen_tokens.add(token)
+            params["pageToken"] = token
 
     def check_availability(
         self, *, start: str, end: str, calendar_id: str | None = None

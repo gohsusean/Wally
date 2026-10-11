@@ -1091,6 +1091,13 @@ v0.11 resolves passwords into Playwright FILL actions and n8n payloads. Secondar
 
 **Current scope / supersession:** The Observation/Matter/read-only ingestion boundary remains. [ADR-035](#adr-035-durable-proposed-actions-chief-of-staff-phase-2), [ADR-036](#adr-036-proposal-approval-is-not-execution-chief-of-staff-phase-3) and [ADR-037](#adr-037-guarded-execution-of-the-exact-approved-version-chief-of-staff-phase-4) extend the loop separately. D04 removes financial receipt auto-resolution: all receipts remain FYI until canonical obligation binding exists, under the owner-approved clarification below. Live metadata remains D03 in [engineering debt](engineering-debt.md).
 
+**v0.18.1 clarification:** calendar disappearance requires a complete paginated
+read and a previously known event still overlapping that window. Partial results
+and horizon movement cannot resolve a Matter. All material event fields now
+produce revisions. Essential local state receives a basic hourly iCloud copy via
+closed SQLite exports; wider backup/recovery engineering is explicitly out of scope.
+See [operations](operations.md#local-icloud-sync).
+
 ### Context
 
 v1.0 should make Wally a proactive Chief of Staff. The first increment must persist operational understanding (what changed, what is still open) without autonomous writes. Email, calendar, and Notion already exist as providers. n8n must not become the brain.
@@ -1209,7 +1216,7 @@ Revisit when Phase 3 introduces the approval inbox and needs an `approved` trans
 **Date:** 2026-09-30  
 **Deciders:** Founding engineer + project owner
 
-**Current scope / supersession:** Inert approval/version semantics remain. The always-false helper/no executor boundary is superseded by [ADR-037](#adr-037-guarded-execution-of-the-exact-approved-version-chief-of-staff-phase-4). Literal user_cli/user_repl authorization is superseded by [ADR-038](#adr-038-authenticated-principals-not-channel-name-literals). Telegram notification dismissal is not proposal dismissal. Delivery defer release is a current defect, D06 in [engineering debt](engineering-debt.md).
+**Current scope / supersession:** Inert approval/version semantics remain. The always-false helper/no executor boundary is superseded by [ADR-037](#adr-037-guarded-execution-of-the-exact-approved-version-chief-of-staff-phase-4). Literal user_cli/user_repl authorization is superseded by [ADR-038](#adr-038-authenticated-principals-not-channel-name-literals). Telegram notification dismissal is not proposal dismissal. Delivery defer release is fixed in v0.18.1 (D06 in [engineering debt](engineering-debt.md)).
 
 ### Context
 

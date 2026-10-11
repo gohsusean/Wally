@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
+from dataclasses import asdict
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 from wally.models.ops import Observation, ObservationCategory
 from wally.ops.classify import classify_email, looks_like_injection
+from wally.ops.priority import parse_time
 from wally.ops.store import OperationsStore
 from wally.ops.text import (
     clean_calendar_description,
@@ -119,7 +123,9 @@ class SourceObserver:
         current_ids = set()
         for event in events:
             current_ids.add(event.event_id)
-            snapshot = f"{event.start}|{event.summary}"
+            material = asdict(event)
+            material["attendees"] = sorted(event.attendees)
+            snapshot = hashlib.sha256(json.dumps(material, sort_keys=True).encode()).hexdigest()
             fingerprint = f"calendar:{event.event_id}:{snapshot}"
             previous = snapshots.get(event.event_id)
             if previous == snapshot and self._store.get_observation_by_fingerprint(
@@ -158,6 +164,18 @@ class SourceObserver:
             snapshots[event.event_id] = snapshot
         for event_id, snapshot in list(snapshots.items()):
             if event_id in current_ids:
+                continue
+            # Unmarked/partial provider reads cannot establish disappearance.
+            if not getattr(events, "complete", False):
+                continue
+            previous = self._store.get_observation_by_fingerprint(f"calendar:{event_id}:{snapshot}")
+            previous_start = parse_time(previous.extra.get("start", "")) if previous else None
+            previous_end = parse_time(previous.extra.get("end", "")) if previous else None
+            if previous_start is None or previous_end is None:
+                continue
+            # A rolling/shrinking window is not cancellation evidence. Keep the
+            # checkpoint so a later in-scope revision retains its event identity.
+            if previous_end <= current or previous_start >= current + timedelta(days=horizon_days):
                 continue
             fingerprint = f"calendar-cancelled:{event_id}:{snapshot}"
             if self._store.get_observation_by_fingerprint(fingerprint) is None:

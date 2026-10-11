@@ -148,7 +148,7 @@ decision. Calendar proposals expire at event start; bills have no arbitrary
 expiry. Rejected/dismissed versions remain closed, superseded history does not
 resurrect, and eligible invalidated/expired versions may reopen without an old
 decision. Elapsed defer normally clears the decision and returns to proposed;
-delivery currently skips this release logic (D06). No current user command
+delivery now uses the same release transition (D06, v0.18.1). No current user command
 enters proposal `dismissed`; Telegram notification dismissal is a separate state.
 
 The generic Act & Verify executor supports `review_bill` only: portal login/review, not payment.
@@ -224,7 +224,7 @@ not additional owner-authentication surfaces.
 
 ## Current, historical, and future evidence
 
-Current source version is v0.18.0; there are no release tags at the audit baseline.
+Current source version is v0.18.1; there are no release tags at the audit baseline.
 Git begins with a recovered working tree on 30 September 2026; the baseline
 already had Assess & Propose. Earlier milestones have ADR/documentary evidence,
 not an independently reconstructible implementation commit history.
@@ -232,7 +232,8 @@ not an independently reconstructible implementation commit history.
 Scheduling/proactive triggers, more executors, hosted ChatGPT completion, contacts,
 and optional HA context remain [roadmap](roadmap.md) work. Semantic/vector retrieval,
 federation and retriever/store extraction are historical proposals; current recall
-is SQLite FTS5. n8n exports and proven recovery are missing, not delivered features.
+is SQLite FTS5. n8n exports remain missing. A basic hourly local iCloud copy is implemented;
+cloud upload completion and restoration are not claimed (D09).
 The [backlog](engineering-debt.md) records defects without claiming fixes.
 
 ## Certified finance catalog

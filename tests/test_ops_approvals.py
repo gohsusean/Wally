@@ -14,7 +14,7 @@ from tests.mock_communications import MockCommunicationsProvider
 from wally.audit.logger import AuditLogger
 from wally.cli import build_parser, parse_repl_ops_command
 from wally.exceptions import ProposalDecisionError, ProposalTransitionError
-from wally.models.communications import CalendarEvent, EmailSummary
+from wally.models.communications import CalendarEvent, CalendarEvents, EmailSummary
 from wally.models.ops import MatterStatus, ProposalStatus
 from wally.models.principal import Principal, RequestContext, RequestProvenance
 from wally.ops import decisions as decisions_module
@@ -57,7 +57,7 @@ class FixtureCommunications(MockCommunicationsProvider):
     def list_calendar_events(
         self, *, start: str, end: str, calendar_id: str | None = None
     ) -> list[CalendarEvent]:
-        return list(self.events)
+        return CalendarEvents(self.events, complete=True)
 
 
 def _email(**kwargs) -> EmailSummary:
@@ -597,3 +597,125 @@ def test_inbox_json_omits_source_bodies(tmp_path: Path) -> None:
     assert "fingerprint" not in raw
     assert payload["pending"][0]["proposal_id"]
     assert payload["approved"] == []
+
+
+@pytest.mark.parametrize("intent", ["delivery", "bill", "calendar"])
+def test_every_deferrable_intent_releases_with_audit_and_no_execution(tmp_path, intent):
+    from wally.models.ops import Matter, MatterDomain
+    from wally.ops.propose import propose_deliver_document
+
+    if intent == "bill":
+        service = _bill(tmp_path)
+    else:
+        comms = FixtureCommunications()
+        if intent == "calendar":
+            comms.events = [
+                CalendarEvent(
+                    event_id="evt-defer",
+                    summary="Review",
+                    start=(NOW + timedelta(days=10)).isoformat(),
+                    end=(NOW + timedelta(days=10, hours=1)).isoformat(),
+                )
+            ]
+        service = _service(tmp_path, comms)
+        service.brief(now=NOW)
+        if intent == "delivery":
+            matter = Matter(
+                id="delivery",
+                fingerprint="matter:delivery",
+                title="Send document",
+                domain=MatterDomain.ADMIN,
+                status=MatterStatus.OPEN,
+                created_at=NOW.isoformat(),
+                updated_at=NOW.isoformat(),
+                summary="Owner requested delivery",
+                open_reason="Delivery pending",
+                last_change="Request",
+                knowledge_ids=("document", "recipient"),
+            )
+            service.store.save_matter(matter)
+            service.store.save_proposal(
+                propose_deliver_document(
+                    matter,
+                    document_id="document",
+                    recipient_id="recipient",
+                    now=NOW,
+                )
+            )
+    proposal = service.store.list_proposals()[0]
+    service.decide(
+        proposal.id,
+        decision=UserDecision.DEFER,
+        context=cli(service),
+        now=NOW,
+        defer_until=DEFER_UNTIL.isoformat(),
+        note="Review later",
+    )
+    decision_history = _audit(tmp_path, "proposal_deferred")
+    assert len(decision_history) == 1
+    service.reconcile_proposals(NOW + timedelta(days=1))
+    assert service.store.get_proposal(proposal.id).status == ProposalStatus.DEFERRED
+    service.reconcile_proposals(DEFER_UNTIL)
+    released = service.store.get_proposal(proposal.id)
+    assert released.status == ProposalStatus.PROPOSED
+    for field in (
+        "decision",
+        "decided_at",
+        "decision_origin",
+        "decision_note",
+        "defer_until",
+        "decision_fingerprint",
+        "decision_principal",
+        "decision_correlation_id",
+    ):
+        assert getattr(released, field) == ""
+    assert _audit(tmp_path, "proposal_deferred") == decision_history
+    assert len(_audit(tmp_path, "proposal_defer_elapsed")) == 1
+    service.reconcile_proposals(DEFER_UNTIL + timedelta(minutes=1))
+    assert len(_audit(tmp_path, "proposal_defer_elapsed")) == 1
+    assert service.store.list_executions() == []
+
+
+@pytest.mark.parametrize("change", ["target", "closed"])
+def test_elapsed_delivery_defer_does_not_reopen_stale_or_closed_review(tmp_path, change):
+    from wally.models.ops import Matter, MatterDomain
+    from wally.ops.propose import propose_deliver_document
+
+    service = _service(tmp_path)
+    matter = Matter(
+        id="delivery",
+        fingerprint="matter:delivery",
+        title="Send document",
+        domain=MatterDomain.ADMIN,
+        status=MatterStatus.OPEN,
+        created_at=NOW.isoformat(),
+        updated_at=NOW.isoformat(),
+        summary="Owner requested delivery",
+        open_reason="Delivery pending",
+        last_change="Request",
+        knowledge_ids=("document", "recipient"),
+    )
+    service.store.save_matter(matter)
+    proposal = propose_deliver_document(
+        matter,
+        document_id="document",
+        recipient_id="recipient",
+        now=NOW,
+    )
+    service.store.save_proposal(proposal)
+    service.decide(
+        proposal.id,
+        decision=UserDecision.DEFER,
+        context=cli(service),
+        now=NOW,
+        defer_until=DEFER_UNTIL.isoformat(),
+    )
+    if change == "target":
+        matter.knowledge_ids = ("changed-document", "recipient")
+    else:
+        matter.status = MatterStatus.RESOLVED
+    service.store.save_matter(matter)
+    service.reconcile_proposals(DEFER_UNTIL)
+    assert service.store.get_proposal(proposal.id).status == ProposalStatus.INVALIDATED
+    assert not _audit(tmp_path, "proposal_defer_elapsed")
+    assert service.store.list_executions() == []

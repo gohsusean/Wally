@@ -6,7 +6,7 @@ Wally is not a chatbot. It is not a home automation platform.
 
 ## Status
 
-**Status:** **v0.18.0 — Telegram inbox.** Telegram long-polls from this Mac and reaches Wally through the Gateway. The owner is one numeric Telegram user id in a private chat. Approval buttons carry a server-side nonce. `Not now` dismisses that card and leaves the proposal pending. Approve records a decision and does not execute. ChatGPT v0.17 stays implemented, with `record_decision` disabled in code until hosted action-specific human confirmation is implemented. Act & Verify supports bill portal login/review only, on a separate authorized request, and never pays. The older conversational ToolRegistry path remains callable: financial dispatch now requires authenticated runtime authority, canonical finance metadata and fresh human approval under ADR-043. The Act & Verify limit is not a system-wide no-payment guarantee. Nothing runs on a schedule.
+**Status:** **v0.18.1 — Telegram inbox reliability and local iCloud sync.** Telegram long-polls from this Mac and reaches Wally through the Gateway. The owner is one numeric Telegram user id in a private chat. Approval buttons carry a server-side nonce. `Not now` dismisses that card and leaves the proposal pending. Approve records a decision and does not execute. ChatGPT v0.17 stays implemented, with `record_decision` disabled in code until hosted action-specific human confirmation is implemented. Act & Verify supports bill portal login/review only, on a separate authorized request, and never pays. The older conversational ToolRegistry path remains callable: financial dispatch now requires authenticated runtime authority, canonical finance metadata and fresh human approval under ADR-043. The Act & Verify limit is not a system-wide no-payment guarantee. The [local iCloud copy](docs/operations.md#local-icloud-sync) runs hourly; operational provider refresh and execution remain on demand.
 
 Complete: v0.10 browser automation, v0.11.1 secrets hardening, v0.12 Observe & Brief, v0.13 Assess & Propose, v0.14 Approval Inbox, v0.15 Act & Verify, v0.16 Gateway, v0.17 ChatGPT interface, v0.18 Telegram inbox.
 
@@ -149,7 +149,7 @@ Legacy `databases:` blocks are imported once via `scripts/migrate_notion_yaml.py
 3. Enable workflows in `config/macbook.yaml`: `providers.workflow.enabled: true`
 4. List configured workflows: `uv run python scripts/deploy_workflows.py`
 
-The registry can route "Run the weekly backup" to a `weekly-backup` webhook, but no exports or proven backup procedure are in the repo. The helper lists configuration; it does not deploy. Actual downstream behavior must be verified separately. Legacy conversational bill-payment routing now binds canonical inputs and authenticated human review (D01/D02 resolved); missing live metadata fails closed (D03), and downstream effects remain unknown (D08/D09). See [workflow scope](docs/workflows.md) and the backlog.
+The registry can route "Run the weekly backup" to a `weekly-backup` webhook, but no exports or proven backup procedure are in the repo. The helper lists configuration; it does not deploy. Actual downstream behavior must be verified separately. Legacy conversational bill-payment routing now binds canonical inputs and authenticated human review (D01/D02 resolved); missing live metadata fails closed (D03), and downstream effects remain unknown (D08). Local state copying is independent of n8n (D09). See [workflow scope](docs/workflows.md) and the backlog.
 
 ### Communications setup (v0.6)
 

@@ -39,6 +39,14 @@ class CalendarEvent:
     attendees: tuple[str, ...] = ()
 
 
+class CalendarEvents(list[CalendarEvent]):
+    """A bounded calendar read; absence is evidence only when complete is true."""
+
+    def __init__(self, events=(), *, complete: bool = False) -> None:
+        super().__init__(events)
+        self.complete = complete
+
+
 @dataclass(frozen=True)
 class EmailDraftResult:
     draft_id: str

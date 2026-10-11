@@ -183,34 +183,61 @@ Never print/decrypt credentials for handover. Do not put values in command
 arguments, shell history, logs, transcripts or Git. Audit uses references and
 purpose. Browser screenshots/traces/HAR/video remain disabled. See [secrets](secrets.md).
 
-## Backup/recovery: not established
+## Local iCloud sync
 
-**Unknown:** usable backup destination/frequency, retention, encryption/access,
-restore procedure, acceptable data loss, and time-to-recover. A registry entry
-named `weekly-backup` is not evidence that Wally's state is backed up. Workflow
-exports are absent and automated n8n deployment is not implemented (D08/D09).
+v0.18.1 uses a basic one-way hourly copy to
+`~/Library/Mobile Documents/com~apple~CloudDocs/Wally/data/`. Working files stay
+in this checkout. The copy job uses only Python's standard library and never
+loads `.env`, starts Wally providers, or calls n8n.
 
-Before defining a recoverable deployment, obtain operator answers and document:
+Essential local records copied:
 
-1. Which current n8n workflows exist, their exports, effects, credentials by
-   reference, verification and deployment procedure.
-2. Where recoverable copies of all three databases and audit history live, and
-   the accepted recovery point/time objectives.
-3. How local `.env` credentials, 1Password source, Keychain copy and external
-   OAuth permissions are recovered/rotated without storing values in Git.
-4. How a new machine recreates Python/browser dependencies, approved registry
-   state, canonical catalog/role mappings and the login LaunchAgent.
+- `sessions.db`: conversations, summaries and recall indexes.
+- `knowledge_registry.db`: discovered mappings, roles and owner classifications.
+- `operations.db`: observations, Matters, checkpoints, proposal versions/decisions,
+  executions, uncertainty/duplicate claims, Gateway continuity, Telegram state,
+  scoped edit reviews and financial catalog/audit records.
+- `audit/YYYY-MM-DD.jsonl`: existing append-only audit history. These are existing
+  daily working logs, not dated backup snapshots; unfinished final lines wait
+  until the next copy.
+- `manual-payment/**/*.json` and `manual-payment/**/*.pdf`: structured payment
+  evidence and original documents. Generated images/text/rendering files are omitted.
 
-A future procedure must take a consistent SQLite backup (not copy a live main
-file while ignoring journal/WAL state), preserve relationships/decisions and
-classifications, and restore to an isolated location first. Review uncertain
-execution attempts and Telegram delivery/cursor/leases before reconnecting:
-restoring an old snapshot must not replay consequential actions or activate two
-pollers. Never clear uncertain records just to make recovery appear successful.
+The three database paths match both tracked profiles. A future working-path change
+must update this explicit allowlist. SQLite's backup API reads committed state,
+including WAL, into local temporary files; only closed standalone databases are
+published to iCloud. Each current file replaces its previous copy. This ensures
+per-database consistency, not an atomic checkpoint across the whole application.
 
-The audit found private local files with `0644` read bits; access/retention and
-interpreter-scoped Keychain trust need an explicit threat-model decision (D13).
-No backup, chmod, Keychain, lease or service changes were made by the handover.
+Excluded: `.env`, credential/token files, 1Password/Keychain, configuration,
+source code (already in Git), virtualenvs, caches, process logs, SQLite sidecars,
+acceptance/staging folders and previous recovery-check artifacts. Browser sessions
+are in memory. No recursive repository or generic `data/` sync is performed.
+Secret values must continue to stay out of operational records under the existing
+runtime policy; this copy does not introduce a credential recovery system.
+
+Explicit setup using the existing interpreter:
+
+```sh
+.venv/bin/python -B -m wally.local_sync run
+.venv/bin/python -B -m wally.local_sync install
+```
+
+The per-user `com.wally.local-sync` LaunchAgent runs at login/load and every
+3,600 seconds while the user session and Mac are available. It has no KeepAlive
+retry loop, monitoring or alerts. The existing Telegram agent is unaffected.
+To stop this copy job, unload its LaunchAgent with `launchctl bootout gui/$(id -u)/com.wally.local-sync` and remove its plist from
+`~/Library/LaunchAgents/`. Reinstall explicitly after moving the checkout.
+
+The basic acceptance check verifies files and standalone database integrity in the
+local iCloud folder. On-host copy and hourly-agent installation are pending owner
+approval of the specific private-record payload. **Local placement is not proof of completed cloud upload.**
+iCloud handles upload separately; no cloud completion claim is made.
+
+Owner-directed scope: no dated/versioned snapshots, retention policies,
+restoration procedures/drills, monitoring/alerts, new encryption or credential
+recovery systems, Backblaze or other providers. Further backup engineering is not
+a v0.18.x or v0.19 delivery gate.
 
 ## D03 operator boundary
 

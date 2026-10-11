@@ -177,36 +177,36 @@ Retain replay safety for crashes before the processed marker too.
 
 ## D06 — Delivery defer never releases (medium)
 
-**Verified:** delivery reconciliation returns before elapsed-defer logic. A
-synthetic fake-store probe retained `deferred` beyond its deadline. This affects
-CLI/REPL delivery deferral; Telegram's new scoped Notion Later button releases through
-its existing proposal lifecycle. The unrelated delivery defect remains open.
+**Resolved in code, v0.18.1:** unchanged delivery proposals release elapsed
+deferrals through the existing store transition, clearing decision fields while
+preserving audit history. Closed Matters and changed document/recipient bindings
+invalidate the review before any release. Calendar, bill and delivery regression
+checks verify that release is inert and idempotent.
 
-Evidence: [delivery reconciliation](../src/wally/ops/proposal_reconcile.py).
-
-**Acceptance:** all deferrable intents return to proposed after elapsed defer,
-clear decision fields, retain audit history and remain non-executing. Tests cover
-delivery, finance and calendar plus stale fingerprint/closed-Matter cases.
+Evidence: [reconciler](../src/wally/ops/proposal_reconcile.py),
+[regressions](../tests/test_ops_approvals.py). Telegram `Not now` still dismisses
+only a notification and does not schedule a reminder.
 
 ## D07 — Incomplete incremental observation semantics (medium)
 
-**Status:** Finance portion resolved in D03; calendar work remains open. Certified
-instance versions/dependency bindings create fresh observations within a period,
-block stale Matters and invalidate old proposal/target authority.
+**Resolved in code, v0.18.1:** finance versions/bindings remain governed by D03.
+Google calendar reads now consume every page before returning a complete result.
+Failed/malformed pages and repeating page tokens return no successful prefix;
+existing calendar checkpoints, Matters and approvals remain intact. Unmarked or
+partial provider lists cannot establish absence.
 
-**Remaining verified defect:** calendar snapshots use start/summary, omitting other material fields.
-Calendar listing does not paginate; disappearance from the upcoming result can
-resolve a Matter. Incomplete results can therefore masquerade as resolution.
+Calendar fingerprints include start, end, title, description, location and
+attendees. Revisions retain one Matter and supersede old proposal authority.
+A complete read can establish disappearance only when the previously known event
+still overlaps the requested window. Rolling/shrinking horizons do not emit
+cancellation or resolve a Matter; retained checkpoints permit future revisions.
+A newly observed revision can conservatively replace an older start/title-only
+fingerprint without rewriting history.
 
 Evidence: [observer](../src/wally/ops/observe.py),
-[Google adapter](../src/wally/adapters/google/adapter.py),
-[calendar reconciliation](../src/wally/ops/reconcile.py).
-
-**Acceptance:** define material source changes and explicit disappearance/horizon
-rules, ingest revisions without duplicate Matters, and require complete source
-results before absence-based closure. Test same-period due/cadence edits, calendar
-end/description changes, pagination, partial failures and horizon movement through
-the real adapter response shapes. Updated material inputs invalidate old approvals.
+[adapter](../src/wally/adapters/google/adapter.py),
+[real-response-shaped regressions](../tests/test_calendar_observation.py).
+These are isolated checks, not live Google acceptance.
 
 ## D08 — n8n definitions/deployment not reproducible (high deployment gap)
 
@@ -222,18 +222,21 @@ credential references, auth, idempotency and completion criteria. Document and
 demonstrate reproducible deployment/rollback to a non-production target. Distinguish
 webhook acceptance from completion and prove what the backup workflow actually backs up.
 
-## D09 — Backup and restore procedure unknown (high operational gap)
+## D09 — Basic local iCloud copy (v0.18.1 scope)
 
-**Unknown:** working backup destination, schedule, access/encryption, retention,
-restore method and accepted recovery objectives. A workflow named weekly-backup
-does not establish any of these. Git excludes private state/credentials.
+**Implemented:** allowlisted current copies of sessions, registry, operations,
+audit history and original/structured manual-payment evidence. SQLite's backup
+API exports active databases consistently; the hourly login LaunchAgent uses the
+existing Python environment. Working paths and runtime state remain in place.
 
-**Acceptance:** agree recovery point/time objectives; document consistent backup
-of sessions, registry, operations and audit plus credential-source recovery by
-reference. Restore to an isolated location and demonstrate preserved classifications,
-decisions, relationships, uncertain executions and Telegram replay behavior.
-Do not reconnect a restored instance or clear uncertain state automatically.
-See [recovery requirements](operations.md#backuprecovery-not-established).
+**Acceptance:** files present in the local iCloud Drive Wally folder; standalone
+copies pass SQLite integrity checks. Local placement does not prove cloud upload.
+See [local sync](operations.md#local-icloud-sync) for the basic check.
+
+The owner explicitly removed snapshots/versioning, retention, restore procedures
+or drills, monitoring/alerts, encryption/credential recovery work and other backup
+providers from this milestone. Previous local copy experiments are historical
+only. Further backup engineering must not block v0.19.
 
 ## D10 — Status notifications can be stranded without chat (medium)
 

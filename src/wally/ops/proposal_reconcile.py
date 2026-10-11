@@ -129,7 +129,14 @@ class ProposalReconciler:
             matter, document_id=document_id, recipient_id=recipient_id, now=now
         )
         if candidate is not None and candidate.fingerprint == proposal.fingerprint:
-            result.unchanged.append(proposal.id)
+            if self._defer_has_elapsed(proposal, now):
+                if not self._store.release_defer(
+                    proposal.id, updated_at=_iso(now), status_reason=REASON_DEFER_ELAPSED
+                ):
+                    raise ProposalTransitionError(f"proposal {proposal.id} was not deferred")
+                result.defer_elapsed.append(proposal.id)
+            else:
+                result.unchanged.append(proposal.id)
             return
         self._close(proposal, ProposalStatus.INVALIDATED, REASON_EVIDENCE_INELIGIBLE, now, result)
 

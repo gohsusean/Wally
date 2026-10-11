@@ -59,7 +59,10 @@ class CommunicationsProvider(CapabilityProvider, Protocol):
     def list_calendar_events(
         self, *, start: str, end: str, calendar_id: str | None = None
     ) -> list[CalendarEvent]:
-        """List calendar events in a time range (ISO 8601 bounds)."""
+        """List events in ISO bounds; CalendarEvents.complete attests all pages read.
+
+        Plain lists/partial reads do not establish absence for reconciliation.
+        """
         ...
 
     def check_availability(

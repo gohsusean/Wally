@@ -8,7 +8,7 @@ from pathlib import Path
 from tests.mock_communications import MockCommunicationsProvider
 from tests.mock_knowledge import MockKnowledgeProvider
 from wally.audit.logger import AuditLogger
-from wally.models.communications import CalendarEvent, EmailSummary
+from wally.models.communications import CalendarEvent, CalendarEvents, EmailSummary
 from wally.models.knowledge import KnowledgeAsset, KnowledgeClass
 from wally.models.ops import Matter, MatterDomain, MatterStatus, ObservationCategory
 from wally.ops.service import ObserveBriefService
@@ -35,7 +35,7 @@ class FixtureCommunications(MockCommunicationsProvider):
     def list_calendar_events(
         self, *, start: str, end: str, calendar_id: str | None = None
     ) -> list[CalendarEvent]:
-        return list(self.events)
+        return CalendarEvents(self.events, complete=True)
 
 
 def _service(tmp_path: Path, comms, knowledge=None) -> ObserveBriefService:
