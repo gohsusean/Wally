@@ -7,7 +7,7 @@ in the catalog audit, whose total is 59. The owner deleted the empty Bill Accoun
 an independent Notion fetch and the runtime refresh confirm its removal. Its
 historical assessment is retained; its blank identity no longer blocks accounts.
 
-The current source assessment has **22 remaining primary/owner-evidence gaps**.
+The current source assessment has **21 remaining primary/owner-evidence gaps**.
 Four additional card records have complete source evidence and owner arrangement
 answers but still require local personal-subject/source setup before canonical
 review/certification. The
@@ -34,18 +34,23 @@ Gmail message and visually checked. Its printed due date and invoice type fill t
 two missing field checks; its proof remains unattested and uncertified. The Arkadia
 water statement matches the retained original. A newly supplied GProp screenshot
 establishes unit identity and November/December service-charge/sinking-fund lines;
-the older fee estimate is historical. It omits maintenance due dates and does not
-establish current auto-debit enrollment. One issued maintenance invoice is still
-needed for the remaining two field checks. Both provider URLs were independently
-fetched from Notion.
+the older fee estimate is historical. Two subsequent invoice-detail screenshots
+match its service-charge invoice numbers and establish the printed invoice/due
+dates. They close the remaining two recurring field checks; the proof is prepared
+with attestations still false. Arkadia is now monthly in both existing frequency
+fields, independently read back. The 1st-to-14th examples are 13 elapsed days,
+not a universal invoice-date-plus-14-days rule. Due dates remain document-defined;
+no sinking-fund deadline or current settlement is inferred from those screenshots.
+Both provider URLs were independently fetched from Notion.
 
 The owner confirmed that water charged through management billing belongs to the
 tenant. Arkadia and Sentral already carried `Should I pay? = Do not pay`; both now
 also have `Active` disabled and were independently read back. They remain in the
 tracking inventory and certification denominator. Shared management accounts
 retain owner scope for service charge/sinking fund only. No standalone water
-account was reclassified. Water-related interest remains held without an inferred
-owner/tenant allocation. A mixed statement's total is not owner-payable evidence.
+account was reclassified. The owner subsequently confirms tenant responsibility
+for water-related fees and late-payment interest, resolving the prior allocation
+question. A mixed statement's total is not owner-payable evidence.
 
 The new `Should I pay?` property is not consumed by the current canonical runtime.
 The existing material `Active` field excludes these two owner-obligation chains;
@@ -57,9 +62,12 @@ mechanism or payment capability was added.
 The owner reports paying Tropicana Gardens MBPJ today. Only the Arkadia screenshot
 was attached, and connected Gmail has no new MBPJ receipt. The report is recorded
 separately in account notes; no amount, receipt number, covered period, zero balance
-or independently verified settlement was invented. The next batch asks for the
-missing receipt, Arkadia auto-debit currentness, and one maintenance invoice. Rules
-absent from a receipt still require an issued bill. Documents will be reused across
+or independently verified settlement was invented. The missing MBPJ receipt remains
+outstanding in this batch. The owner confirms Arkadia auto-debit is current and
+covers owner service charge/sinking fund only, excluding water-related charges.
+Handle invoices promptly on availability, while checking expected/actual debit
+before any additional manual payment. Auto-debit enrollment is not settlement.
+Rules absent from a receipt still require an issued bill. Documents will be reused across
 applicable records.
 
 All card owner questions are closed. Fresh local certification confirmations and

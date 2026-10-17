@@ -95,11 +95,20 @@ material revisions and rebind field reviews only after independently checking th
 changed scope. Certification still requires the existing local-owner procedure.
 
 Never pay a mixed statement's headline balance without allocating charge lines.
-Water-related interest with no explicit allocation remains held. A screenshot can
+The owner confirms management-water-related fees and attributable late interest
+also belong to the tenant. Other unallocated penalties remain held. A screenshot can
 establish printed charge identity/periods but cannot establish omitted due dates,
 current auto-debit enrollment or settlement. Request the particular missing invoice
 or confirmation, reuse the result across its applicable records, and preserve old
 evidence as history. No new Notion property or verification path is required.
+
+Process owner-payable invoices as soon as they arrive, subject to the existing
+authorization and duplicate checks, rather than waiting for the due date. Retain
+each printed due date; two examples dated the 1st and due the 14th show 13 elapsed
+days and do not establish a universal 14-day offset. Arkadia's owner-confirmed
+auto-debit covers service charge/sinking fund only. Check its expected/actual debit
+before preparing any additional manual payment; enrollment alone is not settlement.
+Preserve the separately confirmed Casaman/Tropicana quarterly batching preference.
 
 ## Credit cards
 
