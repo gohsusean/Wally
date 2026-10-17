@@ -1,11 +1,12 @@
 # v0.18.2 financial certification rollout
 
 The workflow prepares an evidence-backed recurring baseline using the existing
-ADR-044 catalog and local-owner certification service. It does not enable any
-chain, portal access, payment, scheduler or v0.19 capability. The live rollout is
-**incomplete**. Coverage includes every Bill Provider, Bill Account and Recurring
-Bill, including inactive rows and personal credit cards; property/entity records
-are certification prerequisites and reported separately.
+ADR-044 catalog and ADR-050 evidence certification service. It does not enable any
+chain, portal access, payment, scheduler or v0.19 capability. The live baseline is
+**complete as of 18 October 2026: 55/55 records certified**, with no remaining
+evidence requests or owner decisions. Coverage includes every Bill Provider, Bill
+Account and Recurring Bill, including inactive rows and personal credit cards;
+property/entity records are certification prerequisites and reported separately.
 
 ## Reusable operator workflow
 

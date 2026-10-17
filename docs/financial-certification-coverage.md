@@ -1,73 +1,81 @@
 # v0.18.2 financial certification coverage — 18 October 2026
 
-**55 live records: 47 certified; 8 genuinely require more evidence.** All 15
-providers, 15 of 19 accounts and 17 of 21 recurring bills are certified against
-retained reliable evidence. This includes both personal credit cards and Arkadia
-maintenance. Five evidenced property prerequisites and the personal subject are
-also certified, outside the 55-record denominator. Four deleted IWK records and
-all old certificates/audit history are retained separately.
+**55 live records: 55 certified; 0 uncertified; 0 missing-evidence records;
+0 outstanding owner decisions.** The point-in-time financial certification rollout
+is complete: all 15 Bill Providers, 19 Bill Accounts and 21 Recurring Bills,
+including both personal credit cards and the two inactive tenant-water tracking
+bills, have evidence-backed identity certification. Five property prerequisites
+and the personal subject are certified separately, outside this denominator.
+
+A fresh, fully paginated Notion inventory was compared with the runtime refresh.
+The final eight records were certified independently against the newly supplied
+evidence; the existing 47 valid certificates were reused. A second live source
+read after persistence independently verified all 55 current certificates and
+retained evidence hashes. No material metadata correction was necessary. Four
+deleted IWK records remain outside the live denominator, with their historical
+records, old certificates and audit events preserved.
+
+## Final assessment evidence batch
+
+- **Sentral Suites, Plaza Arkadia and 110 Mansions — DBKL:** each issued bill
+  matches the configured assessment account and the property description, distinct
+  from its correspondence address. The bills establish MYR assessment, the
+  July–December period, twice-yearly cadence and the printed due rules. All six
+  account/recurring records are now certified. Amounts remain source-defined;
+  deadlines remain document-defined, with no fixed recurring amount inferred.
+- **Casaman — DBKL:** the additional bill agrees with the already certified
+  account/property. Its existing valid certificate was reused. Its dated balance
+  and prior payment remain separate from recurring configuration.
+- **Tropicana Gardens — MBPJ:** the supplied issuer receipt matches the exact
+  assessment account, unit and July–December period. It records RM328.70 received
+  through FPX on **17 October 2026 at 10:05 PM**. The official MBPJ
+  [assessment FAQ](https://www.mbpj.gov.my/ms/soalan-lazim) independently supplies
+  the two annual billing periods and published due rules that the receipt omits.
+  Both account and recurring bill are now certified using the combined evidence.
+  The official indexed page body was available; direct retrieval failed. That
+  retrieval failure supplies no contradictory facts. The account's outdated
+  missing-receipt note was corrected through the existing Notion connection and
+  independently read back.
+
+The MBPJ receipt substitutes for the missing historical bill for **baseline
+certification** because the combined reliable evidence supports its material
+configuration. It is not an unpaid bill or proof of a current zero balance.
+Future payable occurrences still require fresh issued-bill evidence, current
+amount/recipient verification and duplicate checks. No new payment was recorded
+as executed, and no supplied July bill was treated as a current instruction to pay.
+
+## Policy and safeguards
 
 Under [ADR-050](decisions.md#adr-050-financial-certification-follows-reliable-evidence),
 reliable evidence reasonably verifying material facts IS certification. There is
 no separate owner attestation, terminal confirmation or dependency-certification
 requirement. The existing coverage review and certificate tables are reused.
-Complete retained field reviews now persist certification automatically. Failed
-source retrieval preserves valid verification; observed material changes,
-contradictions and changed evidence invalidate affected verification. Financial
-execution still requires fresh source/chain checks and all existing authorization.
+Failed source retrieval preserves valid verification; observed material changes,
+contradictions and changed evidence require reassessment. Certification is a
+point-in-time baseline, not a claim of continuous source monitoring.
 
-## Remaining evidence: one document per property
+Private originals, source hashes, per-field comparisons, certificate identifiers,
+independent readbacks and the final coverage snapshot are retained in ignored
+`data/financial-certification/2026-10-18/`. A new pre-batch database backup preserves
+history. No personal identifiers, PDF passwords, full card numbers or banking
+credentials were committed. Owner-only management fees, tenant water exclusions,
+Arkadia's limited auto-debit scope and the Casaman/Tropicana quarterly planning
+preference remain as previously evidenced.
 
-- **Sentral Suites — DBKL assessment account and recurring bill:** primary
-  assessment bill showing the account, property and bill/due rules. The retained
-  Pay@KL receipt identifies an assessment account but lacks the property address
-  and issued-bill rules.
-- **Plaza Arkadia — DBKL assessment account and recurring bill:** the same fields
-  on one issued assessment bill. Its Pay@KL receipts are retained; Arkadia's
-  parcel-rent bill verifies a different obligation and cannot substitute for DBKL.
-- **110 Mansions — DBKL assessment account and recurring bill:** one issued
-  assessment bill tying its configured account to this property and bill/due rules.
-  No usable bill was located in the connected-source searches.
-- **Tropicana Gardens — MBPJ assessment account and recurring bill:** one issued
-  assessment bill or complete issuer account statement showing the account,
-  property and bill/due rules. The official MBPJ issuer identity is certified
-  independently from its [public portal](https://epay.mbpj.gov.my/auth/login/).
-  The owner reports paying on 17 October, but the promised receipt was not attached
-  and is absent from connected Gmail. That receipt would verify the payment facts;
-  it only substitutes for the bill where it actually supplies the missing fields.
+Certification does not enable chains, portals, payments, schedules or v0.19.
+Existing chain/portal enablement, authorization acceptance and execution state
+were independently compared with the pre-batch backup and remain unchanged.
+Current balances, actual payments and refunds remain separate from recurring
+certification. There are **no outstanding certification exceptions or owner
+requests** within the 55 live financial records.
 
-No owner confirmation of already documented facts is requested. These four
-property-specific documents cover all eight remaining records. Current balances,
-actual payments and refunds remain separate from recurring certification.
+Validation: 23 existing certification/coverage regression tests and Ruff passed;
+all 55 certificates and their retained evidence hashes passed independent checking
+after a second live source refresh. Documentation links/fences and whitespace
+checks passed. This evidence-only batch adds no implementation or workflow.
 
-## Evidence reused and verification
-
-The complete Air Selangor original was recovered from its existing email. Relevant
-account/due fields in the retained Sentral/Mansions parcel-rent extracts were
-usable despite a connector truncation warning. Arkadia's original scanned parcel-
-rent bill was retrieved and visually reviewed. Existing owner-to-bank account
-references, bank correspondence and current annual insurance certificates support
-certificate/refund **administration only**, not premiums or completed refunds.
-No replacement evidence or new owner attestations were fabricated.
-
-Private per-record reviews, source hashes, reasons, current certificates and
-remaining gaps are in ignored `data/financial-certification/2026-10-18/`. A pre-
-policy database backup preserves the old history. An independent live inventory
-confirmed 15 providers, 19 accounts and 21 definitions. Existing personal-subject
-bindings are restricted to the two named card pages; property remains required
-for all other accounts. PDF passwords, full card numbers and banking credentials
-were not exposed or committed.
-
-Certification does not enable chains, portals, payments, schedules or v0.19. The
-rollout is **incomplete while these eight records lack evidence**.
-
-Validation: the exact staged implementation passed 826 isolated tests and two
-reviewed local socket tests; the shared checkout passed 850 isolated tests. Ruff,
-documentation links/fences, retained evidence hashes and independent certificate
-counts passed. Existing chain/portal enablement and execution state is unchanged.
-
-The following older reports are historical and their separate-confirmation policy
-is superseded.
+The following older reports are historical. Their incomplete counts and separate-
+confirmation policy are superseded by the current result and ADR-050.
 
 ---
 
