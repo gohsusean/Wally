@@ -81,6 +81,26 @@ these supplemental fields; an inert prepared mapping is retained with the privat
 rollout artifacts. Do not claim continuous monitoring or installed personal-card
 readiness before entity intake and source re-designation are complete.
 
+## Tenant water within management billing
+
+The owner excludes all management-billed water from owner payments, whether it
+appears separately or alongside maintenance and sinking fund. Keep the shared
+management account for owner service-charge scope and the existing separate water
+definitions for tracking. Use the owner's existing `Should I pay? = Do not pay`
+property. The current canonical mapping does not consume that column, so retain
+the existing `Active = false` exclusion for these tenant water definitions before
+any owner-obligation activation. Do not treat a display flag alone as an execution
+gate. Re-read both fields after edits and refresh the existing catalog; compare
+material revisions and rebind field reviews only after independently checking the
+changed scope. Certification still requires the existing local-owner procedure.
+
+Never pay a mixed statement's headline balance without allocating charge lines.
+Water-related interest with no explicit allocation remains held. A screenshot can
+establish printed charge identity/periods but cannot establish omitted due dates,
+current auto-debit enrollment or settlement. Request the particular missing invoice
+or confirmation, reuse the result across its applicable records, and preserve old
+evidence as history. No new Notion property or verification path is required.
+
 ## Credit cards
 
 Use `credit_card_last4` with exactly four digits, preserving leading zeros. Never

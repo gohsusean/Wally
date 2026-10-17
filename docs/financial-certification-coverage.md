@@ -32,11 +32,35 @@ password. No certificate, scheduler or payment capability was enabled.
 The complete Sentral management-water invoice was recovered from its existing
 Gmail message and visually checked. Its printed due date and invoice type fill the
 two missing field checks; its proof remains unattested and uncertified. The Arkadia
-statement matches the already retained original and establishes water charges,
-not maintenance. The next evidence batch requests one Arkadia maintenance invoice
-from the existing management app and one Tropicana Gardens MBPJ assessment bill.
-Connected Gmail searches found only the water statement/general notices for those
-gaps. Each requested document will be reused across its applicable records.
+water statement matches the retained original. A newly supplied GProp screenshot
+establishes unit identity and November/December service-charge/sinking-fund lines;
+the older fee estimate is historical. It omits maintenance due dates and does not
+establish current auto-debit enrollment. One issued maintenance invoice is still
+needed for the remaining two field checks. Both provider URLs were independently
+fetched from Notion.
+
+The owner confirmed that water charged through management billing belongs to the
+tenant. Arkadia and Sentral already carried `Should I pay? = Do not pay`; both now
+also have `Active` disabled and were independently read back. They remain in the
+tracking inventory and certification denominator. Shared management accounts
+retain owner scope for service charge/sinking fund only. No standalone water
+account was reclassified. Water-related interest remains held without an inferred
+owner/tenant allocation. A mixed statement's total is not owner-payable evidence.
+
+The new `Should I pay?` property is not consumed by the current canonical runtime.
+The existing material `Active` field excludes these two owner-obligation chains;
+their reviews were rebound after verifying that sole typed change. Arbitrary
+future edits to the new column do not yet enforce runtime exclusion or invalidate
+certification. Local source-designation requirements remain; no new verification
+mechanism or payment capability was added.
+
+The owner reports paying Tropicana Gardens MBPJ today. Only the Arkadia screenshot
+was attached, and connected Gmail has no new MBPJ receipt. The report is recorded
+separately in account notes; no amount, receipt number, covered period, zero balance
+or independently verified settlement was invented. The next batch asks for the
+missing receipt, Arkadia auto-debit currentness, and one maintenance invoice. Rules
+absent from a receipt still require an issued bill. Documents will be reused across
+applicable records.
 
 All card owner questions are closed. Fresh local certification confirmations and
 personal-subject/source designation remain required under ADR-044. A sandboxed
