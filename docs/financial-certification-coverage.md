@@ -1,28 +1,47 @@
 # v0.18.2 financial certification coverage — 12 October 2026
 
-**17 October follow-up:** the current Notion inventory is **56 live records**:
-15 providers, 20 accounts and 21 recurring bills, with **0 certified**. Both IWK
+**17 October follow-up:** the current Notion inventory is **55 live records**:
+15 providers, 19 accounts and 21 recurring bills, with **0 certified**. Both IWK
 account/bill pairs are now deleted in Notion; their four historical records remain
-in the catalog audit, whose total is 60. A newly created empty Bill Account is
-included in the live count and remains uncertified pending its intended scope.
+in the catalog audit, whose total is 59. The owner deleted the empty Bill Account;
+an independent Notion fetch and the runtime refresh confirm its removal. Its
+historical assessment is retained; its blank identity no longer blocks accounts.
 
-The current source assessment has **25 remaining primary/owner-evidence gaps**.
-Three additional card records have complete source evidence but still require
-local personal-subject/source setup before canonical review/certification. The
+The current source assessment has **22 remaining primary/owner-evidence gaps**.
+Four additional card records have complete source evidence and owner arrangement
+answers but still require local personal-subject/source setup before canonical
+review/certification. The
 existing raw catalog worklist combines unavailable/unregistered records with
 missing evidence; restricted `data/financial-certification/2026-10-17/assessed-coverage.json`
 separates current records, retained deletions and source-setup blockers.
 
 AmBank currentness and manual arrangement are owner-confirmed. The supplied Hong
 Leong September statement was reviewed, with issuer, safe last four and currency
-corrected and independently fetched. Its current payment arrangement and the
-settlement of the statement due 12 October remain unanswered; settlement is
-separate from recurring certification. The owner expects both cards in Wally's
-regular statement-to-approved-payment workflow. Statement-only PDF passwords are
+corrected and independently fetched. The owner confirms manual payment and that
+the September statement due 12 October is paid; this is owner-reported settlement,
+separate from recurring certification and independently checked bank evidence.
+Its account notes and email source were updated and independently read back;
+the recurring bill is waiting for the next bill. The owner expects Wally to handle
+both cards each month as soon as a statement becomes available through the regular
+statement-to-approved-payment workflow. Statement-only PDF passwords are
 now operational metadata in Bill Accounts' existing `PDF Pass` field under
 [ADR-049](decisions.md#adr-049-statement-pdf-passwords-are-operational-metadata).
 AmBank opening through that field passed; the supplied Hong Leong copy needed no
 password. No certificate, scheduler or payment capability was enabled.
+
+The complete Sentral management-water invoice was recovered from its existing
+Gmail message and visually checked. Its printed due date and invoice type fill the
+two missing field checks; its proof remains unattested and uncertified. The Arkadia
+statement matches the already retained original and establishes water charges,
+not maintenance. The next evidence batch requests one Arkadia maintenance invoice
+from the existing management app and one Tropicana Gardens MBPJ assessment bill.
+Connected Gmail searches found only the water statement/general notices for those
+gaps. Each requested document will be reused across its applicable records.
+
+All card owner questions are closed. Fresh local certification confirmations and
+personal-subject/source designation remain required under ADR-044. A sandboxed
+source refresh failed temporarily; the permitted-network retry succeeded without
+source exceptions. No historical certificate was restored.
 
 The following report preserves the **12 October snapshot** and its original counts.
 
