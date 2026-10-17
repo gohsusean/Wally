@@ -18,8 +18,10 @@ from wally.exceptions import ProposalTransitionError
 from wally.models.ops import (
     REOPENABLE_PROPOSAL_STATUSES,
     Matter,
+    MatterDomain,
     MatterStatus,
     Observation,
+    ObservationCategory,
     ProposalIntent,
     ProposalStatus,
     ProposedAction,
@@ -76,9 +78,10 @@ def _iso(value: datetime) -> str:
 
 
 class ProposalReconciler:
-    def __init__(self, store: OperationsStore) -> None:
+    def __init__(self, store: OperationsStore, *, financial_attention=None) -> None:
         self._store = store
         self._provenance = RequestProvenance()
+        self._financial_attention = financial_attention
 
     def reconcile(
         self,
@@ -171,7 +174,21 @@ class ProposalReconciler:
             self._close(proposal, ProposalStatus.INVALIDATED, REASON_MATTER_CLOSED, now, result)
             return
 
-        if proposal.intent == ProposalIntent.EDIT_NOTION_RECORD:
+        if (
+            proposal.intent == ProposalIntent.REVIEW_BILL
+            and self._financial_attention
+            and not self._finance_supported(self._support_for(matter, observations))
+        ):
+            self._close(
+                proposal,
+                ProposalStatus.INVALIDATED,
+                "administratively covered or canonical period unavailable",
+                now,
+                result,
+            )
+            return
+
+        if proposal.intent in {ProposalIntent.EDIT_NOTION_RECORD, ProposalIntent.PAY_BILL}:
             # Provider semantic checks belong to the edit service, not the generic
             # bill/calendar generator. History is never recreated from a Matter.
             if self._defer_has_elapsed(proposal, now):
@@ -255,7 +272,14 @@ class ProposalReconciler:
         now: datetime,
         result: ProposalReconciliation,
     ) -> None:
-        candidate = propose_for_matter(matter, self._support_for(matter, observations), now=now)
+        support = self._support_for(matter, observations)
+        if (
+            self._financial_attention
+            and matter.domain == MatterDomain.FINANCE
+            and not self._finance_supported(support)
+        ):
+            return
+        candidate = propose_for_matter(matter, support, now=now)
         if candidate is None:
             return
         existing = self._store.get_proposal_by_fingerprint(candidate.fingerprint)
@@ -275,6 +299,13 @@ class ProposalReconciler:
             if reopened:
                 result.reopened.append(existing.id)
             return
+
+    def _finance_supported(self, support):
+        return any(
+            o.category in {ObservationCategory.INVOICE, ObservationCategory.KNOWLEDGE_OBLIGATION}
+            and self._financial_attention(o)
+            for o in support
+        )
 
     def _defer_has_elapsed(self, proposal: ProposedAction, now: datetime) -> bool:
         if proposal.status != ProposalStatus.DEFERRED:
@@ -297,6 +328,7 @@ class ProposalReconciler:
             not in {
                 ProposalIntent.PREPARE_FOR_EVENT,
                 ProposalIntent.EDIT_NOTION_RECORD,
+                ProposalIntent.PAY_BILL,
             }
             or not proposal.expires_at
         ):

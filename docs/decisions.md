@@ -2049,3 +2049,59 @@ The legacy explicit certification entry point remains compatible for existing
 callers; it is not a required identity step. Portal certification, enablement,
 local occurrence intake, payments and outcome verification retain their existing
 separate protections. No v0.19 work is authorized by this decision.
+
+
+## ADR-051: Exact Telegram supervised payments
+
+**Status:** Owner-directed policy accepted, 18 October 2026; sandbox foundation
+implemented. Live route acceptance and the complete v0.19 milestone remain open.
+
+Every actual payment requires explicit owner approval on its exact Telegram card.
+This supersedes the manual-default payment direction in ADR-048/049 for new
+supported routes, and intentionally extends ADR-036/037/041/046. Ordinary proposal
+approval remains inert. One authenticated private-owner callback can authorize
+separate decision and payment-execution stages with separate purpose-bound,
+process-local PrincipalAuthority confirmations. It binds recipient/destination,
+amount/currency, invoice/occurrence, funding, prepared transaction, route, scope,
+receipt target, version and expiry. Durable single-use review and occurrence claims
+prevent replay and cross-route repayment. Source text/provenance grants no authority.
+
+An internal worker alone holds EXECUTE_PAYMENT/VERIFY_PAYMENT. Telegram itself,
+CLI, Codex and hosted ChatGPT gain no payment execution/verification capability;
+the generic Act & Verify is not extended. Legacy n8n payment dispatch is disabled
+before any local payment prompt or credential read; its login-only browser review
+remains available without adding payment authority. Hosted decisions
+remain disabled. No source field or configuration flag can register a live route.
+The trusted production payment factory is absent by default, and an unvalidated
+live adapter is refused even when its execution flag is true.
+
+Use retained evidence certification under ADR-050 and existing source, responsibility,
+dependency, chain and exact portal acceptance/enablement gates. Current provider
+quote, duplicate/pending/mandate inventory and Notion checks remain mandatory.
+Reread canonical facts, approval, Matter, route, exact prepared debit, receipt target,
+worker lease and deadlines after the callback and secret acquisition, immediately
+before effects. Resolve action credentials only through the existing authorized
+secrets boundary. 1Password can generate a supported TOTP without disclosing its
+seed; it cannot replace mandatory app/biometric/hardware bank authentication.
+Use ephemeral origin-restricted sessions without persistent authentication artifacts.
+
+A submitted transaction is not settlement. Independently read the provider ledger
+and bind receipt evidence to this exact debit before recording payment success.
+Preserve uncertain claims across interruption; never automatically retry money
+movement. Independently read back the narrow Notion receipt record. An ambiguous
+Notion create is recovered by reads, never a repeated POST or payment. Preserve
+verified settlement across temporary retrieval failures; contradictory evidence
+requires investigation. No automatic Matter closure, mandate or new debit enrollment.
+
+Through-2026 obligations are administratively covered, not transaction-settled.
+Retain evidence without reopening them from incoming invoices/reminders. Clean
+tracking begins January 2027. Only a direct owner instruction identifying one exact
+old obligation as unpaid lifts that version's baseline block; a separate exact
+Telegram payment approval is still mandatory. No mass rewrite or invented receipt.
+
+The routed Chromium/Telegram/Notion/1Password simulation demonstrates one normal
+owner interaction and adverse-case tests; it proves no live bank behavior. No real
+A route is currently validated. A mandatory bank challenge is an exception, and
+assisted continuation is not implemented in the first slice. Provider-specific
+integration, automatic issued-document intake and live acceptance remain open in
+[the implementation guide](supervised-payments.md) and roadmap.

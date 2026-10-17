@@ -94,6 +94,7 @@ class ProposalIntent(StrEnum):
     REVIEW_BILL = "review_bill"
     DELIVER_DOCUMENT = "deliver_document"
     EDIT_NOTION_RECORD = "edit_notion_record"
+    PAY_BILL = "pay_bill"
 
 
 class ProposalStatus(StrEnum):

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import Any
+from urllib.parse import urlsplit
 
 from wally.audit.logger import AuditLogger
 from wally.exceptions import ProviderUnavailableError
@@ -102,6 +103,25 @@ class GovernedSecretsResolver:
         if submit_sel:
             actions.append(BrowserAction(BrowserActionType.CLICK, {"selector": submit_sel}))
         return tuple(actions)
+
+    def resolve_totp(self, reference: str, *, authorized: bool, session_id: str = "") -> str:
+        """Ask 1Password for a current code, never read the TOTP seed into Wally.
+
+        The reviewed policy supplies a plain field reference. The runtime alone
+        adds the documented attribute query; arbitrary query arguments are denied.
+        """
+        parts = urlsplit(reference)
+        if parts.scheme != "op" or parts.query or parts.fragment:
+            raise ProviderUnavailableError("secrets", "TOTP requires a plain 1Password field ref.")
+        value = self.resolve(
+            reference + "?attribute=otp",
+            authorized=authorized,
+            session_id=session_id,
+            purpose="payment_totp",
+        )
+        if not value.isascii() or not value.isdigit() or len(value) not in {6, 8}:
+            raise ProviderUnavailableError("secrets", "1Password did not return a valid TOTP code.")
+        return value
 
     def inject_workflow_parameters(
         self,

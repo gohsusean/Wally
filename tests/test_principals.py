@@ -19,7 +19,10 @@ def test_local_channels_can_decide_execute_and_verify() -> None:
     for channel in authority.channels():
         context = authority.issue(channel)
         for capability in Capability:
-            assert authority.check(context, capability) is None
+            if capability in {Capability.EXECUTE_PAYMENT, Capability.VERIFY_PAYMENT}:
+                assert authority.check(context, capability) is not None
+            else:
+                assert authority.check(context, capability) is None
         assert context.principal.subject == "owner"
         assert context.principal.authentication == "local_terminal"
         assert context.correlation_id.startswith("req_")

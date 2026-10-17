@@ -135,7 +135,7 @@ def test_finance_approval_summary_includes_bill_fields() -> None:
     assert "does not mark the bill paid" in summary
 
 
-def test_finance_approval_summary_used_by_tool_registry(tmp_path) -> None:
+def test_legacy_finance_cannot_present_a_local_payment_approval(tmp_path) -> None:
     from tests.test_finance import _bill_knowledge, _MockWorkflow, _settings
     from wally.adapters.finance.local import LocalFinanceAdapter
     from wally.models.actions import ActionClass
@@ -186,7 +186,7 @@ def test_finance_approval_summary_used_by_tool_registry(tmp_path) -> None:
         dry_run=False,
         authority=authority,
     )
-    registry.execute(
+    result = registry.execute(
         ToolCall(
             call_id="c1",
             name="finance_trigger_payment",
@@ -206,7 +206,5 @@ def test_finance_approval_summary_used_by_tool_registry(tmp_path) -> None:
         ),
         context=authority.issue("repl"),
     )
-    assert captured
-    assert "Verification:" in captured[0]
-    assert "Electricity Co" in captured[0]
-    assert "142.50" in captured[0]
+    assert result.denied and "Telegram" in result.output
+    assert not captured

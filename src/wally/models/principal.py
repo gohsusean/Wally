@@ -32,6 +32,8 @@ class Capability(StrEnum):
     VERIFY_EXECUTION = "verify_execution"
     EXECUTE_NOTION_EDIT = "execute_notion_edit"
     VERIFY_NOTION_EDIT = "verify_notion_edit"
+    EXECUTE_PAYMENT = "execute_payment"
+    VERIFY_PAYMENT = "verify_payment"
     CERTIFY_FINANCIAL_DATA = "certify_financial_data"
 
 

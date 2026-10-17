@@ -1,5 +1,13 @@
 # Current Wally architecture
 
+**18 October, ADR-051:** the [supervised-payment slice](supervised-payments.md) adds
+reference-only `pay_bill` proposals, exact Telegram decision/execution confirmations,
+a separate narrow worker, shared manual/automated occurrence claims, independent
+settlement reads and verified Notion receipts. Production payment composition is
+absent by default. The browser contract and end-to-end acceptance are simulated;
+no real provider/payment readiness is claimed. This supersedes the earlier manual
+default and adds the through-2026 administrative baseline without inventing settlement.
+
 **18 October, ADR-050:** reliable retained evidence certifies financial identity without a separate owner prompt or attestations. Records certify independently; temporary source failure preserves verification while operational use stays blocked. Payment, portal and execution authorization are unchanged. Older ADR-044 identity-confirmation descriptions below are superseded.
 
 **Status:** Current implementation reference, checked against `ce47fcd` during

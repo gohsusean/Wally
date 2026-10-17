@@ -146,43 +146,32 @@ def test_execution_overrides_fail_before_approval(tmp_path, field, value):
     assert not approval.summaries
 
 
-def test_only_canonical_payload_dispatches_even_when_gate_allows(tmp_path):
-    registry, knowledge, workflow, _, authority, approval = runtime(tmp_path)
-    result = registry.execute(payment(knowledge), context=authority.issue("repl"))
-    assert not result.denied
-    assert len(approval.summaries) == 1
-    name, payload = workflow.triggered[0]
-    assert name == "pay-bill-bank-transfer"
+def test_canonical_legacy_payload_cannot_bypass_telegram_payment_policy(tmp_path):
+    registry, knowledge, workflow, finance, authority, approval = runtime(tmp_path)
+    prepared, error = finance.prepare_payment(payment(knowledge).arguments)
+    assert error is None
+    payload = prepared["parameters"]
     assert payload["bank_account"] == BILL["bank_account"]
     assert payload["amount"] == BILL["amount"]
     assert payload["currency"] == BILL["currency"]
-    assert payload["account"] == BILL["account_reference"]
     assert payload["asset_id"] == knowledge.bill.id
-    assert json.loads(result.output)["bill_paid_not_updated"] is True
-    assert knowledge.bill.content == "Due"
-
-
-def test_provider_failure_is_unconfirmed_and_never_auto_retried(tmp_path):
-    registry, knowledge, workflow, _, authority, approval = runtime(tmp_path)
-    original = workflow.trigger
-
-    def accept_then_disconnect(*args, **kwargs):
-        original(*args, **kwargs)
-        raise TimeoutError("synthetic ambiguous response")
-
-    workflow.trigger = accept_then_disconnect
     result = registry.execute(payment(knowledge), context=authority.issue("repl"))
-    assert result.denied and "do not auto-retry" in result.output
-    assert len(workflow.triggered) == len(approval.summaries) == 1
+    assert result.denied and "Telegram" in result.output
+    assert not workflow.triggered and not approval.summaries
     assert knowledge.bill.content == "Due"
-    events = [
-        json.loads(line)
-        for p in (tmp_path / "audit").glob("*.jsonl")
-        for line in p.read_text().splitlines()
-    ]
-    event = next(e for e in events if e["event_type"] == "finance_dispatch")
-    assert event["outcome"] == "failed_or_uncertain"
-    assert event["parameters"]["action_fingerprint"]
+
+
+def test_legacy_dispatch_stops_before_a_ready_provider_or_local_prompt(tmp_path):
+    registry, knowledge, workflow, _, authority, approval = runtime(tmp_path)
+
+    def must_not_dispatch(*args, **kwargs):
+        raise AssertionError("Legacy financial workflow reached")
+
+    workflow.trigger = must_not_dispatch
+    result = registry.execute(payment(knowledge), context=authority.issue("repl"))
+    assert result.denied and "Telegram" in result.output
+    assert not workflow.triggered and not approval.summaries
+    assert knowledge.bill.content == "Due"
 
 
 @pytest.mark.parametrize(
@@ -215,12 +204,22 @@ def test_statement_identity_mismatch_blocks_before_approval(tmp_path, field, val
     ],
 )
 def test_canonical_drift_during_approval_requires_new_cycle(tmp_path, field, value):
-    registry, knowledge, workflow, _, authority, approval = runtime(tmp_path)
-    approval.callback = lambda: knowledge.bill.metadata.update({field: value})
-    result = registry.execute(payment(knowledge), context=authority.issue("repl"))
-    assert result.denied
-    assert not workflow.triggered
-    assert len(approval.summaries) == 1
+    from wally.exceptions import ProviderUnavailableError
+    from wally.runtime.execution_router import payment_fingerprint
+
+    registry, knowledge, workflow, finance, authority, approval = runtime(tmp_path)
+    args = payment(knowledge).arguments
+    reviewed, error = finance.prepare_payment(args)
+    assert error is None
+    knowledge.bill.metadata.update({field: value})
+    with pytest.raises(ProviderUnavailableError, match="changed after review"):
+        finance.execute_payment(
+            args,
+            context=authority.issue("repl"),
+            authority=authority,
+            reviewed_fingerprint=payment_fingerprint(reviewed),
+        )
+    assert not workflow.triggered and not approval.summaries
 
 
 def test_workflow_target_drift_during_approval_blocks_dispatch(tmp_path):
@@ -236,8 +235,8 @@ def test_mutating_original_model_arguments_cannot_redirect_reviewed_dispatch(tmp
     registry, knowledge, workflow, _, authority, approval = runtime(tmp_path)
     call = payment(knowledge)
     approval.callback = lambda: call.arguments.update({"parameters": {"amount": "900"}})
-    assert not registry.execute(call, context=authority.issue("repl")).denied
-    assert workflow.triggered[0][1]["amount"] == BILL["amount"]
+    assert registry.execute(call, context=authority.issue("repl")).denied
+    assert not workflow.triggered and not approval.summaries
 
 
 @pytest.mark.parametrize("classification", [KnowledgeClass.PENDING, KnowledgeClass.GOVERNANCE])
@@ -395,9 +394,12 @@ def test_repeated_exact_assertions_and_statement_notes_cannot_supply_dispatch_fi
     registry, knowledge, workflow, _, authority, _ = runtime(tmp_path)
     call = payment(knowledge, parameters={"amount": BILL["amount"], "account": "ACC-1"})
     call.arguments["statement"]["note"] = {"amount": "999", "recipient": "attacker"}
-    assert not registry.execute(call, context=authority.issue("repl")).denied
-    assert "note" not in workflow.triggered[0][1]
-    assert workflow.triggered[0][1]["amount"] == BILL["amount"]
+    prepared, error = registry._finance.prepare_payment(call.arguments)
+    assert error is None
+    assert "note" not in prepared["parameters"]
+    assert prepared["parameters"]["amount"] == BILL["amount"]
+    assert registry.execute(call, context=authority.issue("repl")).denied
+    assert not workflow.triggered
 
 
 def test_financial_workflow_alias_and_misclassification_do_not_bypass_review(tmp_path):

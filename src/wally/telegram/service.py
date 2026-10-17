@@ -71,6 +71,7 @@ class TelegramService:
         *,
         message_limit: int = 8,
         notion_approvals=None,
+        payment_approvals=None,
     ) -> None:
         self._runtime = runtime
         self._store = store
@@ -82,6 +83,7 @@ class TelegramService:
         self._limit = message_limit
         self._hits: list[datetime] = []
         self._notion_approvals = notion_approvals
+        self._payment_approvals = payment_approvals
         if config.chat_id:
             self._ingress.remember_chat(config.chat_id)
 
@@ -98,6 +100,8 @@ class TelegramService:
         return self._runtime
 
     def set_dispatch_guard(self, guard):
+        if self._payment_approvals is not None:
+            self._payment_approvals.dispatch_guard = guard
         if self._notion_approvals is not None:
             self._notion_approvals.dispatch_guard = guard
 
@@ -118,6 +122,8 @@ class TelegramService:
         current = now or datetime.now(UTC)
         chat_id = self._known_chat()
         owner = self._config.owner_user_id
+        if self._payment_approvals is not None:
+            self._payment_approvals.sync(chat_id, current)
         if self._notion_approvals is not None:
             self._notion_approvals.sync(chat_id, current, refresh_reviews=refresh_reviews)
             for proposal in self._store.list_proposals(status=ProposalStatus.APPROVED):
@@ -135,7 +141,7 @@ class TelegramService:
                         now=current,
                     )
         for proposal in self._store.list_proposals(status=ProposalStatus.PROPOSED):
-            if proposal.intent == ProposalIntent.EDIT_NOTION_RECORD:
+            if proposal.intent in {ProposalIntent.EDIT_NOTION_RECORD, ProposalIntent.PAY_BILL}:
                 continue  # Never show a generic/incomplete card for a scoped edit.
             self._outbox.enqueue_decision(
                 proposal_id=proposal.id,
@@ -147,6 +153,8 @@ class TelegramService:
                 now=current,
             )
         for execution in self._store.list_executions():
+            if execution.intent == ProposalIntent.PAY_BILL:
+                continue  # Only the payment-specific result describes money/Notion independently.
             if (
                 execution.status == ExecutionStatus.RUNNING
                 and execution.intent != ProposalIntent.EDIT_NOTION_RECORD
@@ -209,6 +217,15 @@ class TelegramService:
         if not row.allows(action):
             self._answer(callback, "That button is not valid.")
             return "ignored"
+        if row.kind == "payment_review":
+            if self._payment_approvals is None:
+                self._answer(callback, "Payment execution is unavailable.")
+                return "ignored"
+            result = self._payment_approvals.handle(row, action, callback)
+            self._answer(callback, result[:180])
+            self.sync(now)
+            self.deliver_pending(now)
+            return "payment_review"
         if row.kind == "notion_edit_review":
             if self._notion_approvals is None:
                 self._answer(callback, "Scoped approval is unavailable.")
@@ -261,6 +278,8 @@ class TelegramService:
         chat = message.get("chat") if isinstance(message.get("chat"), dict) else {}
         user_id = str(user.get("id", ""))
         chat_id = str(chat.get("id", ""))
+        if user.get("is_bot"):
+            return "ignored"
         if chat.get("type") != "private":
             return "ignored"
         if user_id != self._config.owner_user_id or not self._config.owner_user_id:
@@ -269,6 +288,15 @@ class TelegramService:
             return "ignored"
         self._ingress.remember_chat(chat_id)
         text = str(message.get("text") or "")
+        if text.startswith("/unpaid ") and self._payment_approvals is not None:
+            if any(message.get(k) for k in ("forward_origin", "forward_from", "forward_date")):
+                return "ignored"
+            instance_id = text.removeprefix("/unpaid ")
+            if re.fullmatch(r"[A-Za-z0-9_-]{1,80}", instance_id) is None:
+                return "ignored"
+            result = self._payment_approvals.identify_unpaid(instance_id, update_id, chat_id)
+            self._transport.send_message(chat_id, result)
+            return "baseline_exception"
         if message.get("forward_origin") or message.get("forward_from"):
             text = text  # still evidence; the sender id was already checked
         if not self._allow(now):
@@ -424,9 +452,14 @@ class TelegramService:
         title = proposal.title if proposal is not None else row.kind
         suggestion = proposal.suggestion if proposal is not None else ""
         text = _card(title, suggestion, row.proposal_id or row.execution_id)
-        if row.kind == "notion_edit_review":
+        if row.kind in {"notion_edit_review", "payment_review"}:
             try:
-                text, buttons = self._notion_approvals.render(row)
+                handler = (
+                    self._payment_approvals
+                    if row.kind == "payment_review"
+                    else self._notion_approvals
+                )
+                text, buttons = handler.render(row)
                 if buttons is None:
                     self._outbox.dismiss(row.id, now)
                     return False
@@ -439,8 +472,10 @@ class TelegramService:
             text = f"{title}\nVerification failed."
         elif row.kind == "execution_completed":
             text = f"{title}\nExecution finished. Verification is still open."
-        if row.kind != "notion_edit_review":
+        if row.kind not in {"notion_edit_review", "payment_review"}:
             buttons = _buttons(row) if row.callback_nonce else None
+        if row.kind == "payment_result":
+            text = self._payment_approvals.result(row.proposal_id)
         if row.kind == "notion_change_detected":
             text, buttons = self._notion_approvals.change_notification(row)
         if row.kind == "edit_awaiting_execution":

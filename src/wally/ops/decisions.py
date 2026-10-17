@@ -86,9 +86,9 @@ def apply_user_decision(
     proposal = store.get_proposal(proposal_id)
     if proposal is None:
         raise ProposalDecisionError(f"No proposal with id {proposal_id}.")
-    if proposal.intent == ProposalIntent.EDIT_NOTION_RECORD:
+    if proposal.intent in {ProposalIntent.EDIT_NOTION_RECORD, ProposalIntent.PAY_BILL}:
         raise ProposalDecisionError(
-            "Notion edits require an exact scoped review through NotionEditService."
+            "This action requires its exact scoped review service."
         )
     if proposal.status != ProposalStatus.PROPOSED:
         raise ProposalDecisionError(

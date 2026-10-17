@@ -147,9 +147,7 @@ def test_secret_unavailable_before_authorization() -> None:
 
 
 def test_denied_approval_never_resolves_secret(tmp_path: Path) -> None:
-    secrets = MemorySecretsProvider(
-        {USERNAME_REF: CANARY_USER, PASSWORD_REF: CANARY_SECRET}
-    )
+    secrets = MemorySecretsProvider({USERNAME_REF: CANARY_USER, PASSWORD_REF: CANARY_SECRET})
     registry, provider, recording, _ = _finance_registry(
         tmp_path, secrets=secrets, approval=_DenyApproval()
     )
@@ -200,9 +198,7 @@ def test_dry_run_never_resolves_secret(tmp_path: Path) -> None:
 
 
 def test_authorized_execution_resolves_and_hides_values(tmp_path: Path) -> None:
-    secrets = MemorySecretsProvider(
-        {USERNAME_REF: CANARY_USER, PASSWORD_REF: CANARY_SECRET}
-    )
+    secrets = MemorySecretsProvider({USERNAME_REF: CANARY_USER, PASSWORD_REF: CANARY_SECRET})
     approval = _AllowApproval()
     registry, provider, recording, _ = _finance_registry(
         tmp_path, secrets=secrets, approval=approval
@@ -278,9 +274,7 @@ def test_browser_action_repr_redacts_fill_value() -> None:
 
 
 def test_unauthorized_portal_call_does_not_resolve() -> None:
-    secrets = MemorySecretsProvider(
-        {USERNAME_REF: CANARY_USER, PASSWORD_REF: CANARY_SECRET}
-    )
+    secrets = MemorySecretsProvider({USERNAME_REF: CANARY_USER, PASSWORD_REF: CANARY_SECRET})
     recording = RecordingBrowserAdapter()
     executor = GovernedBrowserExecutor(
         recording,
@@ -296,9 +290,7 @@ def test_manual_login_fallback_without_refs() -> None:
     recording = RecordingBrowserAdapter()
     executor = GovernedBrowserExecutor(
         recording,
-        secrets=GovernedSecretsResolver(
-            MemorySecretsProvider({PASSWORD_REF: CANARY_SECRET})
-        ),
+        secrets=GovernedSecretsResolver(MemorySecretsProvider({PASSWORD_REF: CANARY_SECRET})),
     )
     result = executor.run_card_portal_payment(
         bill={
@@ -350,7 +342,7 @@ def test_malformed_references_fail_closed() -> None:
     assert provider.resolve_calls == []
 
 
-def test_n8n_model_facing_result_scrubs_echoed_secrets() -> None:
+def test_legacy_payment_cannot_resolve_or_forward_workflow_secrets() -> None:
     secrets = MemorySecretsProvider({OTP_REF: CANARY_SECRET})
     workflow = _EchoWorkflow(
         workflows=[
@@ -370,15 +362,15 @@ def test_n8n_model_facing_result_scrubs_echoed_secrets() -> None:
         workflow=workflow,
         secrets=GovernedSecretsResolver(secrets),
     )
-    result = adapter._trigger_payment(
-        "pay-bill-bank-transfer",
-        parameters={"amount": "10"},
-        bill={"workflow_secret_refs": {"otp": OTP_REF}},
-        authorized=True,
-    )
-    assert workflow.triggered[0][1]["otp"] == CANARY_SECRET
-    assert result["secret_parameter_names"] == ["otp"]
-    assert_no_canary(result)
+    with pytest.raises(ProviderUnavailableError, match="Telegram") as error:
+        adapter._trigger_payment(
+            "pay-bill-bank-transfer",
+            parameters={"amount": "10"},
+            bill={"workflow_secret_refs": {"otp": OTP_REF}},
+            authorized=True,
+        )
+    assert not secrets.resolve_calls and not workflow.triggered
+    assert_no_canary(str(error.value))
 
 
 def test_screenshots_denied_by_policy() -> None:
@@ -405,9 +397,7 @@ def test_cli_error_path_does_not_print_canary(capsys) -> None:
             secrets_enabled=True,
         ),
         knowledge_registry=None,
-        orchestrator=SimpleNamespace(
-            check_health=lambda: {"secrets": False, "openai": True}
-        ),
+        orchestrator=SimpleNamespace(check_health=lambda: {"secrets": False, "openai": True}),
     )
     _print_health(app)
     captured = capsys.readouterr().out

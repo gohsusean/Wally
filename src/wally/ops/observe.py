@@ -230,6 +230,8 @@ class SourceObserver:
                     "stage": facts.stage,
                     "amount": facts.amount,
                     "currency": facts.currency,
+                    "period_start": facts.period_start,
+                    "period_end": facts.period_end,
                 },
             )
             self._store.save_observation(observation)

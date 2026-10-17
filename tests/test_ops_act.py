@@ -998,9 +998,10 @@ def test_review_bill_never_reaches_a_payment_path(tmp_path: Path, monkeypatch) -
     assert not any(BrowserActionType.NAVIGATE in batch for batch in harness.browser.batches)
 
 
-def test_no_pay_bill_intent_exists() -> None:
-    assert "pay_bill" not in {intent.value for intent in ProposalIntent}
-    assert "PAY_BILL" not in ProposalIntent.__members__
+def test_payment_intent_is_not_supported_by_generic_act_verify() -> None:
+    from wally.ops.execution import SUPPORTED_EXECUTION_INTENTS
+
+    assert ProposalIntent.PAY_BILL not in SUPPORTED_EXECUTION_INTENTS
 
 
 def test_act_module_does_not_import_payment_or_tool_stacks() -> None:

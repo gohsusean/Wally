@@ -1,5 +1,10 @@
 # Wally
 
+**18 October v0.19 direction:** [supervised payments](docs/supervised-payments.md)
+require an exact Telegram approval for every payment, with automated login and
+supported authentication. The offline end-to-end workflow is implemented; no live
+payment route is enabled or validated. This supersedes the earlier manual default.
+
 Wally is your personal **Chief of Staff** and **AI operating system** — an intelligent orchestrator that reasons over knowledge, manages communications, runs workflows, and supports decisions across your digital life.
 
 Wally is not a chatbot. It is not a home automation platform.
@@ -10,7 +15,7 @@ Wally is not a chatbot. It is not a home automation platform.
 
 Complete: v0.10 browser automation, v0.11.1 secrets hardening, v0.12 Observe & Brief, v0.13 Assess & Propose, v0.14 Approval Inbox, v0.15 Act & Verify, v0.16 Gateway, v0.17 ChatGPT interface, v0.18 Telegram inbox.
 
-Next: [v0.19 Reasoned Grounding](docs/reasoned-grounding.md). Scheduling and proactive triggers, notification UX hardening, more supported action types, and a validated hosted ChatGPT connection remain later work. Current service implementations are not proof of live provider readiness; D03 now supplies a typed certified financial catalog with local-owner certification under [ADR-044](docs/decisions.md#adr-044-certified-financial-identities-and-local-owner-certification). Live chain validation and other acceptance gaps remain in [engineering debt](docs/engineering-debt.md). Remote execution from ChatGPT is not part of this release.
+Next: [v0.19 supervised payments](docs/supervised-payments.md), with live route acceptance still pending. Reasoned Grounding is deferred. Scheduling and proactive triggers, notification UX hardening, more supported action types, and a validated hosted ChatGPT connection remain later work. Current service implementations are not proof of live provider readiness; D03 now supplies a typed certified financial catalog with local-owner certification under [ADR-044](docs/decisions.md#adr-044-certified-financial-identities-and-local-owner-certification). Live chain validation and other acceptance gaps remain in [engineering debt](docs/engineering-debt.md). Remote execution from ChatGPT is not part of this release.
 
 The [interface-neutral approval slice](docs/interface-neutral-approvals.md) adds a
 restricted local Codex stdio adapter, exact scoped batches, a native biometric

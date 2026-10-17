@@ -188,6 +188,19 @@ class ToolRegistry:
                 )
 
             resolution = prepared_arguments.get("_payment_resolution") or {}
+            if call.name == "finance_trigger_payment" and (
+                resolution.get("payment_method") != "card_portal"
+                or self._finance.payment_router().execution_backend(
+                    prepared_arguments.get("workflow", "")
+                )
+                != "browser"
+            ):
+                return self._deny(
+                    call,
+                    "Payments require their exact Telegram payment card; "
+                    "legacy workflow dispatch is disabled.",
+                    context=context,
+                )
             if (
                 call.name == "finance_trigger_payment"
                 and resolution.get("payment_method") == "card_portal"

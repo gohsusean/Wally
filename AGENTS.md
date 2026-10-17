@@ -18,6 +18,17 @@ Do not equate fixture coverage or configured providers with live deployment.
 
 ## Architecture and security invariants
 
+- Every actual payment requires fresh explicit owner approval on an exact Telegram
+  payment card (ADR-051). One tap authorizes separate decision/execution stages;
+  only the narrow trusted payment worker executes/verifies. Automate credential
+  retrieval/login and legitimate supported authentication; never replace mandatory
+  bank-app, biometric or hardware authorization. The manual-default instruction is
+  superseded. No live route is validated/enabled by the sandbox demonstration.
+- Obligations through 31 December 2026 are administratively covered, not certified
+  settled. Do not reopen them from incoming statements/invoices/reminders. A direct
+  owner instruction must identify a specific old obligation as unpaid before its
+  separate payment approval. Clean tracking begins January 2027.
+
 - New capabilities should converge on the operational proposal/capability/
   provenance architecture (ADR-042). Do not add privileged behavior through the
   legacy conversational ToolRegistry path. That path still exists; its gates

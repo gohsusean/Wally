@@ -3,8 +3,11 @@
 import json
 from dataclasses import dataclass, field
 
+import pytest
+
 from wally.adapters.finance.local import LocalFinanceAdapter
 from wally.config.loader import Settings
+from wally.exceptions import ProviderUnavailableError
 from wally.models.actions import ActionClass
 from wally.models.knowledge import KnowledgeAsset, KnowledgeRetrievalResult
 from wally.models.workflow import WorkflowDefinition, WorkflowParameter, WorkflowTriggerResult
@@ -68,9 +71,7 @@ def _settings(**overrides) -> Settings:
 
     from wally.config.loader import load_settings
 
-    base = load_settings(
-        project_root=Path(__file__).resolve().parents[1], config_name="macbook"
-    )
+    base = load_settings(project_root=Path(__file__).resolve().parents[1], config_name="macbook")
     from dataclasses import replace
 
     return replace(base, finance_bills_role="finance", **overrides)
@@ -132,7 +133,7 @@ def test_list_payment_workflows_filters_financial() -> None:
     assert names == ["pay-bill-bank-transfer"]
 
 
-def test_trigger_payment_delegates_to_workflow() -> None:
+def test_legacy_payment_never_delegates_to_workflow() -> None:
     workflow = _MockWorkflow(
         workflows=[
             WorkflowDefinition(
@@ -149,10 +150,11 @@ def test_trigger_payment_delegates_to_workflow() -> None:
         knowledge=_MockKnowledge(),
         workflow=workflow,
     )
-    adapter._trigger_payment(
-        "pay-bill-bank-transfer", parameters={"amount": 142.5}, authorized=True
-    )
-    assert workflow.triggered == [("pay-bill-bank-transfer", {"amount": 142.5})]
+    with pytest.raises(ProviderUnavailableError, match="Telegram"):
+        adapter._trigger_payment(
+            "pay-bill-bank-transfer", parameters={"amount": 142.5}, authorized=True
+        )
+    assert not workflow.triggered
 
 
 def test_finance_bills_search_tool_output() -> None:

@@ -374,3 +374,23 @@ financial writes stay disabled. Future monitoring belongs to the scheduler roadm
 conditional writes require demonstrated provider support. Acceptance must retain
 exact scope, independent reads, stale-trust handling and uncertain-write no-retry
 rules without implying that polling stored proposals watches Notion.
+
+
+## D16 — Supervised payments: live route and authentication acceptance
+
+18 October: [ADR-051](decisions.md#adr-051-exact-telegram-supervised-payments) changes
+the owner approval policy to one exact Telegram payment approval. The sandbox
+workflow covers automated login/TOTP, shared duplicate claims, guarded submission,
+independent settlement and Notion readback/recovery. This does not close D03 live
+readiness or prove a bank permits automation. No real category-A route is validated.
+The proposed first route is the first issued January 2027 Mansions TNB bill via a
+saved-card portal payment, conditional on its selected funding instrument. AmBank
+requires a bank-app challenge; 1Password TOTP cannot replace it. Current retained
+state has no issued instances, enabled chains or credential references.
+
+Remaining: actual funding reference, provider-specific read/auth/submit/history
+adapter and independent evidence, portal acceptance/enablement, existing Notion
+schema pinning and live private-owner acceptance. Automatic certified issued-bill
+intake and assisted challenge continuation are not delivered. Notion concurrent
+writers retain a create/read race; uncertain writes and payments cannot auto-retry.
+Preserve existing certification; this is not a request for renewed owner attestations.

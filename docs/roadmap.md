@@ -86,7 +86,7 @@ Wally's primary responsibilities:
 | v0.17 | ChatGPT interface | Local authenticated MCP adapter; hosted deployment gated |
 | v0.18 | Telegram inbox | Owner/private-chat polling, decisions, outbox, login LaunchAgent/Keychain |
 | v0.18.1 | Local continuity and reliability | Basic hourly iCloud copy; elapsed delivery defer and complete calendar results |
-| v0.19 | Reasoned Grounding | Interpret owner requests against trusted records; clarify ambiguity before proposals |
+| v0.19 | Supervised payment automation | Exact Telegram approval per payment; sandbox foundation implemented, live acceptance pending |
 | v1.0 later | Phase 5 | Scheduling, proactive triggers, notification UX and daily-driver hardening |
 | v1.0+ | Retrieval Router | Runtime-owned retrieval policy (see below) |
 | v1.x+ | Optional providers | Travel, property depth; HA read-only context |
@@ -520,25 +520,43 @@ procedures/drills, monitoring/alerts, new encryption/credential recovery systems
 other backup providers. [D09](engineering-debt.md#d09--basic-local-icloud-copy-v0181-scope)
 is limited to this copy; no further backup acceptance blocks the next milestone.
 
-## v0.19 — Reasoned Grounding (next)
+## v0.19 — Supervised payment automation (in progress)
 
-The owner selected Reasoned Grounding as the next milestone on 11 October 2026.
-The [implementation plan](reasoned-grounding.md) starts with document delivery:
-understand ordinary request wording against existing trusted record candidates,
-validate selected identities in the runtime, and ask concise clarification when
-ambiguous. Only the existing reference-only pending proposal may be created.
+The owner's 18 October instruction replaces Reasoned Grounding as the next delivery.
+Every actual payment requires a fresh exact Telegram approval. Login, credentials
+and legitimate supported TOTP are automated; mandatory bank-app/hardware challenges
+remain exceptions. No mandate or automatic debit is enrolled. Existing certificates
+are reused. Through-2026 obligations are covered administratively; clean tracking
+begins January 2027, with specific owner-identified unpaid exceptions only.
 
-- [ ] Typed advisory result and deterministic candidate/identity validation.
-- [ ] Dedicated reasoning component behind the existing LLM abstraction, outside
-  the legacy ToolRegistry; exact matching remains available on reasoner failure.
-- [ ] Shared authenticated submission and concise Telegram clarification.
-- [ ] Injection, ambiguity, fabricated identity, drift and replay regressions.
-- [ ] Separately authorized owner/model acceptance before claiming live readiness.
+- [x] Operational payment specifications and advice-only proposals; separate exact
+  decision/execution authorizations from one private-owner Telegram callback.
+- [x] Shared manual/automated occurrence claims, replay/drift/expiry/lease checks,
+  safe secret/TOTP handling and independent outcome verification.
+- [x] Narrow Notion receipt create/readback and read-only uncertain-write recovery.
+- [x] Complete offline Chromium dry run with simulated Telegram, 1Password and Notion;
+  adverse-case tests. Production payment factory remains absent.
+- [x] Evidence-based [channel assessment and first-route recommendation](supervised-payments.md).
+- [ ] Select/pin funding instrument; validate the real biller/gateway route and its
+  authentication. No real A route is established; documented bank challenges stay B.
+- [ ] Automatic primary-document intake into certified issued bill instances;
+  provider-specific portal/API and independent history integration.
+- [ ] Governed live portal acceptance, exact chain enablement, existing Notion schema
+  pinning and genuine Telegram human acceptance. Preserve valid certification.
+- [ ] Demonstrate the first real payment only after separate exact owner approval.
+  A simulation alone does not complete this milestone.
 
-Approval remains inert. Current channel/execution restrictions, financial evidence
-rules and bounded untrusted provenance remain intact. Scheduling/proactive triggers
-and reminder delivery stay later Phase 5 work. No new backup requirements or broader
-data collection are prerequisites.
+First candidate: Mansions TNB electricity, first issued January 2027 bill via an
+existing saved card on myTNB, conditional on the instrument's actual authentication.
+See [ADR-051](decisions.md#adr-051-exact-telegram-supervised-payments) and D16.
+
+## Reasoned Grounding — deferred
+
+The [reasoned-grounding plan](reasoned-grounding.md) remains future work: interpret
+requests against trusted record candidates, validate identities in the runtime and
+clarify ambiguity before creating reference-only advice. It grants no payment
+execution or hosted confirmation authority. Scheduling/proactive triggers remain
+later Phase 5 work; no new backup requirements are introduced.
 
 ---
 

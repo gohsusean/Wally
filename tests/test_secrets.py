@@ -7,17 +7,13 @@ from unittest.mock import patch
 
 import pytest
 
-from tests.test_finance import _MockKnowledge, _MockWorkflow, _settings
 from wally.adapters.browser.recording import RecordingBrowserAdapter
-from wally.adapters.finance.local import LocalFinanceAdapter
 from wally.adapters.secrets.memory import MemorySecretsProvider
 from wally.adapters.secrets.op_cli import OnePasswordCliAdapter
 from wally.adapters.secrets.stub import UnconfiguredSecretsProvider
 from wally.audit.logger import AuditLogger
 from wally.exceptions import ProviderUnavailableError
-from wally.models.actions import ActionClass
 from wally.models.browser import BrowserActionType
-from wally.models.workflow import WorkflowDefinition
 from wally.runtime.browser_executor import GovernedBrowserExecutor
 from wally.runtime.secret_resolver import GovernedSecretsResolver
 from wally.runtime.secrets_safety import evaluate_secret_access, evaluate_secret_reference
@@ -131,35 +127,15 @@ def test_card_portal_injects_credentials_when_refs_present() -> None:
     assert any(a.action_type == BrowserActionType.READ_PAGE for a in actions)
 
 
-def test_workflow_secret_injection_from_knowledge() -> None:
-    workflow = _MockWorkflow(
-        workflows=[
-            WorkflowDefinition(
-                name="pay-bill-bank-transfer",
-                description="Pay",
-                webhook_path="pay-bill-bank-transfer",
-                action_class=ActionClass.FINANCIAL,
-                capability_domain="payment",
-                capability="bank_transfer",
-            )
-        ]
-    )
+def test_governed_secret_parameter_injection_requires_authorization() -> None:
     secrets = MemorySecretsProvider({"op://Personal/Bank/otp": "123456"})
-    adapter = LocalFinanceAdapter(
-        settings=_settings(),
-        knowledge=_MockKnowledge(),
-        workflow=workflow,
-        secrets=GovernedSecretsResolver(secrets),
-    )
-    adapter._trigger_payment(
-        "pay-bill-bank-transfer",
+    resolver = GovernedSecretsResolver(secrets)
+    result = resolver.inject_workflow_parameters(
+        knowledge={"workflow_secret_refs": {"otp": "op://Personal/Bank/otp"}},
         parameters={"amount": "10"},
-        bill={"workflow_secret_refs": {"otp": "op://Personal/Bank/otp"}},
-        payment_method="bank_transfer",
         authorized=True,
     )
-    assert workflow.triggered[0][1]["otp"] == "123456"
-    assert workflow.triggered[0][1]["amount"] == "10"
+    assert result == {"amount": "10", "otp": "123456"}
 
 
 def test_load_settings_secrets_defaults(project_root: Path) -> None:
@@ -169,7 +145,5 @@ def test_load_settings_secrets_defaults(project_root: Path) -> None:
     assert settings.secrets_enabled is True
     assert settings.secrets_adapter == "op_cli"
     assert settings.telegram_bot_token_ref == "keychain://com.wally.telegram/bot-token"
-    assert (
-        settings.telegram_bot_token_source_ref == "op://Private/Wally Telegram Bot/password"
-    )
+    assert settings.telegram_bot_token_source_ref == "op://Private/Wally Telegram Bot/password"
     assert settings.telegram_owner_user_id == "79539710"

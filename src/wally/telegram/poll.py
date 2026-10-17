@@ -18,7 +18,10 @@ from wally.codex.__main__ import build_edit_service
 from wally.codex.config import load_config
 from wally.config.loader import Settings
 from wally.exceptions import ProviderUnavailableError
+from wally.finance.baseline import FinancialBaseline
+from wally.finance.payments import PAYMENT_POLICY, PAYMENT_WORKER
 from wally.gateway.service import TELEGRAM_CHANNEL, AdapterRegistration, GatewayRuntime
+from wally.models.principal import Capability
 from wally.ops.service import ObserveBriefService
 from wally.ops.store import OperationsStore
 from wally.providers.secrets import SecretsProvider
@@ -32,6 +35,7 @@ from wally.telegram.notion_approvals import (
     TelegramNotionApprovals,
 )
 from wally.telegram.outbox import OUTBOUND_SEMANTICS
+from wally.telegram.payment_approvals import TelegramPaymentApprovals
 from wally.telegram.service import TelegramConfig, TelegramService, telegram_policy
 
 
@@ -95,17 +99,31 @@ def build_service(
     transport: TelegramTransport,
     *,
     policy_path: Path | None = None,
+    payment_factory=None,
 ) -> TelegramService:
     store = OperationsStore(settings.ops_database)
     policy_path = policy_path or settings.project_root / "config" / "notion-edits.yaml"
     confirmation = TelegramEditConfirmation()
+    payment_confirmation = TelegramEditConfirmation(
+        worker_channel=PAYMENT_WORKER,
+        execution_capability=Capability.EXECUTE_PAYMENT,
+    )
     authority = PrincipalAuthority(
         {
             **LOCAL_OPERATOR_CHANNELS,
             TELEGRAM_CHANNEL: telegram_policy(),
             WORKER_CHANNEL: WORKER_POLICY,
+            **({PAYMENT_WORKER: PAYMENT_POLICY} if payment_factory else {}),
         },
-        human_confirmers={TELEGRAM_CHANNEL: confirmation, WORKER_CHANNEL: confirmation},
+        human_confirmers={
+            TELEGRAM_CHANNEL: (
+                _PaymentOrEditConfirmation(payment_confirmation, confirmation)
+                if payment_factory
+                else confirmation
+            ),
+            WORKER_CHANNEL: confirmation,
+            **({PAYMENT_WORKER: payment_confirmation} if payment_factory else {}),
+        },
     )
     edits = build_edit_service(
         settings, store, authority, policy_path, telegram_gate=confirmation.dispatch_allowed
@@ -113,8 +131,20 @@ def build_service(
     approvals = TelegramNotionApprovals(
         edits, confirmation, lambda: load_config(policy_path), config.owner_user_id
     )
+    payment_approvals = None
+    if payment_factory is not None:
+        # Trusted composition seam for an isolated sandbox or a reviewed live route.
+        # No model/Gateway parameter or tracked profile can supply this factory.
+        payments = payment_factory(settings, store, authority)
+        payment_approvals = TelegramPaymentApprovals(
+            payments,
+            payment_confirmation,
+            config.owner_user_id,
+        )
     audit = AuditLogger(settings.audit_directory)
-    ops = ObserveBriefService(store, audit=audit, authority=authority)
+    ops = ObserveBriefService(
+        store, audit=audit, authority=authority, financial_attention=FinancialBaseline(store).allows
+    )
     records = load_trusted_records(settings.project_root / "config" / "chatgpt.yaml")
     runtime = GatewayRuntime(
         store,
@@ -124,7 +154,25 @@ def build_service(
         audit=audit,
         trusted_records=records,
     )
-    return TelegramService(runtime, store, config, transport, records, notion_approvals=approvals)
+    return TelegramService(
+        runtime,
+        store,
+        config,
+        transport,
+        records,
+        notion_approvals=approvals,
+        payment_approvals=payment_approvals,
+    )
+
+
+class _PaymentOrEditConfirmation:
+    method = "authenticated_private_telegram_exact_callback"
+
+    def __init__(self, payment, edit):
+        self.payment, self.edit = payment, edit
+
+    def confirm(self, review):
+        return self.payment.confirm(review) or self.edit.confirm(review)
 
 
 def poll_once(service: TelegramService, transport: TelegramTransport, holder: str) -> bool:

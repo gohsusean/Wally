@@ -191,9 +191,11 @@ class ActVerifyService:
         initial = self._store.get_proposal(proposal_id)
         if initial is None:
             raise ExecutionRequestError(f"Unknown proposal: {proposal_id}")
-        if initial.intent == ProposalIntent.EDIT_NOTION_RECORD:
+        if initial.intent in {ProposalIntent.EDIT_NOTION_RECORD, ProposalIntent.PAY_BILL}:
             raise ExecutionRequestError(
-                "Use the scoped Notion edit interface; nothing was attempted."
+                "Use the scoped payment interface; nothing was attempted."
+                if initial.intent == ProposalIntent.PAY_BILL
+                else "Use the scoped Notion edit interface; nothing was attempted."
             )
         self._log("execution_requested", proposal_id=proposal_id, **_trace(context))
 
@@ -301,7 +303,7 @@ class ActVerifyService:
         execution = self._store.get_execution(execution_id)
         if execution is None:
             raise ExecutionRequestError(f"Unknown execution: {execution_id}")
-        if execution.intent == ProposalIntent.EDIT_NOTION_RECORD:
+        if execution.intent in {ProposalIntent.EDIT_NOTION_RECORD, ProposalIntent.PAY_BILL}:
             raise ExecutionRequestError(
                 "Notion edits require independent NotionEditService verification."
             )

@@ -210,5 +210,6 @@ def test_tool_registry_blocks_before_approval_on_verification_mismatch(tmp_path)
         context=authority.issue("repl"),
     )
     assert result.denied
-    assert "verification_blocked" in (result.action_taken or "")
+    assert "policy_denied" in (result.action_taken or "")
+    assert "Telegram" in result.output
     assert not captured

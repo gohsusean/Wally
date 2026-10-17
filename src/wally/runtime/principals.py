@@ -48,8 +48,22 @@ class ChannelPolicy:
 # The local operator at the terminal is Sean. Both local channels may decide,
 # execute, and verify. A future remote channel registers its own, narrower policy.
 LOCAL_OPERATOR_CHANNELS: Mapping[str, ChannelPolicy] = {
-    "cli": ChannelPolicy(LOCAL_TERMINAL, frozenset(Capability)),
-    "repl": ChannelPolicy(LOCAL_TERMINAL, frozenset(Capability)),
+    "cli": ChannelPolicy(
+        LOCAL_TERMINAL,
+        frozenset(Capability)
+        - {
+            Capability.EXECUTE_PAYMENT,
+            Capability.VERIFY_PAYMENT,
+        },
+    ),
+    "repl": ChannelPolicy(
+        LOCAL_TERMINAL,
+        frozenset(Capability)
+        - {
+            Capability.EXECUTE_PAYMENT,
+            Capability.VERIFY_PAYMENT,
+        },
+    ),
 }
 
 

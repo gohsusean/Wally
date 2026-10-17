@@ -74,8 +74,12 @@ class TelegramEditConfirmation:
 
     method = "authenticated_private_telegram_exact_callback"
 
-    def __init__(self):
+    def __init__(
+        self, *, worker_channel=WORKER_CHANNEL, execution_capability=Capability.EXECUTE_NOTION_EDIT
+    ):
         self._binding: ContextVar[_Binding | None] = ContextVar("telegram_edit", default=None)
+        self.worker_channel = worker_channel
+        self.execution_capability = execution_capability
 
     @contextmanager
     def bind(self, binding: _Binding):
@@ -101,8 +105,8 @@ class TelegramEditConfirmation:
             and review.presentation == binding.decision
         )
         execution = (
-            review.channel == WORKER_CHANNEL
-            and review.purpose == Capability.EXECUTE_NOTION_EDIT
+            review.channel == self.worker_channel
+            and review.purpose == self.execution_capability
             and review.presentation in binding.executions
         )
         if not (decision or execution):

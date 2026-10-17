@@ -245,6 +245,8 @@ def create_app(
             dry_run=settings.dry_run,
         )
     if settings.ops_enabled:
+        from wally.finance.baseline import FinancialBaseline
+
         ops_store = OperationsStore(settings.ops_database)
         ops = ObserveBriefService(
             ops_store,
@@ -258,6 +260,7 @@ def create_app(
             display_timezone=settings.ops_timezone,
             finance_catalog=finance_catalog,
             authority=authority,
+            financial_attention=FinancialBaseline(ops_store).allows,
         )
         act = ActVerifyService(
             ops_store,

@@ -232,6 +232,28 @@ class PlaywrightBrowserAdapter:
         if page is not None:
             page.close()
 
+    def read_fields(self, session_id: str, selectors: dict[str, str]) -> dict[str, str]:
+        """Trusted deterministic adapters read selected fields, never the page body.
+
+        Callers must register selectors in reviewed code/config. This is not a
+        model-facing tool and must never be used to read credential input fields.
+        """
+        try:
+            return {
+                name: self._pages[session_id].inner_text(selector).strip()
+                for name, selector in selectors.items()
+            }
+        except Exception:
+            raise ProviderUnavailableError("browser", "Configured field read failed.") from None
+
+    def has_selector(self, session_id: str, selector: str) -> bool:
+        try:
+            return bool(selector and self._pages[session_id].locator(selector).is_visible())
+        except Exception:
+            raise ProviderUnavailableError(
+                "browser", "Configured challenge check failed."
+            ) from None
+
     def shutdown(self) -> None:
         for session_id in list(self._pages):
             self.close_session(session_id)

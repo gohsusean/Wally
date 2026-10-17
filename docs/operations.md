@@ -312,3 +312,13 @@ External Notion writers are not fenced by SQLite. Use the
 GET/PATCH races and uncertain-attempt recovery before production rollout. Never clear unresolved page claims
 or re-certify a record as an incidental retry. Hosted ChatGPT decisions remain
 hard-disabled pending D15; no public/tunneled approval endpoint is provided.
+
+
+## Supervised payment development (v0.19)
+
+See [the payment guide](supervised-payments.md) for the exact Telegram approval
+model, channel assessment, offline Chrome dry run, recovery and remaining live gates.
+The normal poller config registers no payment worker/provider. A trusted
+`payment_factory` is required; source prose, model calls and YAML flags cannot
+enable a generic live route. No service restart or live credential/payment check
+was performed for this delivery. The offline demo uses temporary state and no `.env`.

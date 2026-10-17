@@ -45,6 +45,7 @@ class ObserveBriefService:
         display_timezone: str | None = None,
         authority: PrincipalAuthority | None = None,
         finance_catalog=None,
+        financial_attention=None,
     ) -> None:
         self._store = store
         self._audit = audit
@@ -57,8 +58,10 @@ class ObserveBriefService:
         self._bills_role = bills_role
         self._display_tz = resolve_display_tz(display_timezone)
         self._observer = SourceObserver(store)
-        self._reconciler = MatterReconciler(store, preparation_hours=preparation_hours)
-        self._proposals = ProposalReconciler(store)
+        self._reconciler = MatterReconciler(
+            store, preparation_hours=preparation_hours, financial_attention=financial_attention
+        )
+        self._proposals = ProposalReconciler(store, financial_attention=financial_attention)
 
     @property
     def store(self) -> OperationsStore:

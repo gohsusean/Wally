@@ -53,9 +53,12 @@ def _link(matter: Matter, observation: Observation) -> Matter:
 
 
 class MatterReconciler:
-    def __init__(self, store: OperationsStore, *, preparation_hours: int = 48) -> None:
+    def __init__(
+        self, store: OperationsStore, *, preparation_hours: int = 48, financial_attention=None
+    ) -> None:
         self._store = store
         self._preparation_hours = preparation_hours
+        self._financial_attention = financial_attention
 
     def fingerprint_for(self, observation: Observation) -> str:
         if observation.category == ObservationCategory.RECEIPT:
@@ -64,6 +67,8 @@ class MatterReconciler:
         return self._matter_fingerprint(observation)
 
     def apply(self, observation: Observation, *, now: datetime | None = None) -> Matter | None:
+        if self._financial_attention and not self._financial_attention(observation):
+            return None
         current = _now(now)
         handler = {
             ObservationCategory.INVOICE: self._open_or_update_invoice,

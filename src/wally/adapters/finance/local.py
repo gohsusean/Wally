@@ -224,45 +224,10 @@ class LocalFinanceAdapter:
                 authorized=authorized,
             )
 
-        if self._workflow is None:
-            raise ProviderUnavailableError(
-                self.name,
-                "Workflow provider is not configured. Enable workflows for payments.",
-            )
-        resolved_parameters = dict(parameters or {})
-        injected_names: list[str] = []
-        secret_values: tuple[str, ...] = ()
-        if workflow_secret_refs(bill or {}) and self._secrets is None:
-            raise ProviderUnavailableError(
-                "finance", "Configured workflow credentials unavailable."
-            )
-        if self._secrets is not None:
-            from wally.runtime.secrets_safety import scrub_data
-
-            refs = workflow_secret_refs(bill or {})
-            injected_names = list(refs)
-            if refs:
-                resolved_parameters = self._secrets.inject_workflow_parameters(
-                    knowledge=bill or {},
-                    parameters=parameters,
-                    authorized=authorized,
-                )
-                secret_values = tuple(
-                    str(resolved_parameters[name])
-                    for name in injected_names
-                    if name in resolved_parameters
-                )
-        result = self._workflow.trigger(workflow, parameters=resolved_parameters)
-        return {
-            "workflow": result.workflow,
-            "status": result.status,
-            "response": scrub_data(result.response, secret_values)
-            if secret_values
-            else result.response,
-            "execution": "n8n",
-            "payment_method": payment_method,
-            "secret_parameter_names": injected_names,
-        }
+        raise ProviderUnavailableError(
+            "finance",
+            "Legacy payment dispatch is disabled. Use the exact Telegram payment workflow.",
+        )
 
     def resume_browser_payment(self, session_id: str) -> dict[str, object]:
         if self._browser_executor is None:
