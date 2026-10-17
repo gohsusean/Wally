@@ -44,6 +44,13 @@ Do not equate fixture coverage or configured providers with live deployment.
   results, command arguments, and reports. Use references; resolve action
   credentials only after authorization. Telegram startup authentication is a
   separate documented secret purpose, not proposal execution authorization.
+- Owner-approved exception (17 October 2026): statement-opening PDF passwords are
+  ordinary operational metadata and may be read from Bill Accounts' `PDF Pass`
+  field to unlock that account's statements. No SecretsProvider or hidden-input
+  ceremony is required for this purpose. This does not apply to banking login
+  credentials, PINs, OTPs, CVVs, full card numbers or transaction authorization.
+  See ADR-049 and `docs/secrets.md`; avoid copying PDF password values into Git or
+  reports when a reference to the Notion field suffices.
 - Preserve ignored runtime state, classifications, decisions, and audit history.
   Use additive schema evolution; never reset data or change live services,
   credentials, or integrations as an incidental development/test step.

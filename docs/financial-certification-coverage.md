@@ -1,5 +1,31 @@
 # v0.18.2 financial certification coverage — 12 October 2026
 
+**17 October follow-up:** the current Notion inventory is **56 live records**:
+15 providers, 20 accounts and 21 recurring bills, with **0 certified**. Both IWK
+account/bill pairs are now deleted in Notion; their four historical records remain
+in the catalog audit, whose total is 60. A newly created empty Bill Account is
+included in the live count and remains uncertified pending its intended scope.
+
+The current source assessment has **25 remaining primary/owner-evidence gaps**.
+Three additional card records have complete source evidence but still require
+local personal-subject/source setup before canonical review/certification. The
+existing raw catalog worklist combines unavailable/unregistered records with
+missing evidence; restricted `data/financial-certification/2026-10-17/assessed-coverage.json`
+separates current records, retained deletions and source-setup blockers.
+
+AmBank currentness and manual arrangement are owner-confirmed. The supplied Hong
+Leong September statement was reviewed, with issuer, safe last four and currency
+corrected and independently fetched. Its current payment arrangement and the
+settlement of the statement due 12 October remain unanswered; settlement is
+separate from recurring certification. The owner expects both cards in Wally's
+regular statement-to-approved-payment workflow. Statement-only PDF passwords are
+now operational metadata in Bill Accounts' existing `PDF Pass` field under
+[ADR-049](decisions.md#adr-049-statement-pdf-passwords-are-operational-metadata).
+AmBank opening through that field passed; the supplied Hong Leong copy needed no
+password. No certificate, scheduler or payment capability was enabled.
+
+The following report preserves the **12 October snapshot** and its original counts.
+
 The rollout is **incomplete**. A fresh, fully paginated Notion inventory and an
 independent runtime refresh contain **59 records: 15 Bill Providers, 21 Bill
 Accounts and 23 Recurring Bills**, including both new personal credit cards.

@@ -1966,3 +1966,49 @@ unchanged. GET/PATCH risk needs scope-specific owner acceptance before enablemen
 Primary-original verification remains pending. Staged proposals confer no authority;
 production policy stays empty with both gates disabled. No other channel gains
 execution, certification or payment authority.
+
+
+## ADR-049: Statement PDF passwords are operational metadata
+
+**Status:** Accepted by explicit owner instruction, 17 October 2026.
+
+### Context
+
+The owner uses password-protected email statements for credit cards and has added
+`PDF Pass` to the existing Bill Accounts database. Requiring the action-credential
+secret workflow for document opening caused repeated manual input during evidence
+review. The owner explicitly excludes statement-opening passwords from that
+classification and expects the normal Wally bill-payment workflow for both cards.
+
+### Decision
+
+A password used only to open a statement PDF is ordinary operational metadata.
+The approved account's existing `PDF Pass` field may supply it directly for that
+document review; no SecretsProvider pointer or extra hidden-input prompt is
+required. An already unlocked PDF needs no password. Reuse one source document
+across provider, account and recurring-obligation checks where it supplies the
+applicable evidence. Refer to the property instead of copying its value into Git
+or reports; retain hashes and safe/redacted evidence.
+
+This classification follows purpose, not a property label or document instruction.
+Banking logins, tokens, PINs, OTPs, CVVs and full card numbers retain their existing
+protections. `PDF Pass` cannot supply bank authentication, payment destinations,
+transaction authority or a financial certificate. It is not a canonical identity
+fact or material-identity fingerprint input. A password change alone is not a
+change to the recurring financial obligation.
+
+The intended workflow remains monthly statement receipt, document opening,
+evidence review, verified payment preparation, fresh owner authorization in the
+bank/provider and checked outcome. A statement, subscription confirmation or
+owner workflow preference is not evidence of an unpaid current balance or a
+completed payment. Preserve duplicate and uncertain-outcome safeguards.
+
+### Consequences
+
+Existing Notion properties and certification/proposal/capability architecture are
+reused. No new scheduler, remote capability, payment executor or unattended
+financial authorization is introduced. Local-owner certification and exact-version
+confirmation remain required. The initial rollout remains incomplete until the
+existing certification and personal-subject/source-designation steps are completed.
+This exception supports document intake; it does not establish deployed monthly
+end-to-end automation or begin v0.19.

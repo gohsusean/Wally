@@ -4,6 +4,28 @@
 
 Wally does not expose a `secrets_resolve` tool to the LLM. The runtime requests secrets only after approval-gated execution (`authorized=True`).
 
+## Statement-opening PDF passwords
+
+The owner reclassified passwords used only to open financial statement PDFs as
+ordinary operational metadata on 17 October 2026 ([ADR-049](decisions.md#adr-049-statement-pdf-passwords-are-operational-metadata)).
+Use the existing Bill Accounts `PDF Pass` text property for the corresponding
+account. Reading it to open that account's statement does not require a
+SecretsProvider reference, Keychain/1Password entry, or repeated hidden-input
+prompt. If the supplied PDF is already unlocked, no password is needed. A blank
+field blocks only an encrypted document that actually requires it.
+
+This exception is purpose-specific. A field name or PDF content cannot downgrade
+a banking login, session token, PIN, OTP, CVV or full card number into ordinary
+metadata. Never use `PDF Pass` to authenticate to a bank or authorize a payment.
+Statement contents remain restricted financial evidence; retain safe identifiers
+and redacted extractions. Refer to the field instead of copying its value into
+Git, routine reports or unrelated records. These are data-minimization practices,
+not a requirement to use the action-credential protection workflow for PDF access.
+
+Document access does not certify financial facts, establish an unpaid balance or
+authorize payment. Existing certification, recipient/current-amount verification,
+duplicate checks, owner bank/provider authorization and outcome checks still apply.
+
 The tracked MacBook profile enables secrets/browser providers; inspect the selected profile rather than assuming a disabled default. Legacy card-portal flows may fall back to manual login when refs are absent; canonical Act & Verify requires its configured refs/success conditions and fails preflight when missing. Notion metadata mapping remains unresolved (D03).
 
 ## 1Password CLI (`op_cli`)
