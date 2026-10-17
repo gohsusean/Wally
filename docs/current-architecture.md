@@ -1,5 +1,7 @@
 # Current Wally architecture
 
+**18 October, ADR-050:** reliable retained evidence certifies financial identity without a separate owner prompt or attestations. Records certify independently; temporary source failure preserves verification while operational use stays blocked. Payment, portal and execution authorization are unchanged. Older ADR-044 identity-confirmation descriptions below are superseded.
+
 **Status:** Current implementation reference, checked against `ce47fcd` during
 the 5 October 2026 handover audit. Documentation updated 6 October 2026.
 The D01/D02 stabilization updates the legacy finance boundary under ADR-043.

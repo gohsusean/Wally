@@ -9,58 +9,47 @@ are certification prerequisites and reported separately.
 
 ## Reusable operator workflow
 
-1. Refresh directly from the designated Notion sources with `wally finance coverage`.
-   This uses complete pagination and the existing classification, mapping,
-   duplicate and dependency checks. A source failure reports an explicit inventory
-   exception; the displayed known-record count is not a full inventory in that case.
-   A new row is provisional or needs attention, never implicitly certified.
-2. Reuse valid certificates and primary evidence. Collect evidence references and
-   hashes for remaining records, compare applicable fields, and make a restricted
-   JSON worklist keyed by canonical `fin_…` ID. Each entry contains exactly:
-   `fingerprint`, `evidence`, `checks`, `discrepancies`, `owner_decisions`.
-   `checks` maps each reviewed field to a nonempty list of zero-based evidence
-   indices. The coverage output lists `missing_checks`. Discrepancies and owner
-   decisions are field names, not copied document contents or model authority.
-   Evidence has the existing `source`, `reference`, `content_hash`, `kind` shape.
-   Hash the retained document bytes, or explicitly identify a complete extracted
-   representation and hash those exact bytes. Partial extraction, a notification,
-   a receipt or a configured provider is insufficient for missing obligation facts.
-3. Run `wally finance coverage --reviews <restricted-worklist.json>`. The report
-   separates certified primary evidence, reviewed-but-uncertified, missing evidence
-   and unresolved discrepancies. A partial field review still reports missing
-   evidence. A stale worklist cannot prepare certification. It is an advisory
-   artifact, not another certificate or privileged Notion property.
-4. Correct ordinary metadata using the authenticated owner's Notion connection;
-   independently fetch the resulting records. Reconcile/refresh Wally afterward.
-   Governance and pending/unclassified records remain protected. Telegram's
-   optional scoped metadata executor can only handle its registered properties;
-   it cannot certify financial facts. Do not expand its grant for this rollout.
-5. Prepare the normal proof containing only `evidence` and the three explicit
-   owner attestations documented in [finance-catalog.md](finance-catalog.md).
-   Certify prerequisites first, then providers/accounts/definitions using
-   `wally finance certify <fin-ID> --proof <proof.json> --reviews <worklist.json>`.
-   This calls the existing certification service. It requires complete field
-   review with no unresolved decisions, identical proof evidence, a matching
-   current fingerprint, authenticated terminal authority and fresh owner
-   confirmation. The service rereads sources and dependencies after the prompt.
-   The worklist never supplies attestations automatically or authenticates itself.
-6. Refresh coverage again. Do not declare completion with an uncertified row,
-   missing evidence or an incomplete-source exception. Certification does not
-   perform chain enablement, instance intake or a transaction.
+The definitive policy is [ADR-050](decisions.md#adr-050-financial-certification-follows-reliable-evidence).
+Reliable evidence reasonably verifying a record's material details IS certification.
+No separate owner confirmation, attestation or approval is required.
+
+1. Run `wally finance coverage --reviews <retained-field-reviews.json>` against the
+   existing approved sources. Reuse the exact-version field-to-evidence reviews
+   and retained source hashes. Complete, noncontradictory reviews automatically
+   persist the existing identity certificates; incomplete ones remain uncertified.
+   No proof template or simulated human confirmation is needed.
+2. Compare applicable identity, scope, recurrence and amount/due/evidence policies.
+   Use documents for the material fields they actually establish, including
+   reliable relevant fields in a partial extraction. A truncation warning does not
+   negate visible facts; it cannot supply fields that are absent. Receipts may
+   establish identifiers without proving an issued bill, deadline or current
+   settlement. Correct ordinary metadata through the owner's existing Notion
+   connection and independently read back any change before refreshing reviews.
+3. Certify each record independently of unrelated missing evidence or another
+   record's certificate. Preserve historical evidence and certificates on failed
+   retrieval; block operational use until fresh required sources are available.
+   Actual material revisions, contradictions and changed evidence require a new
+   evidence comparison. Consolidate genuine gaps by source document and ask only
+   for missing evidence or genuine decisions. Report actual counts and exceptions.
+
+Certificate persistence grants no principal, execution, verification, payment or
+portal capability. Existing classification, source designation, operational
+namespace/dependency checks, chain enablement, portal acceptance and fresh action
+authorization remain separate. The legacy explicit certification entry point is
+compatible but is not a required identity step.
 
 ## Personal obligations and direct Notion edits
 
 Keep the existing provider → subject → account → definition → instance model.
-Create/certify the personal subject through existing local `finance intake entity`
-with a restricted `entity_key`; no new Notion entity database is required. A
-reviewed account source may make its existing property relation optional and add
+The two already evidenced personal cards use the existing local personal subject
+and exact page bindings; no new Notion entity database is required. A
+reviewed account source may add
 `personal_subjects`, an exact Notion page UUID → local canonical entity ID map.
-The core checks that the entity actually exists and is local-owner intake.
+The core checks that the entity actually exists and is the local personal subject.
 Only those explicit pages with a completely readable empty property relation
-become personal accounts. Other missing properties remain unresolved scope. An
+become personal accounts; the property relation stays required for other pages. Other missing properties remain unresolved scope. An
 added property contradicts the personal binding and invalidates it; failed reads
-and multi-relations cannot select the exception. Re-designate changed source
-mappings through the existing fresh terminal confirmation.
+and multi-relations cannot select the exception. Broader source-access and portal changes retain their separate authorization rules.
 
 Material typed edits already revise the candidate and permanently invalidate
 certification, including direct Notion edits and later reversions. To observe
@@ -92,7 +81,7 @@ the existing `Active = false` exclusion for these tenant water definitions befor
 any owner-obligation activation. Do not treat a display flag alone as an execution
 gate. Re-read both fields after edits and refresh the existing catalog; compare
 material revisions and rebind field reviews only after independently checking the
-changed scope. Certification still requires the existing local-owner procedure.
+changed scope. Certification follows the same retained-evidence policy.
 
 Never pay a mixed statement's headline balance without allocating charge lines.
 The owner confirms management-water-related fees and attributable late interest

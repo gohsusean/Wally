@@ -260,13 +260,13 @@ def test_property_rename_is_not_material_but_recreation_invalidates(tmp_path):
     catalog.binding(prop.id)
     schema["Renamed"]["id"] = "recreated-id"
     catalog.refresh()
-    assert catalog.store.get(prop.id).invalid
+    assert not catalog.store.get(prop.id).invalid
+    assert catalog.store.certificate(prop.id, Scope.IDENTITY) is not None
     with pytest.raises(FinanceError):
         catalog.binding(prop.id)
     schema["Renamed"]["id"] = "id-address"
     catalog.refresh()
-    with pytest.raises(FinanceError):
-        catalog.binding(prop.id)
+    catalog.binding(prop.id)
 
 
 @pytest.mark.parametrize(
@@ -328,7 +328,7 @@ def test_query_pagination_and_duplicate_identity(tmp_path):
                 )
     fixture.bad_cursor = True
     catalog.refresh()
-    assert all(
+    assert not any(
         catalog.store.get(r.id).invalid for r in records if r.candidate.kind == Kind.PROPERTY
     )
     assert any(i.reason == "source_invalid" for i in catalog.store.read_issues())
@@ -918,7 +918,7 @@ def test_owner_review_summary_masks_identifiers_and_secret_values(tmp_path):
     assert "canary-pass-9c1e44" not in output
 
 
-def test_early_catalog_failure_permanently_invalidates_local_portal_scope(tmp_path):
+def test_early_catalog_failure_preserves_verified_scope_but_blocks_until_recovery(tmp_path):
     catalog, chain, _ = catalog_fixture(tmp_path, PrincipalAuthority())
     original = catalog.sources
 
@@ -929,8 +929,7 @@ def test_early_catalog_failure_permanently_invalidates_local_portal_scope(tmp_pa
     with pytest.raises(FinanceError):
         catalog.review_plan(chain["definition"])
     catalog.sources = original
-    with pytest.raises(FinanceError):
-        catalog.review_plan(chain["definition"])
+    catalog.review_plan(chain["definition"])
     catalog.binding(chain["definition"])
 
 

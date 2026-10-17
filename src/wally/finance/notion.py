@@ -7,7 +7,7 @@ certifies rows and never interprets titles, prose, formulas or Runtime Action.
 from __future__ import annotations
 
 from contextlib import suppress
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from typing import Any
 from urllib.parse import quote, unquote
 from uuid import UUID
@@ -29,6 +29,10 @@ from wally.finance.models import (
 
 VERSION = "2025-09-03"
 SUPPORTED = {"rich_text", "checkbox", "select", "multi_select", "date", "number", "url", "relation"}
+
+
+class SourceUnavailable(FinanceError):
+    """A failed retrieval supplies no contradictory financial facts."""
 
 
 def notion_id(value: object) -> str:
@@ -90,11 +94,10 @@ class SourceMapping:
             if (
                 self.kind != Kind.ACCOUNT
                 or "subject" not in self.fields
-                or not self.fields["subject"].optional
                 or self.constants.get("subject_kind") != "property"
                 or not isinstance(self.personal_subjects, dict)
             ):
-                raise FinanceError("Personal exceptions require an optional property relation.")
+                raise FinanceError("Personal exceptions require an explicit property relation.")
             for page, subject in self.personal_subjects.items():
                 if (
                     notion_id(page) != page
@@ -160,7 +163,7 @@ class NotionFinanceReader:
             return result
         except (httpx.HTTPError, ValueError, TypeError):
             # Do not include URLs, credentials, identifiers, response bodies or exceptions.
-            raise FinanceError("Finance source unavailable or malformed.") from None
+            raise SourceUnavailable("Finance source unavailable or malformed.") from None
 
     def schema(self, source: SourceMapping) -> dict:
         source.validate()
@@ -286,12 +289,16 @@ class NotionFinanceReader:
                 issues.append(ReadIssue(source.kind, source.key, reason="source_invalid"))
         raw_rows = {}
         invalid: set[str] = set()
+        unavailable_pages: set[str] = set()
         for page_id, (source, page) in pages.items():
             raw = dict(source.constants)
             if source.kind == Kind.PROPERTY and "unit" not in source.fields:
                 raw.setdefault("unit", "")
             for name, mapping in source.fields.items():
                 try:
+                    if name == "subject" and page_id in source.personal_subjects:
+                        # Only explicitly bound personal pages may have no property.
+                        mapping = replace(mapping, optional=True)
                     value = self.value(page, mapping)
                     if mapping.type == "relation" and value:
                         if value not in pages:
@@ -307,12 +314,17 @@ class NotionFinanceReader:
                             self.check_page(fetched, target_source)
                             if notion_id(fetched.get("id")) != value:
                                 raise FinanceError("Relation response identity changed.")
-                        except (FinanceError, TypeError, AttributeError, KeyError):
+                        except (FinanceError, TypeError, AttributeError, KeyError) as error:
                             invalid.add(value)
+                            if isinstance(error, SourceUnavailable):
+                                unavailable_pages.add(value)
+                                raise
                             raise FinanceError("Relation target unavailable.") from None
                     else:
                         raw[name] = value
-                except (FinanceError, TypeError, AttributeError, KeyError):
+                except (FinanceError, TypeError, AttributeError, KeyError) as error:
+                    if isinstance(error, SourceUnavailable):
+                        unavailable_pages.add(page_id)
                     # Independently readable identity fields survive other failures.
                     # Complete multi-relations are invalid facts, but their full
                     # possibility set can prove disjointness from a third chain.
@@ -389,6 +401,7 @@ class NotionFinanceReader:
                         source.key,
                         locator,
                         identity_constraints(source.kind, identity_raw),
+                        "source_unavailable" if page_id in unavailable_pages else "record_invalid",
                     )
                 )
                 continue

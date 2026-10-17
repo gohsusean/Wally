@@ -20,7 +20,7 @@ def review(item, store):
     }
 
 
-def test_coverage_never_certifies_and_reuses_existing_evidence(tmp_path):
+def test_missing_retained_file_cannot_certify_and_existing_evidence_is_reused(tmp_path):
     fixture = NotionFixture()
     catalog = fixture.catalog(tmp_path)
     catalog.refresh()
@@ -145,7 +145,10 @@ def test_card_requires_safe_identifier_and_statement_defined_configuration():
         parse_facts(Kind.DEFINITION, {**raw, "statement_balance": "50.00"})
 
 
-def test_explicit_personal_exception_reuses_entity_and_never_infers_missing_property(tmp_path):
+@pytest.mark.parametrize("optional", [False, True])
+def test_explicit_personal_exception_reuses_entity_and_never_infers_missing_property(
+    tmp_path, optional
+):
     fixture = NotionFixture()
     catalog = fixture.catalog(tmp_path)
     catalog.refresh()
@@ -163,7 +166,7 @@ def test_explicit_personal_exception_reuses_entity_and_never_infers_missing_prop
         source,
         fields={
             **{k: v for k, v in source.fields.items() if k != "subject_kind"},
-            "subject": replace(source.fields["subject"], optional=True),
+            "subject": replace(source.fields["subject"], optional=optional),
         },
         constants={"subject_kind": "property"},
         personal_subjects={page["id"]: entity.id},

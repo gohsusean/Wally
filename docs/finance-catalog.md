@@ -1,5 +1,7 @@
 # Certified financial catalog (D03)
 
+**Current identity policy — [ADR-050](decisions.md#adr-050-financial-certification-follows-reliable-evidence):** `finance coverage --reviews <file>` automatically certifies complete retained evidence reviews. No owner attestations or extra confirmation are required. The local-owner confirmation descriptions below remain legacy compatibility/portal procedures, not identity prerequisites. Failed reads retain valid certificates; fresh sources and existing action authorization remain mandatory for operational use.
+
 Implemented 6 October 2026 under [ADR-044](decisions.md#adr-044-certified-financial-identities-and-local-owner-certification).
 Code/fixture validation is complete separately from live readiness. No existing
 Notion row is certified or enabled by this milestone. The next operator exercise

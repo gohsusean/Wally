@@ -1,7 +1,8 @@
-"""Evidence review worklists over the existing catalog; never certification authority.
+"""Evidence reviews over the existing catalog (ADR-050).
 
 A review is a field-to-primary-evidence index, bound to an exact candidate. It
-contains no copied facts or document text. Only FinanceService.certify can certify.
+contains no copied facts or document text. Complete retained evidence certifies
+through the existing FinanceService and certificate storage, never payment authority.
 """
 
 from __future__ import annotations
@@ -99,12 +100,29 @@ def validate_review(record: Record, store, review: dict) -> dict:
 
 
 def coverage(catalog, reviews: dict | None = None) -> dict:
-    """Refresh first; retain invalid/unreadable rows and source-level exceptions.
+    """Refresh and certify complete retained evidence reviews (ADR-050).
 
-    Reviews are advisory. A complete checklist is still uncertified until the
-    existing authenticated owner service creates a current identity certificate.
+    Field evidence is the certification; no separate owner approval is required.
+    Failed source reads remain explicit and never grant operational readiness.
     """
-    return summarize_coverage(catalog.status(), catalog.store, reviews)
+    statuses = catalog.status()
+    if reviews:
+        for record in catalog.store.records():
+            if record.id not in reviews or record.candidate.kind not in CHECKS:
+                continue
+            try:
+                catalog.certify_evidence(record, reviews[record.id])
+            except FinanceError:
+                continue
+    for status in statuses:
+        if "id" in status:
+            try:
+                catalog._certificate(catalog.store.get(status["id"]), Scope.IDENTITY)
+                status["state"] = "certified"
+            except FinanceError:
+                if status["state"] == "certified":
+                    status["state"] = "needs_attention"
+    return summarize_coverage(statuses, catalog.store, reviews)
 
 
 def summarize_coverage(statuses: list[dict], store, reviews: dict | None = None) -> dict:

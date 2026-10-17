@@ -1,4 +1,77 @@
-# v0.18.2 financial certification coverage — 12 October 2026
+# v0.18.2 financial certification coverage — 18 October 2026
+
+**55 live records: 47 certified; 8 genuinely require more evidence.** All 15
+providers, 15 of 19 accounts and 17 of 21 recurring bills are certified against
+retained reliable evidence. This includes both personal credit cards and Arkadia
+maintenance. Five evidenced property prerequisites and the personal subject are
+also certified, outside the 55-record denominator. Four deleted IWK records and
+all old certificates/audit history are retained separately.
+
+Under [ADR-050](decisions.md#adr-050-financial-certification-follows-reliable-evidence),
+reliable evidence reasonably verifying material facts IS certification. There is
+no separate owner attestation, terminal confirmation or dependency-certification
+requirement. The existing coverage review and certificate tables are reused.
+Complete retained field reviews now persist certification automatically. Failed
+source retrieval preserves valid verification; observed material changes,
+contradictions and changed evidence invalidate affected verification. Financial
+execution still requires fresh source/chain checks and all existing authorization.
+
+## Remaining evidence: one document per property
+
+- **Sentral Suites — DBKL assessment account and recurring bill:** primary
+  assessment bill showing the account, property and bill/due rules. The retained
+  Pay@KL receipt identifies an assessment account but lacks the property address
+  and issued-bill rules.
+- **Plaza Arkadia — DBKL assessment account and recurring bill:** the same fields
+  on one issued assessment bill. Its Pay@KL receipts are retained; Arkadia's
+  parcel-rent bill verifies a different obligation and cannot substitute for DBKL.
+- **110 Mansions — DBKL assessment account and recurring bill:** one issued
+  assessment bill tying its configured account to this property and bill/due rules.
+  No usable bill was located in the connected-source searches.
+- **Tropicana Gardens — MBPJ assessment account and recurring bill:** one issued
+  assessment bill or complete issuer account statement showing the account,
+  property and bill/due rules. The official MBPJ issuer identity is certified
+  independently from its [public portal](https://epay.mbpj.gov.my/auth/login/).
+  The owner reports paying on 17 October, but the promised receipt was not attached
+  and is absent from connected Gmail. That receipt would verify the payment facts;
+  it only substitutes for the bill where it actually supplies the missing fields.
+
+No owner confirmation of already documented facts is requested. These four
+property-specific documents cover all eight remaining records. Current balances,
+actual payments and refunds remain separate from recurring certification.
+
+## Evidence reused and verification
+
+The complete Air Selangor original was recovered from its existing email. Relevant
+account/due fields in the retained Sentral/Mansions parcel-rent extracts were
+usable despite a connector truncation warning. Arkadia's original scanned parcel-
+rent bill was retrieved and visually reviewed. Existing owner-to-bank account
+references, bank correspondence and current annual insurance certificates support
+certificate/refund **administration only**, not premiums or completed refunds.
+No replacement evidence or new owner attestations were fabricated.
+
+Private per-record reviews, source hashes, reasons, current certificates and
+remaining gaps are in ignored `data/financial-certification/2026-10-18/`. A pre-
+policy database backup preserves the old history. An independent live inventory
+confirmed 15 providers, 19 accounts and 21 definitions. Existing personal-subject
+bindings are restricted to the two named card pages; property remains required
+for all other accounts. PDF passwords, full card numbers and banking credentials
+were not exposed or committed.
+
+Certification does not enable chains, portals, payments, schedules or v0.19. The
+rollout is **incomplete while these eight records lack evidence**.
+
+Validation: the exact staged implementation passed 826 isolated tests and two
+reviewed local socket tests; the shared checkout passed 850 isolated tests. Ruff,
+documentation links/fences, retained evidence hashes and independent certificate
+counts passed. Existing chain/portal enablement and execution state is unchanged.
+
+The following older reports are historical and their separate-confirmation policy
+is superseded.
+
+---
+
+# Historical certification coverage — 12/17 October 2026
 
 **17 October follow-up:** the current Notion inventory is **55 live records**:
 15 providers, 19 accounts and 21 recurring bills, with **0 certified**. Both IWK

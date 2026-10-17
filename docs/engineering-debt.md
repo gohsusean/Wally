@@ -1,5 +1,7 @@
 # Active engineering debt and deployment gaps
 
+**18 October financial policy update:** [ADR-050](decisions.md#adr-050-financial-certification-follows-reliable-evidence) supersedes D03's separate identity-certification prompt/attestations. Evidence certifies records independently; unavailable sources block use without destroying valid verification. Payment/portal authorization is unchanged.
+
 **Status:** Open findings from the 5 October 2026 audit of `ce47fcd`, recorded
 6 October 2026. D01/D02 and D04 are resolved in code by the focused stabilizations below;
 the other findings remain open. Priority expresses impact, not proof that harm occurred.

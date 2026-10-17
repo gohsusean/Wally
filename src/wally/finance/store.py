@@ -315,6 +315,12 @@ class FinanceStore:
             ).fetchone()
         return row is not None and row[0] == manifest
 
+    def revoke_source(self, key: str) -> None:
+        """Observed governance/authority loss revokes access, not documentary facts."""
+        with self.connect() as c:
+            if c.execute("DELETE FROM finance_sources WHERE source_key=?", (key,)).rowcount:
+                self._event(c, key, "source_authority_lost", {})
+
     def invalidate_scope(
         self, object_id: str, scope: Scope, event: str, provenance: dict | None = None
     ):

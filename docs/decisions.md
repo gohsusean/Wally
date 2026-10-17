@@ -2012,3 +2012,40 @@ confirmation remain required. The initial rollout remains incomplete until the
 existing certification and personal-subject/source-designation steps are completed.
 This exception supports document intake; it does not establish deployed monthly
 end-to-end automation or begin v0.19.
+
+---
+
+## ADR-050: Financial certification follows reliable evidence
+
+**Status:** Accepted by definitive owner instruction, 18 October 2026. Supersedes
+ADR-044's separate identity-certification confirmation/attestation requirement and
+permanent revocation caused solely by failed source retrieval. Payment and portal
+execution authorization is unchanged.
+
+Reliable retained evidence reasonably verifying a record's material details is
+its identity certification. The existing field-to-evidence review, exact material
+fingerprint, retained source hashes and certificate tables are reused. Coverage
+persists complete reviews without owner attestations, a terminal prompt or a new
+principal capability. Records certify independently of other records' certificates.
+Evidence assertions remain reviewable data, not payment or remote execution authority.
+No new approval workflow, Notion status property or certificate model is introduced.
+
+Temporary read unavailability preserves prior verification and history. Actual
+material edits, contradictory identities, deletion observed in a complete source
+read and changed retained evidence invalidate the affected verification. Operational
+use still requires fresh source/namespace checks, certified dependency chains,
+explicit chain/portal enablement and existing execution-time human authorization.
+An unavailable source blocks operational use without erasing documentary knowledge.
+
+The two already evidenced personal cards may use the existing explicit page-to-
+subject exception. The property relation remains required for every other account;
+only the two named card pages accept a completely readable empty relation. This
+source adjustment and local personal identity carry no credential, portal, payment,
+principal or execution grant. Classifications and governance protections remain.
+Material Notion edits remain fingerprinted; an unseen/reverted edit between reads
+is not detectable. PDF Pass remains outside identity certification under ADR-049.
+
+The legacy explicit certification entry point remains compatible for existing
+callers; it is not a required identity step. Portal certification, enablement,
+local occurrence intake, payments and outcome verification retain their existing
+separate protections. No v0.19 work is authorized by this decision.

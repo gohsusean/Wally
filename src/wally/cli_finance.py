@@ -14,7 +14,7 @@ def add_parser(sub):
     parser = sub.add_parser("finance", help="Local-owner financial catalog/certification")
     commands = parser.add_subparsers(dest="finance_command", required=True)
     commands.add_parser("status", help="Read candidate IDs, versions and readiness")
-    coverage = commands.add_parser("coverage", help="Refresh baseline coverage; never certifies")
+    coverage = commands.add_parser("coverage", help="Refresh and certify complete evidence reviews")
     coverage.add_argument("--reviews", type=Path, help="Exact-version field evidence worklist")
     designate = commands.add_parser("designate", help="Confirm a reviewed source mapping")
     designate.add_argument("source_key")

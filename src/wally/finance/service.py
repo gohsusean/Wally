@@ -1,7 +1,7 @@
-"""Local-owner certification and the sole trusted financial projection.
+"""Evidence certification and the sole trusted financial projection.
 
 Candidates, certificates and provenance are data. Only the runtime authority and
-fresh owner approval permit certification; no model-facing tool calls this service.
+fresh owner approval permit financial actions. Evidence review grants no action authority.
 """
 
 from __future__ import annotations
@@ -96,8 +96,10 @@ class FinanceService:
             or record.classification != KnowledgeClass.OPERATIONAL
             or not record.approved_by
             or record.role != "finance"
-            or not self.store.designated(source.key, source.fingerprint)
         ):
+            self.store.revoke_source(source.key)
+            raise FinanceError("Finance source authority is unavailable.")
+        if not self.store.designated(source.key, source.fingerprint):
             raise FinanceError("Finance source is not approved, designated and mapped.")
 
     def designate(self, source_key: str, *, context: RequestContext) -> None:
@@ -230,8 +232,25 @@ class FinanceService:
                 canonical[candidate.locator.key] = record.id
                 records.append(record)
             seen = set(canonical)
+            unavailable = {
+                issue.source
+                for issue in issues
+                if issue.locator is None or issue.reason == "source_unavailable"
+            }
             for old in previous:
                 if old.candidate.locator.key not in seen:
+                    source_key = (
+                        f"notion:{old.candidate.locator.database}:"
+                        f"{old.candidate.locator.data_source}"
+                    )
+                    if source_key in unavailable or (
+                        unavailable
+                        and any(
+                            issue.locator == old.candidate.locator
+                            for issue in issues
+                        )
+                    ):
+                        continue
                     self.store.invalidate(old.id, "source_missing")
             self.store.set_read_issues(issues)
             # Newly observed ambiguity or unavailable dependencies permanently
@@ -243,13 +262,19 @@ class FinanceService:
                             self._certificate(record, scope)
             return records
         except Exception:
-            for old in previous:
-                self.store.invalidate(old.id, "source_incomplete")
-            for record in self.store.records():
-                if record.candidate.kind == Kind.DEFINITION:
-                    self.store.invalidate_scope(
-                        record.id, Scope.PORTAL_REVIEW, "catalog_contract_invalid"
-                    )
+            # A failed read is not evidence that previously verified facts changed.
+            # Operational callers still fail closed on this exception.
+            unavailable = {
+                (
+                    r.candidate.kind,
+                    f"notion:{r.candidate.locator.database}:"
+                    f"{r.candidate.locator.data_source}",
+                )
+                for r in previous
+            }
+            self.store.set_read_issues(
+                [ReadIssue(kind, key, reason="source_invalid") for kind, key in unavailable]
+            )
             raise FinanceError("Finance catalog incomplete or source contract invalid.") from None
 
     def _resolve(
@@ -388,11 +413,37 @@ class FinanceService:
     def _certificate(
         self, record: Record, scope: Scope, visited: frozenset[str] = frozenset()
     ) -> dict:
+        certificate = self.store.certificate(record.id, scope)
+        if certificate and certificate["provenance"].get("policy") == "ADR-050":
+            current = self.store.get(record.id)
+            if current != record:
+                raise FinanceError("Financial facts changed during verification.")
+            deps = {
+                dep: self.store.get(dep).candidate.fingerprint
+                for dep in dependencies(record.candidate.facts)
+            }
+            if (
+                current.invalid
+                or certificate["version"] != current.version
+                or certificate["fingerprint"] != current.candidate.fingerprint
+                or certificate["schema_version"] != SCHEMA_VERSION
+                or certificate["dependencies"] != deps
+                or self.store.duplicates(current)
+            ):
+                self.store.invalidate_scope(record.id, scope, "material_evidence_changed")
+                raise FinanceError("Verified financial facts changed or conflict.")
+            return certificate
         try:
             self._base(record)
         except FinanceError:
-            self.store.invalidate_scope(record.id, Scope.IDENTITY, "record_contract_invalid")
-            self.store.invalidate_scope(record.id, Scope.PORTAL_REVIEW, "record_contract_invalid")
+            if not any(
+                i.locator is None or i.reason == "source_unavailable"
+                for i in self.store.read_issues()
+            ):
+                self.store.invalidate_scope(record.id, Scope.IDENTITY, "record_contract_invalid")
+                self.store.invalidate_scope(
+                    record.id, Scope.PORTAL_REVIEW, "record_contract_invalid"
+                )
             raise
         certificate = self.store.certificate(record.id, scope)
         if (
@@ -404,7 +455,11 @@ class FinanceService:
         try:
             current_dependencies = self._deps(record, scope, visited)
         except FinanceError:
-            self.store.invalidate_scope(record.id, scope, "dependency_unavailable")
+            if not any(
+                i.locator is None or i.reason == "source_unavailable"
+                for i in self.store.read_issues()
+            ):
+                self.store.invalidate_scope(record.id, scope, "dependency_unavailable")
             raise
         if (
             certificate["schema_version"] != SCHEMA_VERSION
@@ -416,7 +471,14 @@ class FinanceService:
 
     def binding(self, object_id: str, scope: Scope = Scope.IDENTITY) -> str:
         record = self.store.get(object_id)
+        self._base(record)
+        operational_deps = {
+            dep: self.binding(dep) for dep in dependencies(record.candidate.facts)
+        }
         cert = self._certificate(record, scope)
+        if cert["provenance"].get("policy") == "ADR-050":
+            # Independent evidence certification is not operational readiness.
+            return digest((record.id, record.version, cert["id"], operational_deps))
         return digest(
             (
                 record.id,
@@ -425,6 +487,58 @@ class FinanceService:
                 cert["id"],
                 cert["dependencies"],
             )
+        )
+
+    def certify_evidence(self, record: Record, review: dict) -> str:
+        """Persist the existing certificate as the result of a complete evidence review.
+
+        No owner attestation, principal grant, dependency certification or approval.
+        Called by coverage after refresh, never by a remote action adapter.
+        """
+        import hashlib
+        from pathlib import Path
+
+        from wally.finance.coverage import validate_review
+
+        if self.dry_run or record.invalid or self.store.duplicates(record):
+            raise FinanceError("Financial facts conflict or persistence is disabled.")
+        if record.candidate.locator.system == "notion":
+            source_key = (
+                f"notion:{record.candidate.locator.database}:"
+                f"{record.candidate.locator.data_source}"
+            )
+            matches = [s for s in self.sources() if s.key == source_key]
+            if len(matches) != 1:
+                raise FinanceError("Missing financial source contract.")
+            self._source_gate(matches[0])
+        checked = validate_review(record, self.store, review)
+        if checked["missing_checks"] or checked["discrepancies"] or checked["owner_decisions"]:
+            raise FinanceError("Material evidence is incomplete or contradictory.")
+        for evidence in checked["evidence"]:
+            try:
+                content_hash = hashlib.sha256(Path(evidence["reference"]).read_bytes()).hexdigest()
+            except OSError:
+                raise FinanceError("Retained evidence is unavailable.") from None
+            if content_hash != evidence["content_hash"]:
+                self.store.invalidate_scope(record.id, Scope.IDENTITY, "evidence_changed")
+                raise FinanceError("Retained evidence changed.")
+        current = self.store.certificate(record.id, Scope.IDENTITY)
+        if (
+            current
+            and current["provenance"].get("policy") == "ADR-050"
+            and current["fingerprint"] == record.candidate.fingerprint
+        ):
+            return self._certificate(record, Scope.IDENTITY)["id"]
+        deps = {
+            dep: self.store.get(dep).candidate.fingerprint
+            for dep in dependencies(record.candidate.facts)
+        }
+        return self.store.certify(
+            record, Scope.IDENTITY, deps, checked["evidence"], {},
+            {
+                "policy": "ADR-050", "source": "retained_evidence_review",
+                "review_fingerprint": digest(review),
+            },
         )
 
     def certify(

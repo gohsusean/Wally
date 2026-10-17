@@ -57,6 +57,14 @@ Do not equate fixture coverage or configured providers with live deployment.
 - Application prompts/config can change behavior even when written in Markdown
   or YAML. Treat them as application changes, not documentation-only edits.
 
+## Financial certification policy (18 October 2026)
+
+Reliable evidence reasonably verifying material details IS identity certification
+(ADR-050). Do not require separate owner attestations, a terminal confirmation or
+certification of unrelated records. Reuse retained evidence; preserve valid
+certificates across failed retrieval. Actual changed/contradictory facts require
+reassessment. Certification never authorizes a payment or weakens action gates.
+
 ## Safe verification with the existing environment
 
 Do not install/sync dependencies or start live providers merely to check docs.

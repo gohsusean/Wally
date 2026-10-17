@@ -1,8 +1,92 @@
-# D03 is opt-in. Add reviewed mappings with stable property IDs after schema preview.
-# Configuration alone grants neither source designation nor record certification.
+# Owner-approved Notion financial catalog ingestion only.
+# Source designation grants no record certification or financial actions.
 schema_version: 1
-sources: []
+sources:
+- database_id: 3884d585-1c89-80a9-86ac-df6dbda38ba8
+  data_source_id: 3884d585-1c89-802f-8e3e-000bc982425f
+  kind: property
+  role: finance
+  fields:
+    address:
+      property_id: SkR%5B
+      type: rich_text
+    unit:
+      property_id: '%5ERGT'
+      type: rich_text
+      optional: true
+- database_id: 3904d585-1c89-802c-9915-cdc6e018de78
+  data_source_id: 3904d585-1c89-80ff-b151-000be6c5d278
+  kind: provider
+  role: finance
+  fields:
+    issuer:
+      property_id: v%3Ako
+      type: rich_text
+- database_id: 3884d585-1c89-803a-8164-fe2dda19333e
+  data_source_id: 3884d585-1c89-806f-8820-000babad80b8
+  kind: account
+  role: finance
+  fields:
+    provider:
+      property_id: '%7CW%5Bz'
+      type: relation
+      target_data_source: 3904d585-1c89-80ff-b151-000be6c5d278
+    subject:
+      property_id: ~pbY
+      type: relation
+      target_data_source: 3884d585-1c89-802f-8e3e-000bc982425f
+    identifier:
+      property_id: '%5E%3EnB'
+      type: rich_text
+    namespace:
+      property_id: YTUf
+      type: rich_text
+    responsibility:
+      property_id: ~%5BR%7C
+      type: select
+  constants:
+    subject_kind: property
+  personal_subjects:
+    3f64d585-1c89-800f-b57d-e0539b3fe931: fin_a3412d1f0ac04598bf2ed6fe095c0adf
+    3f64d585-1c89-802c-bf7b-fd34eea8132b: fin_a3412d1f0ac04598bf2ed6fe095c0adf
+- database_id: 3884d585-1c89-80e8-ac22-d484cd9d9606
+  data_source_id: 3884d585-1c89-8029-9974-000bb244b0e0
+  kind: definition
+  role: finance
+  fields:
+    account:
+      property_id: O%3FFf
+      type: relation
+      target_data_source: 3884d585-1c89-806f-8820-000babad80b8
+    redundant_property:
+      property_id: mRC%60
+      type: relation
+      target_data_source: 3884d585-1c89-802f-8e3e-000bc982425f
+      optional: true
+    active:
+      property_id: wanr
+      type: checkbox
+    charge_key:
+      property_id: iitb
+      type: rich_text
+    obligation_type:
+      property_id: IhF~
+      type: rich_text
+    currency:
+      property_id: '%3EZKb'
+      type: select
+    amount_policy:
+      property_id: a%40%5CU
+      type: select
+    frequency:
+      property_id: WQFT
+      type: select
+    evidence_mode:
+      property_id: '%5BfpW'
+      type: select
+    due_mode:
+      property_id: XCBy
+      type: select
 profiles: []
-# Privacy restriction applies even before finance source designation/certification.
 restricted_databases:
-  - 3884d585-1c89-803a-8164-fe2dda19333e # Existing Bill Accounts; identifiers stay local
+- 3884d585-1c89-803a-8164-fe2dda19333e
