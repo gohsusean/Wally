@@ -502,7 +502,8 @@ def test_1password_totp_query_is_runtime_only(monkeypatch, world):
 
     def command(args, **kwargs):
         calls.append(args)
-        assert kwargs["capture_output"]
+        if args[1] == "read":
+            assert kwargs["capture_output"]
         return SimpleNamespace(returncode=0, stdout="483921\n")
 
     monkeypatch.setattr("wally.adapters.secrets.op_cli.subprocess.run", command)

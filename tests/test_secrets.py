@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
@@ -59,6 +61,35 @@ def test_resolver_audits_reference_not_value(tmp_path: Path) -> None:
     assert "s3cret-value" not in payload
 
 
+def test_authorized_read_does_not_require_a_separate_desktop_authentication() -> None:
+    class AppAuthorizedProvider:
+        name = "secrets"
+
+        def __init__(self):
+            self.reads = []
+
+        def is_healthy(self):
+            raise AssertionError("A separate health probe must not precede a credential read.")
+
+        def resolve(self, reference):
+            self.reads.append(reference)
+            return "synthetic-canary"
+
+    provider = AppAuthorizedProvider()
+    resolver = GovernedSecretsResolver(provider)
+    with pytest.raises(ProviderUnavailableError, match="authorization"):
+        resolver.resolve(PASSWORD_REF, authorized=False)
+    assert provider.reads == []
+    assert resolver.resolve(PASSWORD_REF, authorized=True) == "synthetic-canary"
+    assert provider.reads == [PASSWORD_REF]
+
+
+def test_authorized_read_still_fails_when_provider_rejects_access() -> None:
+    resolver = GovernedSecretsResolver(UnconfiguredSecretsProvider())
+    with pytest.raises(ProviderUnavailableError):
+        resolver.resolve(PASSWORD_REF, authorized=True)
+
+
 def test_unconfigured_secrets_provider_is_unhealthy() -> None:
     provider = UnconfiguredSecretsProvider()
     assert provider.is_healthy() is False
@@ -86,6 +117,48 @@ def test_op_cli_rejects_raw_credentials() -> None:
     adapter = OnePasswordCliAdapter()
     with pytest.raises(ProviderUnavailableError, match="op://"):
         adapter.resolve("not-a-reference")
+
+
+def test_op_health_uses_app_authorized_metadata_and_discards_output() -> None:
+    adapter = OnePasswordCliAdapter(timeout_seconds=9)
+    with (
+        patch("wally.adapters.secrets.op_cli.shutil.which", return_value="/usr/bin/op"),
+        patch(
+            "wally.adapters.secrets.op_cli.subprocess.run",
+            return_value=SimpleNamespace(returncode=0),
+        ) as run,
+    ):
+        assert adapter.is_healthy() is True
+    run.assert_called_once_with(
+        ["op", "vault", "list", "--format=json"],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        timeout=9,
+        check=False,
+    )
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [OSError("synthetic-canary"), subprocess.TimeoutExpired("op", 9)],
+)
+def test_op_health_handles_missing_connection_and_timeout(failure) -> None:
+    with (
+        patch("wally.adapters.secrets.op_cli.shutil.which", return_value="/usr/bin/op"),
+        patch("wally.adapters.secrets.op_cli.subprocess.run", side_effect=failure),
+    ):
+        assert OnePasswordCliAdapter().is_healthy() is False
+
+
+def test_op_health_fails_closed_when_app_denies_access() -> None:
+    with (
+        patch("wally.adapters.secrets.op_cli.shutil.which", return_value="/usr/bin/op"),
+        patch(
+            "wally.adapters.secrets.op_cli.subprocess.run",
+            return_value=SimpleNamespace(returncode=1),
+        ),
+    ):
+        assert OnePasswordCliAdapter().is_healthy() is False
 
 
 def test_card_portal_falls_back_to_manual_auth_without_secrets() -> None:

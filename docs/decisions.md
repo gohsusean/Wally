@@ -2124,3 +2124,17 @@ expectation of no additional authentication is unverified and cannot override
 mandatory bank security. Initial 1Password diagnostics restored account discovery
 after opening the app, but CLI authorization timed out; real credential access and
 bank login remain unvalidated. No real payment or live execution enablement occurred.
+
+
+### ADR-032/051 app-authorized readiness correction, 18 October 2026
+
+Owner-approved vault/item reads succeeded while `op whoami` failed on the desktop
+integration. Replace that readiness check with the documented metadata-only vault
+probe and discard its output/errors. This corrects a false negative; it does not
+weaken credential authorization, add a secret tool or grant an execution capability.
+After authorization, resolve through the actual provider read instead of requiring
+a separate metadata authentication first. Health is advisory; the provider still
+enforces access and rejects failed reads. Local unlock/CLI approval still applies
+and can expire. The auth-only Maybank
+check filled a username but did not advance to a password step; no password was
+submitted and bank login remains unverified. No live payment route was enabled.

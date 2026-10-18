@@ -32,6 +32,17 @@ The tracked MacBook profile enables secrets/browser providers; inspect the selec
 
 The configured `op_cli` factory dispatches `op://` to [1Password CLI](https://developer.1password.com/docs/cli/) and `keychain://` to macOS Keychain. Interactive 1Password resolution needs CLI/app authorization; the deployed Telegram Keychain read does not depend on a terminal `OP_SESSION`.
 
+Readiness uses `op vault list --format=json` with stdout/stderr discarded. On
+this Mac, `op whoami` failed even while app-authorized vault/item access worked;
+requiring that shell-session check incorrectly blocked the governed resolver.
+The metadata probe does not read credential fields or authorize an action.
+Desktop unlock and CLI authorization remain required and can expire; a passed
+probe is not proof of unattended access or successful bank login. Credential
+reads still occur only after the existing authorization gate. The resolver then
+calls the actual provider read directly, without another metadata probe that can
+trigger duplicate desktop authentication. The provider still enforces 1Password
+access; a failed or denied read is not cached or treated as successful.
+
 Enable in config (`config/macbook.yaml`):
 
 ```yaml

@@ -331,13 +331,24 @@ forward. `config/finance.yaml` records identifiers/period and the supplied offic
 login URL as routing preferences only. No payment factory or live bank executor
 is enabled. See [the payment guide](supervised-payments.md#first-route-and-practical-channel-assessment).
 
-1Password CLI 2.40.0 is installed. The desktop app was initially stopped; opening
-it restored account discovery, but authorization remains unconfirmed. A metadata
-request timed out awaiting authentication; no passwords/OTPs were retrieved.
-The owner must unlock 1Password and authorize CLI access via its own secure UI.
-Then check the existing provider, locate only the Maybank Login item's references
-and perform an auth-only bank check with deterministic in-process filling and
-no page-body dump or persistent session. No credential rotation, account reset,
-new service account, security-setting change or 1Password/Telegram restart was done.
-Do not replace bank Secure2u with password-manager TOTP or treat a favourite as
-an MFA exemption. The actual payment still requires its exact Telegram card.
+1Password CLI 2.40.0 is installed. Opening the desktop app restored account
+discovery; owner-approved vault/item reads then worked while `op whoami` failed.
+The health check now uses `op vault list --format=json`, discarding stdout/stderr.
+It reads no item fields and does not replace action authorization. Local app/CLI
+authorization can expire: a subsequent timeout was resolved by renewed owner
+approval. No credential rotation, account reset, new service account or security
+setting change was made; no live service was reloaded.
+
+An owner-requested diagnostic used the governed resolver to fill the Maybank
+username at the selected URL in isolated Chrome. The page stayed at the username
+step, with failed requests and no proven cause. No password was submitted, no
+bank login was verified, and no transfer occurred. The diagnostic browser was
+closed without persistent session or page artifacts. Before any live route is
+enabled, diagnose and validate the actual bank transition and mandatory challenges;
+do not infer readiness from the password-manager probe. Do not replace bank
+Secure2u with password-manager TOTP or treat a favourite as an MFA exemption.
+A final direct credential read timed out after removal of the duplicate health
+probe; local 1Password authorization remains a live readiness limitation. Public
+empty-form validation worked with click and Enter; the credential-bearing bank
+transition remains unverified. The actual payment still requires its exact
+Telegram card.

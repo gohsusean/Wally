@@ -386,8 +386,10 @@ readiness or prove a bank permits automation. No real category-A route is valida
 The owner selected Casaman Management Q4 2026 via Maybank transfer on 18 October,
 superseding the TNB candidate. Maybank is the default transfer bank until changed.
 Its current FAQ includes favourite transfers among Secure2u transactions; do not
-presume an exemption. The 1Password app was opened during readiness checks, but
-CLI authentication and Maybank credential access/login remain unverified. AmBank
+presume an exemption. Owner-approved 1Password access works; the `whoami` health
+false negative was fixed with a metadata probe. An auth-only browser check filled
+the username but did not advance to a password step. Bank login remains unverified;
+no password or payment was submitted. Local CLI approval can expire. AmBank
 requires a bank-app challenge; 1Password TOTP cannot replace it. Current retained
 state has no issued instances, enabled chains or credential references.
 

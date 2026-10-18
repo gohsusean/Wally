@@ -21,12 +21,19 @@ class OnePasswordCliAdapter:
         return "secrets"
 
     def is_healthy(self) -> bool:
+        """Probe app-authorized access without requiring a shell session token.
+
+        ``whoami`` can fail with desktop-app integration even when vault reads
+        work. The documented vault probe requests no item fields and discards
+        metadata and errors; it does not grant access to action credentials.
+        """
         if shutil.which(self._op_binary) is None:
             return False
         try:
             completed = subprocess.run(
-                [self._op_binary, "whoami"],
-                capture_output=True,
+                [self._op_binary, "vault", "list", "--format=json"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
                 timeout=self._timeout_seconds,
                 check=False,
             )
@@ -65,7 +72,8 @@ class OnePasswordCliAdapter:
             raise ProviderUnavailableError(
                 self.name,
                 "1Password CLI could not resolve the secret reference. "
-                "Confirm `op signin` and that the item exists.",
+                "Unlock/authorize CLI access in the desktop app, or use `op signin`, "
+                "and confirm that the item exists.",
             )
         value = completed.stdout.rstrip("\n")
         if not value:

@@ -54,11 +54,14 @@ class GovernedSecretsResolver:
                 reason=policy.reason,
             )
             raise ProviderUnavailableError("secrets", policy.reason or "Secret access denied.")
-        if self._provider is None or not self._provider.is_healthy():
+        # Readiness is advisory, not credential authorization. Probing the app
+        # before each read can require a second desktop authentication; the
+        # provider's actual read enforces its own access and fails closed.
+        if self._provider is None:
             raise ProviderUnavailableError(
                 "secrets",
-                "SecretsProvider is not configured. Sign in to 1Password CLI (`op signin`) "
-                "and enable providers.secrets in config.",
+                "SecretsProvider is unavailable. Enable providers.secrets in config and "
+                "unlock/authorize 1Password CLI in the desktop app, or use `op signin`.",
             )
         value = self._provider.resolve(reference)
         self._log(

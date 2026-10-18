@@ -32,14 +32,30 @@ integration remains unvalidated. Preserve the exact Telegram approval and any
 mandatory bank action. 1Password cannot replace Secure2u.
 
 **1Password readiness observation, 18 October:** CLI 2.40.0 is installed and
-`providers.secrets` is enabled. Initially the desktop app was not running and
-Wally's health check failed. Opening 1Password restored discovery of one account,
-but `op whoami` remained unauthenticated and a login-item metadata request timed
-out waiting for authentication. No password/OTP was read, no Maybank item was
-selected, and no Maybank login or transfer was attempted. The owner must unlock
-1Password and approve CLI access in the app before a governed credential-to-login
-check can proceed. [Official app integration setup](https://www.1password.dev/cli/app-integration).
-A running app or successful metadata lookup alone would not prove Maybank login.
+`providers.secrets` is enabled. Opening the desktop app restored account discovery.
+After the owner unlocked/approved access, vault and Maybank item reads succeeded,
+while `op whoami` continued to report an unauthenticated account. Wally's health
+check now uses the documented vault metadata probe, discarding output/errors;
+the existing credential authorization gate remains intact. A subsequent request
+timed out and worked after renewed local owner approval. App authorization is
+not proven persistent or unattended. [Official app integration setup](https://www.1password.dev/cli/app-integration).
+
+**Live auth-only result:** Wally's governed resolver retrieved the Maybank username
+in memory and filled the supplied official login page in isolated Chrome. The
+page remained at the username step after the login control was clicked, including
+a check after page load. No password field or security-phrase prompt appeared.
+The restricted session reported failed requests, including to the bank origin;
+the cause of the stalled transition is unknown. No password was submitted, no
+bank login was verified, and no transfer was initiated. The browser was closed
+without storing a session, screenshots, traces or page-body extracts. This is an
+operator diagnostic, not a registered operational execution route. Maybank's
+actual login flow, authentication and independent settlement integration remain
+acceptance gaps; do not enable payments based on the 1Password result. A final
+single-read diagnostic, with no preceding health probe, timed out inside `op read`
+before the username could be submitted. This remaining local authorization issue
+is independent of the earlier readiness false negative. Public empty-form checks
+confirmed both click and Enter invoke validation under the origin restriction;
+they do not validate the saved username or establish authenticated access.
 
 Categories: **A** completes after the Telegram tap; **B** also requires a mandatory
 bank challenge; **C** is unsuitable/unvalidated for execution today. No real A

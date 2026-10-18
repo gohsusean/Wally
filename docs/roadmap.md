@@ -552,8 +552,9 @@ begins January 2027, with specific owner-identified unpaid exceptions only.
 First candidate: Casaman Management service charge/sinking fund for Q4 2026 via
 Maybank bank transfer, explicitly selected by the owner on 18 October. Maybank is
 the default bank for transfers until changed. Favourite status does not waive the
-bank’s documented Secure2u requirement. 1Password CLI access and real bank login
-remain unverified. The Q3 invoice is not evidence of the Q4 amount.
+bank’s documented Secure2u requirement. Owner-approved 1Password reads work; the
+health check was corrected. Maybank's username step did not advance, so real bank
+login remains unverified. The Q3 invoice is not evidence of the Q4 amount.
 See [ADR-051](decisions.md#adr-051-exact-telegram-supervised-payments) and D16.
 
 ## Reasoned Grounding — deferred
