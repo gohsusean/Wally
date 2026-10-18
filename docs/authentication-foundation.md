@@ -1,0 +1,136 @@
+# Banking authentication foundation
+
+18 October 2026. This extends the existing Playwright and SecretsProvider adapters;
+it adds no browser system, payment route, authority or approval ceremony. The
+MacBook profile selects Playwright's `chrome` channel (installed Google Chrome
+stable), using [Playwright’s supported channel](https://playwright.dev/python/docs/browsers#google-chrome--microsoft-edge). Earlier Maybank checks and the payment sandbox already used Playwright
+with Chrome. Production browser selection had still used bundled Chromium.
+
+## Browser isolation and authentication steps
+
+Playwright launches its own temporary browser profile. Each session uses a new
+non-persistent context; Wally never attaches to personal Chrome, loads its profile,
+or saves browser storage/session state. [Playwright’s page/context isolation](https://playwright.dev/python/docs/api/class-browser#browser-new-page)
+is retained. Screenshots, traces, HAR and video remain
+disabled. Downloads and service workers are blocked on these sessions.
+
+The existing adapter now exposes internal, reviewed login-step helpers. Inputs
+and next/error/challenge selectors come from trusted runtime/operator code, never
+from source prose or a model-selected executable payload. The helper verifies the
+origin and caller's authorization guard before filling and again before submitting.
+It submits at most once, then checks an observable next state. A click is not
+successful authentication. Its result contains only fixed state codes and whether
+submission was attempted: ready, hidden, disabled, read-only, rejected, advanced,
+challenge, stalled, changed origin/authority or failed interaction. It never returns
+input values, page text, URLs with query parameters, cookies or raw exceptions.
+
+A CAPTCHA, MFA, security-image confirmation or bank-signing challenge must be
+handled through the provider's supported owner interaction. The helper pauses at
+reviewed challenge selectors; it does not click them or solve them. An ambiguous
+submission is not automatically repeated. Callers close failed/expired sessions.
+Only a reviewed authenticated-page condition can establish login success.
+
+The existing payment browser profile optionally carries two reviewed login steps
+and its authenticated-page selector. These form part of its reviewed fingerprint;
+each staged step must retain the mandatory challenge selector. The same payment
+adapter invokes the helper, so future registered bank routes can use staged login
+without another runner. No bank-specific live profile is registered here.
+
+## Scoped 1Password access
+
+The first live scoped username/password read succeeded after local owner approval,
+taking **25.1 seconds**. The earlier default was 15 seconds. That budget could
+expire while a legitimate approval was still pending; this observation explains
+some earlier timeouts, not every subsequent failure.
+
+The configured request budget is now 90 seconds, bounded to at most 120. The
+account is pinned by a non-secret reference. A standard username/password pair
+from the same vault/item uses one documented, field-scoped `op item get --fields`
+request by field ID, not mutable labels; it never retrieves the complete item or an
+OTP seed. Other references
+retain individual field reads. All references and runtime authorization are checked
+before any access. Both legacy portal login construction and the supervised-payment
+adapter use the same resolver. A batch is not a credential cache: no values are
+stored across requests, written to disk or returned through a model tool.
+
+These login paths run no metadata health probe before credential acquisition. The actual read enforces
+1Password's access controls. CLI stdin is closed so Wally cannot silently fall back
+to entering an account password in a subprocess. Raw CLI output/errors stay out of
+reports; audits contain references, purpose and bounded outcome messages only.
+Denied/failed/partial requests return no partial credentials and are not retried.
+The existing [desktop integration](https://www.1password.dev/cli/app-integration)
+still controls unlock and local CLI approval; Wally changes neither its security
+settings nor the bank's settings. A locked or unapproved new process remains an
+owner-action blocker. A passed probe does not prove unattended availability.
+
+Both review-login and payment authentication resolve authorized credentials before
+opening the bank page. Re-read the exact configuration/target binding
+after the prompt, then open an isolated session and re-check field state. This
+avoids leaving an idle bank page behind the password-manager dialog. No production
+service was reloaded during this work.
+
+## Evidence and remaining live blockers
+
+- Unit tests cover scoped account/field selection, rejection of incomplete responses,
+  no secret-bearing errors/audits, no retries, authorization before any read,
+  transition observation, origin/authority drift, challenge stops and Chrome selection.
+- `python -B -m wally.runtime.authentication_demo` completed a two-stage login in
+  actual Playwright-controlled Chrome using routed `.invalid` HTML and synthetic
+  credentials. A second context did not inherit authentication. This proves the
+  reusable browser sequence and isolation, not bank acceptance or live 1Password
+  availability.
+- One owner-approved live 1Password pair read succeeded. Later fresh reads timed
+  out awaiting access. The desktop app was running and no shell-session,
+  service-account or disabled-integration override was present. No security setting
+  was relaxed. Fresh attended access still needs acceptance; reliable unattended
+  access has not been demonstrated.
+- The successful live read was followed by a browser timeout in the username
+  operation before a post-step result was recorded. Its exact cause is unproven;
+  it must not be described as a bank rejection or completed username submission.
+  A public, credential-free check kept the username field ready for 30 seconds;
+  a general idle timeout does not explain it. Earlier empty-form click and Enter
+  checks both invoked validation. The new state helper makes the next attended
+  check diagnosable without page dumps or another browser framework.
+- Maybank login remains unverified. No bank password was submitted, no payment
+  initiated and no bank settings modified. No live payment profile is enabled.
+
+Shortest live continuation: approve one scoped local 1Password read while the check
+is running, then use the fresh Playwright session to observe the username transition
+and any bank-required challenge. Reuse that same bounded session for password
+submission only when the bank's required identity checks have been satisfied.
+Stop after an independently observed login condition, before any transfer controls.
+
+## Fit for one Telegram approval
+
+Maybank's [current authorization FAQ](https://www.maybank2u.com.my/maybank2u/malaysia/en/personal/frequent_queries/secure2u_tac/use-two-authorisation-methods.page)
+explicitly includes new and favourite fund transfers in Secure2u-on-MAE scope.
+Maybank therefore has a documented additional owner-authentication requirement;
+1Password cannot replace it. One exact Telegram approval plus unavoidable bank
+approval is the supported target for such a route, not a demonstrated live flow.
+
+Hong Leong remains a possible alternative. Its [current Connect FAQ, section E,
+AppAuthorise Q3](https://www.hlb.com.my/en/connect/faq-en.html/)
+places favourite transfers above RM10,000 in one category and non-favourite
+transfers at any amount in another. This supports investigating an existing
+favourite transfer below RM10,000, but the FAQ says its list is not exhaustive.
+The [general Connect page](https://www.hlb.com.my/en/personal-banking/hlb-connect.html)
+also uses broader authorization wording. No exemption for this account/recipient/
+transaction has been confirmed; no HLB login, transfer or setting change was tried.
+Maybank remains the owner's designated transfer bank until changed.
+
+Authentication does not approve a payment, verify an unpaid balance or establish
+settlement. Preserve the exact Telegram transaction approval, worker-only payment
+capabilities and independent outcome verification. Obligations through December
+2026 remain administratively covered unless the owner explicitly identifies a
+specific obligation as unpaid. This work changes no financial baseline or certificates.
+
+## Final verification
+
+960 isolated tests and two local transport tests passed. The transport checks used
+socket permission after preserving any existing Gateway test socket. The three
+repository `.env`/login-Keychain mutation tests remain excluded. Ruff, documentation
+links/fences and `git diff --check` passed. Both offline Chrome demonstrations
+passed, including the pre-existing single-Telegram-approval payment simulation.
+The authentication fixture also passed through the existing payment adapter’s
+staged authentication method, without invoking any payment method. These are not
+live bank or payment acceptance results.

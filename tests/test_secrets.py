@@ -131,6 +131,7 @@ def test_op_health_uses_app_authorized_metadata_and_discards_output() -> None:
         assert adapter.is_healthy() is True
     run.assert_called_once_with(
         ["op", "vault", "list", "--format=json"],
+        stdin=subprocess.DEVNULL,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
         timeout=9,

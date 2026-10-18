@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from contextlib import suppress
 from typing import Any
 
 from wally.exceptions import ProviderUnavailableError
@@ -22,8 +23,11 @@ class PlaywrightBrowserAdapter:
     calling open_session or NAVIGATE actions.
     """
 
-    def __init__(self, *, headless: bool = False) -> None:
+    def __init__(self, *, headless: bool = False, channel: str | None = None) -> None:
+        if channel not in (None, "chrome"):
+            raise ProviderUnavailableError("browser", "Unsupported browser channel.")
         self._headless = headless
+        self._channel = channel
         self._playwright: Any = None
         self._browser: Any = None
         self._pages: dict[str, Any] = {}
@@ -55,12 +59,25 @@ class PlaywrightBrowserAdapter:
             ) from exc
         self._playwright = sync_playwright().start()
         # Do not enable tracing, HAR, or video — they persist credentials and session pages.
-        self._browser = self._playwright.chromium.launch(headless=self._headless)
+        # Playwright owns a fresh temporary browser profile. Never attach to a
+        # personal Chrome profile or restore its cookies/storage.
+        options = {"headless": self._headless}
+        if self._channel:
+            options["channel"] = self._channel
+        try:
+            self._browser = self._playwright.chromium.launch(**options)
+        except Exception:
+            self._playwright.stop()
+            self._playwright = None
+            raise ProviderUnavailableError(
+                "browser", "Configured Playwright browser could not start; no fallback was used."
+            ) from None
 
     def open_session(self, *, url: str, allowed_origins: tuple[str, ...] = ()) -> BrowserSession:
         self._ensure_browser()
         assert self._browser is not None
-        page = self._browser.new_page(service_workers="block")
+        # new_page owns a separate non-persistent context, closed with the page.
+        page = self._browser.new_page(service_workers="block", accept_downloads=False)
         session_id = str(uuid.uuid4())
         self._pages[session_id] = page
         try:
@@ -128,6 +145,32 @@ class PlaywrightBrowserAdapter:
             session_id=session_id,
             status=BrowserStepStatus.COMPLETED,
             message="Actions completed.",
+        )
+
+    def authentication_field_state(self, session_id, selector):
+        from wally.adapters.browser.authentication import LoginState, field_state
+
+        try:
+            return field_state(self._pages[session_id], selector)
+        except Exception:
+            return LoginState.FAILED
+
+    def submit_authentication_step(
+        self, session_id, step, value, *, allowed_origins, before_submit
+    ):
+        from wally.adapters.browser.authentication import LoginResult, LoginState, advance_login
+
+        try:
+            self.restrict_origins(session_id, allowed_origins)
+            page = self._pages[session_id]
+        except Exception:
+            return LoginResult(LoginState.ORIGIN_CHANGED)
+        return advance_login(
+            page,
+            step,
+            value,
+            check_origin=lambda: self._check_origin(page, allowed_origins),
+            before_submit=before_submit,
         )
 
     def _run_action(self, session_id: str, page: Any, action: BrowserAction) -> BrowserStepResult:
@@ -230,7 +273,13 @@ class PlaywrightBrowserAdapter:
     def close_session(self, session_id: str) -> None:
         page = self._pages.pop(session_id, None)
         if page is not None:
-            page.close()
+            try:
+                page.close()
+            except Exception:
+                # Cleanup failures must not expose browser diagnostics or leave
+                # the remaining owned sessions/driver unclosed at shutdown.
+                with suppress(Exception):
+                    page.context.close()
 
     def read_fields(self, session_id: str, selectors: dict[str, str]) -> dict[str, str]:
         """Trusted deterministic adapters read selected fields, never the page body.
@@ -258,8 +307,10 @@ class PlaywrightBrowserAdapter:
         for session_id in list(self._pages):
             self.close_session(session_id)
         if self._browser is not None:
-            self._browser.close()
+            with suppress(Exception):
+                self._browser.close()
             self._browser = None
         if self._playwright is not None:
-            self._playwright.stop()
+            with suppress(Exception):
+                self._playwright.stop()
             self._playwright = None

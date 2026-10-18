@@ -2138,3 +2138,25 @@ enforces access and rejects failed reads. Local unlock/CLI approval still applie
 and can expire. The auth-only Maybank
 check filled a username but did not advance to a password step; no password was
 submitted and bank login remains unverified. No live payment route was enabled.
+
+
+### ADR-032/033/051 reusable authentication foundation, 18 October 2026
+
+Continue with the existing Playwright infrastructure; the MacBook profile selects
+installed Chrome stable with fresh Wally-owned temporary profiles and isolated,
+non-persistent contexts. No personal browser attachment, second browser framework
+or saved bank authentication state is introduced. Login-step helpers are internal
+reviewed code, expose only fixed progress states and revalidate origin/authorization
+before fill and submission. Challenges stop the step; timeouts do not authorize retries.
+Optional staged login selectors are part of the existing payment browser profile's
+reviewed fingerprint, with a mandatory challenge check on each step. The payment
+adapter uses the same helper and acquires credentials before opening its browser.
+
+An attended scoped 1Password read took 25.1 seconds, exceeding the old 15-second
+budget. Use a bounded 90-second request and one field-scoped same-item login pair,
+without changing credential authorization, introducing a model secrets tool,
+caching secrets between requests or weakening desktop/bank authentication. Acquire
+credentials before opening the bank page and re-check the exact binding afterwards.
+The offline two-stage Chrome flow passed; complete live Maybank authentication and
+unattended credential access remain unverified. No payment route is enabled and
+no through-2026 financial baseline is changed. See [evidence and limits](authentication-foundation.md).

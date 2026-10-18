@@ -11,7 +11,9 @@ def create_browser_provider(settings):
         return None
     adapter = settings.browser_adapter
     if adapter == "playwright":
-        provider = PlaywrightBrowserAdapter(headless=settings.browser_headless)
+        provider = PlaywrightBrowserAdapter(
+            headless=settings.browser_headless, channel=getattr(settings, "browser_channel", None)
+        )
         if not provider.is_healthy():
             raise ProviderUnavailableError(
                 "browser",

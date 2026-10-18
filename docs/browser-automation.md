@@ -52,6 +52,15 @@ Sessions expire after `providers.browser.session_timeout_seconds` (default 3600)
 
 Policy: `runtime/browser_executor.py` — `resume_card_portal_session`, `cancel_card_portal_session`.
 
+## Playwright / Chrome authentication foundation
+
+The MacBook profile selects `providers.browser.channel: chrome`, using Google
+Chrome stable through the existing Playwright adapter. Every launch/profile and
+context belongs to Wally and is temporary; no personal browser profile or stored
+bank session is reused. There is no second browser automation system. See
+[authentication acceptance and live blockers](authentication-foundation.md) for
+the state-based login helper, scoped secrets read and operator-only offline demo.
+
 ## Related docs
 
 - [current-architecture.md](current-architecture.md) — both action paths and trust boundaries

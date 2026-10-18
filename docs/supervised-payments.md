@@ -6,6 +6,16 @@ Login approval, a financial certificate, an old proposal decision and bank
 authentication cannot replace it. This owner instruction supersedes the manual
 default for new automated routes; mandatory provider authentication remains intact.
 
+## Authentication follow-up
+
+[The reusable authentication foundation](authentication-foundation.md) standardizes
+Chrome stable through the existing Playwright adapter with isolated Wally-owned
+profiles/contexts, a 90-second scoped 1Password request and observed login-step
+states. Offline two-stage Chrome authentication passed; one attended live 1Password
+pair read took 25.1 seconds. Subsequent fresh access and complete Maybank login
+remain unvalidated. This introduces no live payment route or bank-setting change.
+The detailed observations below predate that follow-up where indicated.
+
 ## First route and practical channel assessment
 
 **Owner selection, 18 October:** **Casaman Management service charge/sinking fund,

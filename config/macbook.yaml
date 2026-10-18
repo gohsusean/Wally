@@ -65,8 +65,11 @@ providers:
   secrets:
     adapter: op_cli
     enabled: true  # session comes from the 1Password app integration; config stores op:// pointers only
+    timeout_seconds: 90  # local app approval took 25 seconds in the live auth-only check
+    account: 7PP4US6SIREGTHXHYP6BK5BKGU  # account reference, not a credential
   browser:
     adapter: playwright
+    channel: chrome  # installed Google Chrome stable, controlled only by Playwright
     enabled: true
     headless: false
     session_timeout_seconds: 3600

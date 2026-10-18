@@ -43,6 +43,14 @@ calls the actual provider read directly, without another metadata probe that can
 trigger duplicate desktop authentication. The provider still enforces 1Password
 access; a failed or denied read is not cached or treated as successful.
 
+The MacBook request budget is 90 seconds (bounded to 120), with an explicit
+non-secret account reference. One standard username/password pair from the same
+item is read through a single field-scoped CLI request, after runtime authorization;
+no whole-item read, OTP-seed retrieval, persistent credential cache or retry is
+introduced. Live local approval took 25.1 seconds, exceeding the previous default.
+Fresh reads still depend on desktop authorization. See [authentication evidence
+and remaining blockers](authentication-foundation.md).
+
 Enable in config (`config/macbook.yaml`):
 
 ```yaml

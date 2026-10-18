@@ -399,3 +399,12 @@ schema pinning and live private-owner acceptance. Automatic certified issued-bil
 intake and assisted challenge continuation are not delivered. Notion concurrent
 writers retain a create/read race; uncertain writes and payments cannot auto-retry.
 Preserve existing certification; this is not a request for renewed owner attestations.
+
+
+Authentication follow-up: [the existing Playwright/Chrome foundation](authentication-foundation.md)
+now has observed login-step states, isolated Wally contexts and one scoped
+1Password pair read with a 90-second budget. One local approval took 25.1 seconds;
+offline real-Chrome two-stage login passed. Fresh local access and live Maybank
+login remain acceptance blockers; bank-specific work should stay bounded. HLB's
+possible existing-favourite exemption remains unconfirmed. No payment or bank
+setting change was made and no live route was enabled.

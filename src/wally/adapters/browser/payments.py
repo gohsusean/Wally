@@ -6,6 +6,7 @@ live route can use this adapter. The included routed HTML sandbox exercises it.
 
 from dataclasses import asdict, dataclass
 
+from wally.adapters.browser.authentication import LoginState, LoginStep
 from wally.finance.models import FinanceError, digest, origin
 from wally.finance.payments import BillPayment, MandatoryChallenge, PaymentQuote, Settlement
 from wally.models.browser import BrowserAction, BrowserActionType, BrowserStepStatus
@@ -28,6 +29,9 @@ class PaymentBrowserProfile:
     totp_ref: str = ""
     challenge_selector: str = "#mandatory-bank-challenge"
     sandbox: bool = True
+    username_step: LoginStep | None = None
+    password_step: LoginStep | None = None
+    authenticated_selector: str = "#authenticated"
 
     @property
     def fingerprint(self):
@@ -44,6 +48,18 @@ class PaymentBrowserProfile:
                 raise FinanceError("Payment authentication uses plain secret references only.")
         if not self.username_ref or not self.password_ref:
             raise FinanceError("Automatic login requires configured credential references.")
+        if not self.authenticated_selector:
+            raise FinanceError("Authentication needs an observed success condition.")
+        if self.username_step is not None or self.password_step is not None:
+            if not self.username_step or not self.password_step or not self.challenge_selector:
+                raise FinanceError(
+                    "Staged login requires both steps and a mandatory challenge check."
+                )
+            if any(
+                self.challenge_selector not in step.challenge_selectors
+                for step in (self.username_step, self.password_step)
+            ):
+                raise FinanceError("Every login step must retain the mandatory challenge check.")
         return digest(asdict(self))
 
 
@@ -104,21 +120,43 @@ class BrowserPaymentProvider:
             raise FinanceError("Payment browser step failed; no automatic retry.")
 
     def authenticate(self, resolver, *, guard, session_id):
-        self._session = self._open(self.profile.quote_url)
+        _ = self.fingerprint
         guard()
-        for selector, reference in (
-            ("#username", self.profile.username_ref),
-            ("#password", self.profile.password_ref),
-        ):
-            value = resolver.resolve(
-                reference, authorized=True, session_id=session_id, purpose="payment_login"
-            )
+        values = resolver.resolve_many(
+            (self.profile.username_ref, self.profile.password_ref),
+            authorized=True,
+            session_id=session_id,
+            purpose="payment_login",
+        )
+        guard()
+        self._session = self._open(self.profile.quote_url)
+        for selector, value in zip(("#username", "#password"), values, strict=True):
             guard()  # Secrets acquisition may outlive approval or worker lease.
-            self._actions(
-                BrowserAction(BrowserActionType.FILL, {"selector": selector, "value": value})
+            step = (
+                self.profile.username_step
+                if selector == "#username"
+                else self.profile.password_step
             )
+            if step:
+                result = self.browser.submit_authentication_step(
+                    self._session.session_id,
+                    step,
+                    value,
+                    allowed_origins=self.profile.allowed_origins,
+                    before_submit=guard,
+                )
+                if result.state == LoginState.CHALLENGE:
+                    raise MandatoryChallenge("A mandatory bank challenge requires the owner.")
+                if result.state != LoginState.ADVANCED:
+                    raise FinanceError("Login transition was not verified; no automatic retry.")
+            else:
+                self._actions(
+                    BrowserAction(BrowserActionType.FILL, {"selector": selector, "value": value})
+                )
             del value
-        self._actions(BrowserAction(BrowserActionType.CLICK, {"selector": "#login"}))
+        del values
+        if not self.profile.username_step:
+            self._actions(BrowserAction(BrowserActionType.CLICK, {"selector": "#login"}))
         if self.browser.has_selector(self._session.session_id, self.profile.challenge_selector):
             raise MandatoryChallenge("A mandatory bank challenge requires the owner.")
         if self.profile.totp_ref:
@@ -131,7 +169,11 @@ class BrowserPaymentProvider:
             )
             del value
             self._actions(BrowserAction(BrowserActionType.CLICK, {"selector": "#verify-totp"}))
-        self._actions(BrowserAction(BrowserActionType.VERIFY_AUTH, {"selector": "#authenticated"}))
+        self._actions(
+            BrowserAction(
+                BrowserActionType.VERIFY_AUTH, {"selector": self.profile.authenticated_selector}
+            )
+        )
 
     def submit(self, bill, quote, *, guard):
         if self._session is None or self._quote(self._session, bill) != quote:

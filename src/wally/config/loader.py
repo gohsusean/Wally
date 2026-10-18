@@ -139,8 +139,11 @@ class Settings:
     finance_bills_role: str
     secrets_enabled: bool
     secrets_adapter: str
+    secrets_timeout_seconds: float
+    secrets_account: str | None
     browser_enabled: bool
     browser_adapter: str
+    browser_channel: str | None
     browser_headless: bool
     browser_session_timeout_seconds: float
     ops_enabled: bool
@@ -534,8 +537,11 @@ def load_settings(
         finance_bills_role=str(finance.get("bills_role", "finance")),
         secrets_enabled=bool(secrets.get("enabled", False)),
         secrets_adapter=str(secrets.get("adapter", "op_cli")),
+        secrets_timeout_seconds=float(secrets.get("timeout_seconds", 90)),
+        secrets_account=secrets.get("account") or None,
         browser_enabled=bool(browser.get("enabled", False)),
         browser_adapter=str(browser.get("adapter", "playwright")),
+        browser_channel=browser.get("channel") or None,
         browser_headless=bool(browser.get("headless", False)),
         browser_session_timeout_seconds=float(
             browser.get("session_timeout_seconds", 3600)

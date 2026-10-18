@@ -1,0 +1,136 @@
+"""Observable login steps on the existing Playwright session; no payment actions.
+
+Only trusted runtime/operator code supplies reviewed selectors. This is not an
+LLM tool, browser system, retry loop or authentication-challenge solver.
+"""
+
+import time
+from dataclasses import dataclass
+from enum import StrEnum
+
+
+class LoginState(StrEnum):
+    ADVANCED = "advanced"
+    CHALLENGE = "challenge_requires_owner"
+    REJECTED = "input_rejected"
+    MISSING = "input_missing"
+    HIDDEN = "input_hidden"
+    DISABLED = "input_disabled"
+    READ_ONLY = "input_read_only"
+    READY = "input_ready"
+    STALLED = "transition_not_observed"
+    ORIGIN_CHANGED = "origin_changed"
+    FAILED = "interaction_failed"
+    AUTHORIZATION_CHANGED = "authorization_changed"
+
+
+@dataclass(frozen=True)
+class LoginStep:
+    input_selector: str
+    next_selectors: tuple[str, ...]
+    submit_selector: str = ""  # empty means the form's supported Enter key
+    rejection_selector: str = ""
+    challenge_selectors: tuple[str, ...] = ()
+    timeout_ms: int = 15000
+
+    def __post_init__(self):
+        if not self.input_selector or not self.next_selectors or not 1 <= self.timeout_ms <= 30000:
+            raise ValueError("Login step needs a field, observable next state and bounded timeout.")
+
+
+@dataclass(frozen=True)
+class LoginResult:
+    state: LoginState
+    submission_attempted: bool = False
+
+
+def field_state(page, selector):
+    """Return shape only; never read input values, labels or authenticated text."""
+    field = page.locator(selector)
+    if field.count() != 1:
+        return LoginState.MISSING
+    if not field.is_visible():
+        return LoginState.HIDDEN
+    if not field.is_enabled():
+        return LoginState.DISABLED
+    if field.get_attribute("readonly") is not None:
+        return LoginState.READ_ONLY
+    return LoginState.READY
+
+
+def _visible(page, selector):
+    return bool(selector and page.locator(selector).is_visible())
+
+
+def _observe(page, step):
+    if any(_visible(page, selector) for selector in step.challenge_selectors):
+        return LoginState.CHALLENGE
+    if _visible(page, step.rejection_selector):
+        return LoginState.REJECTED
+    if any(_visible(page, selector) for selector in step.next_selectors):
+        return LoginState.ADVANCED
+    return None
+
+
+def advance_login(page, step, value, *, check_origin, before_submit):
+    """Fill/submit once and observe a transition; never assume a click is success.
+
+    Exceptions may contain credentials or DOM data. Return only fixed states,
+    including when a timeout happens after a potentially successful submission.
+    The caller retains the session for owner-required bank challenges, then closes
+    it. No state or credentials are persisted and no automatic retry is performed.
+    """
+    submitted = False
+    try:
+        try:
+            check_origin()
+        except Exception:
+            return LoginResult(LoginState.ORIGIN_CHANGED)
+        if any(_visible(page, selector) for selector in step.challenge_selectors):
+            return LoginResult(LoginState.CHALLENGE)
+        state = field_state(page, step.input_selector)
+        if state != LoginState.READY:
+            return LoginResult(state)
+        try:
+            before_submit()  # A credential prompt may have outlived the reviewed scope.
+        except Exception:
+            return LoginResult(LoginState.AUTHORIZATION_CHANGED)
+        try:
+            check_origin()
+        except Exception:
+            return LoginResult(LoginState.ORIGIN_CHANGED)
+        field = page.locator(step.input_selector)
+        field.fill(value, timeout=step.timeout_ms)
+        if field.input_value() != value:
+            return LoginResult(LoginState.REJECTED)
+        try:
+            before_submit()
+        except Exception:
+            return LoginResult(LoginState.AUTHORIZATION_CHANGED)
+        try:
+            check_origin()
+        except Exception:
+            return LoginResult(LoginState.ORIGIN_CHANGED)
+        submitted = True
+        try:
+            if step.submit_selector:
+                page.locator(step.submit_selector).click(timeout=step.timeout_ms)
+            else:
+                field.press("Enter", timeout=step.timeout_ms)
+        except Exception:
+            # A click timeout does not establish that nothing happened.
+            pass
+        deadline = time.monotonic() + step.timeout_ms / 1000
+        while True:
+            try:
+                check_origin()
+            except Exception:
+                return LoginResult(LoginState.ORIGIN_CHANGED, submitted)
+            state = _observe(page, step)
+            if state:
+                return LoginResult(state, submitted)
+            if time.monotonic() >= deadline:
+                return LoginResult(LoginState.STALLED, submitted)
+            page.wait_for_timeout(100)
+    except Exception:
+        return LoginResult(LoginState.FAILED, submitted)

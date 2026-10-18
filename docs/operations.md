@@ -352,3 +352,20 @@ probe; local 1Password authorization remains a live readiness limitation. Public
 empty-form validation worked with click and Enter; the credential-bearing bank
 transition remains unverified. The actual payment still requires its exact
 Telegram card.
+
+
+### Authentication foundation follow-up, 18 October
+
+Use the existing Playwright adapter with the MacBook `channel: chrome` setting.
+Playwright owns temporary profiles and non-persistent per-session contexts; never
+attach personal Chrome or save bank authentication state. The selected 1Password
+account reference and 90-second request budget are configuration, not credentials.
+Same-item username/password reads use one scoped request after existing runtime
+authorization. No service was reloaded or bank settings changed.
+
+The offline `python -B -m wally.runtime.authentication_demo` uses only synthetic
+credentials and routed `.invalid` pages. It validates two-stage login and context
+isolation in real Chrome. It does not establish bank acceptance. See [live findings,
+blockers and the shortest next check](authentication-foundation.md). Never run the
+live check as an unattended/default test, infer a bank login from a button click,
+or initiate a transfer while diagnosing authentication.

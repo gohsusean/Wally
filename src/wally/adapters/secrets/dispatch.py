@@ -24,6 +24,15 @@ class DispatchSecretsProvider:
     def resolve(self, reference: str) -> str:
         return self._backend(reference).resolve(reference)
 
+    def resolve_many(self, references: tuple[str, ...]) -> tuple[str, ...]:
+        if (
+            references
+            and all(ref.startswith("op://") for ref in references)
+            and callable(getattr(self._op, "resolve_many", None))
+        ):
+            return self._op.resolve_many(references)
+        return tuple(self.resolve(ref) for ref in references)
+
     def store(self, reference: str, value: str) -> None:
         backend = self._backend(reference)
         store = getattr(backend, "store", None)

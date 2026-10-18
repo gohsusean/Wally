@@ -11,6 +11,7 @@ from wally.models.browser import BrowserAction, BrowserActionType
 from wally.providers.secrets import SecretsProvider
 from wally.runtime.secrets_safety import (
     evaluate_secret_access,
+    evaluate_secret_reference,
     portal_login_refs,
     portal_login_selectors,
     workflow_secret_refs,
@@ -80,18 +81,18 @@ class GovernedSecretsResolver:
         session_id: str = "",
     ) -> tuple[BrowserAction, ...] | None:
         """Return FILL/CLICK actions when Knowledge has refs + selectors and secrets are healthy."""
-        if not self.is_available():
+        if self._provider is None:
             return None
         username_ref, password_ref = portal_login_refs(knowledge)
         user_sel, pass_sel, submit_sel = portal_login_selectors(knowledge)
         if not username_ref or not password_ref or not user_sel or not pass_sel:
             return None
 
-        username = self.resolve(
-            username_ref, authorized=authorized, session_id=session_id, purpose="portal_login"
-        )
-        password = self.resolve(
-            password_ref, authorized=authorized, session_id=session_id, purpose="portal_login"
+        username, password = self.resolve_many(
+            (username_ref, password_ref),
+            authorized=authorized,
+            session_id=session_id,
+            purpose="portal_login",
         )
         actions: list[BrowserAction] = [
             BrowserAction(
@@ -106,6 +107,55 @@ class GovernedSecretsResolver:
         if submit_sel:
             actions.append(BrowserAction(BrowserActionType.CLICK, {"selector": submit_sel}))
         return tuple(actions)
+
+    def resolve_many(
+        self,
+        references: tuple[str, ...],
+        *,
+        authorized: bool,
+        session_id: str = "",
+        purpose: str = "execution",
+    ) -> tuple[str, ...]:
+        """Authorize every reference before a scoped batch read; never cache values."""
+        for reference in references:
+            policy = evaluate_secret_access(reference=reference, authorized=authorized)
+            if not policy.allowed:
+                self._log(
+                    session_id=session_id,
+                    outcome="denied",
+                    reference=reference,
+                    purpose=purpose,
+                    reason=policy.reason,
+                )
+                raise ProviderUnavailableError("secrets", "Secret access denied by runtime policy.")
+        if self._provider is None:
+            raise ProviderUnavailableError("secrets", "SecretsProvider is unavailable.")
+        batch = getattr(self._provider, "resolve_many", None)
+        try:
+            values = (
+                batch(references)
+                if batch
+                else tuple(self._provider.resolve(ref) for ref in references)
+            )
+            if len(values) != len(references) or any(
+                not isinstance(value, str) or not value for value in values
+            ):
+                raise ProviderUnavailableError("secrets", "Credential response was incomplete.")
+        except ProviderUnavailableError:
+            for reference in references:
+                self._log(
+                    session_id=session_id,
+                    outcome="unavailable",
+                    reference=reference,
+                    purpose=purpose,
+                    reason="Provider did not complete the scoped read.",
+                )
+            raise
+        for reference in references:
+            self._log(
+                session_id=session_id, outcome="resolved", reference=reference, purpose=purpose
+            )
+        return tuple(values)
 
     def resolve_totp(self, reference: str, *, authorized: bool, session_id: str = "") -> str:
         """Ask 1Password for a current code, never read the TOTP seed into Wally.
@@ -164,7 +214,10 @@ class GovernedSecretsResolver:
     ) -> None:
         if self._audit is None:
             return
-        parameters: dict[str, Any] = {"reference": reference, "purpose": purpose}
+        safe_reference = (
+            reference if evaluate_secret_reference(reference).allowed else "[invalid reference]"
+        )
+        parameters: dict[str, Any] = {"reference": safe_reference, "purpose": purpose}
         if reason:
             parameters["reason"] = reason
         self._audit.log_simple(

@@ -825,7 +825,7 @@ def test_playwright_policy_installed_before_navigation_blocks_websockets_and_red
     adapter = PlaywrightBrowserAdapter()
     adapter._browser = SimpleNamespace(new_page=lambda **kw: (calls.append(kw), page)[1])
     session = adapter.open_session(url=PORTAL_URL, allowed_origins=("https://portal.acme.example",))
-    assert calls[0] == {"service_workers": "block"}
+    assert calls[0] == {"service_workers": "block", "accept_downloads": False}
     assert calls[1:5] == ["http-policy", "websocket-policy", "navigate", "blocked"]
     page.context.ws_callback(SimpleNamespace(close=lambda: calls.append("websocket-closed")))
     assert calls[-1] == "websocket-closed"

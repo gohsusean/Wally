@@ -14,7 +14,13 @@ def create_secrets_provider(settings):
         return None
     adapter = getattr(settings, "secrets_adapter", "op_cli")
     if adapter == "op_cli":
-        return DispatchSecretsProvider(OnePasswordCliAdapter(), MacKeychainSecretsProvider())
+        return DispatchSecretsProvider(
+            OnePasswordCliAdapter(
+                timeout_seconds=getattr(settings, "secrets_timeout_seconds", 90),
+                account=getattr(settings, "secrets_account", None),
+            ),
+            MacKeychainSecretsProvider(),
+        )
     if adapter == "stub":
         return UnconfiguredSecretsProvider()
     if adapter == "memory":

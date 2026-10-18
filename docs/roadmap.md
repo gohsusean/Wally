@@ -549,6 +549,11 @@ begins January 2027, with specific owner-identified unpaid exceptions only.
 - [ ] Demonstrate the first real payment only after separate exact owner approval.
   A simulation alone does not complete this milestone.
 
+Authentication implementation follow-up: [Playwright/Chrome state-based login and
+scoped 1Password reads](authentication-foundation.md) have offline Chrome acceptance.
+Fresh attended credential access and complete live bank authentication still need
+validation; do not mark the live payment milestone complete from these tests.
+
 First candidate: Casaman Management service charge/sinking fund for Q4 2026 via
 Maybank bank transfer, explicitly selected by the owner on 18 October. Maybank is
 the default bank for transfers until changed. Favourite status does not waive the
