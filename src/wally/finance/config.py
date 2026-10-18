@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+from dataclasses import asdict, dataclass
 from pathlib import Path
 
 import yaml
 
-from wally.finance.models import FinanceError, Kind, ReviewProfile
+from wally.finance.models import FinanceError, Kind, ReviewProfile, digest, iso_date, text
 from wally.finance.notion import FieldMapping, SourceMapping, notion_id
 
 
@@ -17,7 +18,14 @@ def _data(path: Path) -> dict:
         data = yaml.safe_load(path.read_text()) or {}
         if (
             not isinstance(data, dict)
-            or set(data) - {"schema_version", "sources", "profiles", "restricted_databases"}
+            or set(data)
+            - {
+                "schema_version",
+                "sources",
+                "profiles",
+                "restricted_databases",
+                "payment_preferences",
+            }
             or data.get("schema_version") != 1
         ):
             raise ValueError
@@ -65,6 +73,46 @@ def load_profiles(path: Path) -> dict[str, ReviewProfile]:
 
 def load(path: Path) -> tuple[tuple[SourceMapping, ...], dict[str, ReviewProfile]]:
     return load_sources(path), load_profiles(path)
+
+
+@dataclass(frozen=True)
+class PaymentPreferences:
+    """Owner routing intent only; never an executor registration or authorization."""
+
+    default_transfer_bank: str
+    transfer_login_url: str
+    first_bill_account: str
+    first_bill_definition: str
+    first_bill_period_start: str
+    first_bill_period_end: str
+
+    @property
+    def fingerprint(self):
+        return digest(asdict(self))
+
+
+def load_payment_preferences(path: Path) -> PaymentPreferences | None:
+    raw = _data(path).get("payment_preferences")
+    if raw is None:
+        return None
+    try:
+        if not isinstance(raw, dict) or set(raw) != set(PaymentPreferences.__dataclass_fields__):
+            raise ValueError
+        preferences = PaymentPreferences(**raw)
+        if preferences.default_transfer_bank != "maybank" or preferences.transfer_login_url != (
+            "https://www.maybank2u.com.my/home/m2u/common/login.do"
+        ):
+            raise ValueError
+        for field in (preferences.first_bill_account, preferences.first_bill_definition):
+            if not text(field).startswith("fin_"):
+                raise ValueError
+        start = iso_date(preferences.first_bill_period_start)
+        end = iso_date(preferences.first_bill_period_end)
+        if start > end:
+            raise ValueError
+        return preferences
+    except (ValueError, TypeError, AttributeError):
+        raise FinanceError("Invalid owner payment preferences; no route may be inferred.") from None
 
 
 def restricted_databases(path: Path) -> set[str]:

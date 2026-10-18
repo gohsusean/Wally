@@ -383,8 +383,11 @@ the owner approval policy to one exact Telegram payment approval. The sandbox
 workflow covers automated login/TOTP, shared duplicate claims, guarded submission,
 independent settlement and Notion readback/recovery. This does not close D03 live
 readiness or prove a bank permits automation. No real category-A route is validated.
-The proposed first route is the first issued January 2027 Mansions TNB bill via a
-saved-card portal payment, conditional on its selected funding instrument. AmBank
+The owner selected Casaman Management Q4 2026 via Maybank transfer on 18 October,
+superseding the TNB candidate. Maybank is the default transfer bank until changed.
+Its current FAQ includes favourite transfers among Secure2u transactions; do not
+presume an exemption. The 1Password app was opened during readiness checks, but
+CLI authentication and Maybank credential access/login remain unverified. AmBank
 requires a bank-app challenge; 1Password TOTP cannot replace it. Current retained
 state has no issued instances, enabled chains or credential references.
 

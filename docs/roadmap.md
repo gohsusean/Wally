@@ -537,8 +537,11 @@ begins January 2027, with specific owner-identified unpaid exceptions only.
 - [x] Complete offline Chromium dry run with simulated Telegram, 1Password and Notion;
   adverse-case tests. Production payment factory remains absent.
 - [x] Evidence-based [channel assessment and first-route recommendation](supervised-payments.md).
-- [ ] Select/pin funding instrument; validate the real biller/gateway route and its
-  authentication. No real A route is established; documented bank challenges stay B.
+- [x] Select bank: owner designated Maybank for transfers and Casaman Q4 2026 as
+  the first bill. Persisted as non-executable payment preferences.
+- [ ] Pin the actual funding account/1Password item and validate bank login, the
+  recipient and transfer route, including mandatory Secure2u. No real A route is
+  established; documented bank challenges stay B.
 - [ ] Automatic primary-document intake into certified issued bill instances;
   provider-specific portal/API and independent history integration.
 - [ ] Governed live portal acceptance, exact chain enablement, existing Notion schema
@@ -546,8 +549,11 @@ begins January 2027, with specific owner-identified unpaid exceptions only.
 - [ ] Demonstrate the first real payment only after separate exact owner approval.
   A simulation alone does not complete this milestone.
 
-First candidate: Mansions TNB electricity, first issued January 2027 bill via an
-existing saved card on myTNB, conditional on the instrument's actual authentication.
+First candidate: Casaman Management service charge/sinking fund for Q4 2026 via
+Maybank bank transfer, explicitly selected by the owner on 18 October. Maybank is
+the default bank for transfers until changed. Favourite status does not waive the
+bank’s documented Secure2u requirement. 1Password CLI access and real bank login
+remain unverified. The Q3 invoice is not evidence of the Q4 amount.
 See [ADR-051](decisions.md#adr-051-exact-telegram-supervised-payments) and D16.
 
 ## Reasoned Grounding — deferred

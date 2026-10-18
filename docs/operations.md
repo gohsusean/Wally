@@ -322,3 +322,22 @@ The normal poller config registers no payment worker/provider. A trusted
 `payment_factory` is required; source prose, model calls and YAML flags cannot
 enable a generic live route. No service restart or live credential/payment check
 was performed for this delivery. The offline demo uses temporary state and no `.env`.
+
+
+### Maybank/1Password owner selection, 18 October
+
+The owner selected Casaman Management Q4 2026 and Maybank for bank transfers going
+forward. `config/finance.yaml` records identifiers/period and the supplied official
+login URL as routing preferences only. No payment factory or live bank executor
+is enabled. See [the payment guide](supervised-payments.md#first-route-and-practical-channel-assessment).
+
+1Password CLI 2.40.0 is installed. The desktop app was initially stopped; opening
+it restored account discovery, but authorization remains unconfirmed. A metadata
+request timed out awaiting authentication; no passwords/OTPs were retrieved.
+The owner must unlock 1Password and authorize CLI access via its own secure UI.
+Then check the existing provider, locate only the Maybank Login item's references
+and perform an auth-only bank check with deterministic in-process filling and
+no page-body dump or persistent session. No credential rotation, account reset,
+new service account, security-setting change or 1Password/Telegram restart was done.
+Do not replace bank Secure2u with password-manager TOTP or treat a favourite as
+an MFA exemption. The actual payment still requires its exact Telegram card.

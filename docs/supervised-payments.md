@@ -8,13 +8,38 @@ default for new automated routes; mandatory provider authentication remains inta
 
 ## First route and practical channel assessment
 
-Recommend **Mansions TNB electricity, first issued January 2027 bill, through myTNB
-with an existing saved card token**, subject to validating that card's actual
-authentication and the current portal. This choice minimizes credential entry and
-has existing retained account/issuer evidence. It is the first route to validate,
-not a claim of implemented myTNB selectors, bank acceptance or live readiness.
-If that card requires an app/hardware challenge, classify it B; do not call it A
-or switch to manual banking merely to complete a milestone.
+**Owner selection, 18 October:** **Casaman Management service charge/sinking fund,
+Q4 2026 (1 October–31 December), paid by bank transfer through Maybank2u.** This
+replaces the earlier Mansions/TNB candidate. Maybank is the designated bank for
+future bank transfers until the owner changes that choice; it is not a default for
+card payments or a new debit mandate. The supplied [Maybank login URL](https://www.maybank2u.com.my/home/m2u/common/login.do)
+and canonical account/definition references are retained in `config/finance.yaml`
+under `payment_preferences`. The strict loader preserves this routing intent but
+cannot enable an executor, approve a payment or introduce amount/recipient/secret
+fields. No live Maybank execution profile is registered.
+
+The selection identifies this specific pre-2027 bill for preparation; it does not
+reopen other covered obligations or certify an unpaid current balance. A current
+Q4 original, recipient match and duplicate/pending checks are still required.
+The retained RM2,526.51 Casaman invoice covers July–September, not Q4; do not reuse
+its amount or receiving account without checking the actual current bill.
+
+**Authentication finding:** Maybank's [current authorization FAQ](https://www.maybank2u.com.my/maybank2u/malaysia/en/personal/frequent_queries/secure2u_tac/use-two-authorisation-methods.page)
+lists new **and favourite** third-party, DuitNow and GIRO transfers as requiring
+Secure2u on MAE. Favourite status is not evidence of an exemption. The selected
+route has a documented category-B authentication requirement; its actual Wally
+integration remains unvalidated. Preserve the exact Telegram approval and any
+mandatory bank action. 1Password cannot replace Secure2u.
+
+**1Password readiness observation, 18 October:** CLI 2.40.0 is installed and
+`providers.secrets` is enabled. Initially the desktop app was not running and
+Wally's health check failed. Opening 1Password restored discovery of one account,
+but `op whoami` remained unauthenticated and a login-item metadata request timed
+out waiting for authentication. No password/OTP was read, no Maybank item was
+selected, and no Maybank login or transfer was attempted. The owner must unlock
+1Password and approve CLI access in the app before a governed credential-to-login
+check can proceed. [Official app integration setup](https://www.1password.dev/cli/app-integration).
+A running app or successful metadata lookup alone would not prove Maybank login.
 
 Categories: **A** completes after the Telegram tap; **B** also requires a mandatory
 bank challenge; **C** is unsuitable/unvalidated for execution today. No real A
@@ -54,14 +79,17 @@ route has been demonstrated. The offline test route is A **in simulation only**.
   supports it. Bank challenge and independent issuer posting remain unvalidated.
   [MBPJ official historical guide](https://www.mbpj.gov.my/sites/default/files/a4_edisi_1_2022.pdf).
 - **Five management corporations, maintenance and separate management water:
-  C today.** Existing statements can supply current amount/reference and recipient
+  C for live execution today.** Casaman Q4 is now the selected first route, with
+  a documented Maybank Secure2u requirement; a live adapter remains to be
+  validated. Existing statements can supply current amount/reference and recipient
   evidence; no reviewed execution or independent settlement adapter exists.
   Authenticate a supported portal/bank using references only after authorization.
   Preserve known existing auto-debits in duplicate checks. Never assume all five
   management accounts have the same payment channel or enroll another debit.
 - **Credit-card statement repayment / ordinary online banking: B with the
-  documented AmBank or HLB bank-app requirement; otherwise C until the funding
-  bank is selected.** Retained statements/certificates establish the identity
+  documented Maybank, AmBank or HLB bank-app requirement; C where the actual route
+  remains unvalidated.** Maybank is the owner-selected bank for transfers.
+  Retained statements/certificates establish the identity
   starting point. A fresh balance and bank pending/settled/mandate check are still
   required. Login can use secret references; bank-app signing cannot be automated
   using a password-manager TOTP. Receipt verification must bind the exact debit

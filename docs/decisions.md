@@ -2105,3 +2105,22 @@ A route is currently validated. A mandatory bank challenge is an exception, and
 assisted continuation is not implemented in the first slice. Provider-specific
 integration, automatic issued-document intake and live acceptance remain open in
 [the implementation guide](supervised-payments.md) and roadmap.
+
+
+### ADR-051 owner route selection, 18 October 2026
+
+The owner selected Casaman Management's Q4 2026 service charge/sinking fund for
+the first bank-transfer workflow and designated Maybank2u as the bank for future
+transfers until explicitly changed. This supersedes the proposed TNB/saved-card
+first candidate. The specific pre-2027 selection does not reopen other covered
+obligations, certify current amount/recipient or authorize a transfer. Retain
+exact transaction approval, duplicate checks and independent settlement evidence.
+
+The runtime finance configuration may hold only routing references, the official
+login URL and selected period; no credentials, amount/recipient assertions,
+authentication exemption or executable authorization is introduced. Maybank's
+current FAQ includes favourite transfers in its Secure2u scope, so the owner's
+expectation of no additional authentication is unverified and cannot override
+mandatory bank security. Initial 1Password diagnostics restored account discovery
+after opening the app, but CLI authorization timed out; real credential access and
+bank login remain unvalidated. No real payment or live execution enablement occurred.
