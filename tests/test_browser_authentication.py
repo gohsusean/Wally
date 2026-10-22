@@ -197,6 +197,102 @@ def test_cleanup_failure_cannot_echo_secrets_or_prevent_driver_cleanup():
     assert not adapter._pages and adapter._browser is None and adapter._playwright is None
 
 
+def test_login_reports_network_failure_separately_from_http_rejection_without_request_data():
+    handlers = {}
+    page = SimpleNamespace(
+        on=lambda name, callback: handlers.update({name: callback}),
+        remove_listener=lambda name, callback: handlers.pop(name),
+    )
+    adapter = PlaywrightBrowserAdapter()
+    adapter._pages["session"] = page
+    adapter.restrict_origins = Mock()
+
+    class Request:
+        resource_type = "xhr"
+        url = "https://bank.invalid/bootstrap?token=" + CANARY
+        failure = "net::ERR_HTTP2_PROTOCOL_ERROR"
+
+        @property
+        def post_data(self):
+            raise AssertionError("Diagnostics must never read request payloads")
+
+        @property
+        def headers(self):
+            raise AssertionError("Diagnostics must never read headers or cookies")
+
+    def interact(*args, **kwargs):
+        handlers["requestfailed"](Request())
+        handlers["response"](SimpleNamespace(request=Request(), status=503))
+        handlers["response"](SimpleNamespace(request=Request(), status=201))
+        handlers["requestfailed"](
+            SimpleNamespace(resource_type="fetch", url=Request.url, failure=CANARY)
+        )
+        handlers["requestfailed"](
+            SimpleNamespace(resource_type="xhr", url="https://other.invalid", failure=CANARY)
+        )
+        return LoginResult(LoginState.STALLED, True)
+
+    with patch("wally.adapters.browser.authentication.advance_login", side_effect=interact):
+        result = adapter.submit_authentication_step(
+            "session",
+            step(),
+            CANARY,
+            allowed_origins=("https://bank.invalid",),
+            before_submit=lambda: None,
+        )
+    assert result.state == LoginState.STALLED and result.submission_attempted
+    assert result.network_errors == (
+        "net::ERR_HTTP2_PROTOCOL_ERROR",
+        "unclassified_network_failure",
+    )
+    assert result.http_error_statuses == (503,)
+    assert CANARY not in repr(result) and "bank.invalid" not in repr(result)
+    assert handlers == {}
+
+
+def test_login_network_observer_is_bounded_and_removed_when_interaction_fails():
+    handlers = {}
+    page = SimpleNamespace(
+        on=lambda name, callback: handlers.update({name: callback}),
+        remove_listener=lambda name, callback: handlers.pop(name),
+    )
+    adapter = PlaywrightBrowserAdapter()
+    adapter._pages["session"] = page
+    adapter.restrict_origins = Mock()
+
+    def interact(*args, **kwargs):
+        for status in range(400, 430):
+            handlers["response"](
+                SimpleNamespace(
+                    request=SimpleNamespace(resource_type="fetch", url="https://bank.invalid/api"),
+                    status=status,
+                )
+            )
+        return LoginResult(LoginState.STALLED, True)
+
+    with patch("wally.adapters.browser.authentication.advance_login", side_effect=interact):
+        result = adapter.submit_authentication_step(
+            "session",
+            step(),
+            CANARY,
+            allowed_origins=("https://bank.invalid",),
+            before_submit=lambda: None,
+        )
+    assert len(result.http_error_statuses) == 8 and handlers == {}
+    with patch(
+        "wally.adapters.browser.authentication.advance_login", side_effect=RuntimeError(CANARY)
+    ):
+        result = adapter.submit_authentication_step(
+            "session",
+            step(),
+            CANARY,
+            allowed_origins=("https://bank.invalid",),
+            before_submit=lambda: None,
+        )
+    assert result.state == LoginState.FAILED and handlers == {}
+    assert CANARY not in repr(result)
+
+
 def test_chrome_stable_is_a_playwright_channel_with_no_personal_profile():
     playwright = SimpleNamespace(chromium=SimpleNamespace(launch=Mock(return_value=object())))
     with patch(

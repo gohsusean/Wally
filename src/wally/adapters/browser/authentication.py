@@ -42,6 +42,41 @@ class LoginStep:
 class LoginResult:
     state: LoginState
     submission_attempted: bool = False
+    network_errors: tuple[str, ...] = ()
+    http_error_statuses: tuple[int, ...] = ()
+
+
+# Browser-supplied diagnostics only. Never return a raw exception/failure string:
+# unexpected strings can contain URLs, credentials or provider response text.
+NETWORK_ERROR_CODES = frozenset(
+    "net::" + code
+    for code in (
+        "ERR_HTTP2_PROTOCOL_ERROR",
+        "ERR_QUIC_PROTOCOL_ERROR",
+        "ERR_NAME_NOT_RESOLVED",
+        "ERR_NAME_RESOLUTION_FAILED",
+        "ERR_CONNECTION_REFUSED",
+        "ERR_CONNECTION_RESET",
+        "ERR_CONNECTION_CLOSED",
+        "ERR_CONNECTION_ABORTED",
+        "ERR_CONNECTION_TIMED_OUT",
+        "ERR_TIMED_OUT",
+        "ERR_EMPTY_RESPONSE",
+        "ERR_INTERNET_DISCONNECTED",
+        "ERR_NETWORK_CHANGED",
+        "ERR_ADDRESS_UNREACHABLE",
+        "ERR_SSL_PROTOCOL_ERROR",
+        "ERR_CERT_AUTHORITY_INVALID",
+        "ERR_CERT_DATE_INVALID",
+        "ERR_CERT_COMMON_NAME_INVALID",
+        "ERR_PROXY_CONNECTION_FAILED",
+        "ERR_TUNNEL_CONNECTION_FAILED",
+        "ERR_BLOCKED_BY_CLIENT",
+        "ERR_BLOCKED_BY_RESPONSE",
+        "ERR_ABORTED",
+        "ERR_FAILED",
+    )
+)
 
 
 def field_state(page, selector):

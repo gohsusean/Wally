@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import uuid
 from contextlib import suppress
+from dataclasses import replace
 from typing import Any
 
 from wally.exceptions import ProviderUnavailableError
@@ -158,20 +159,68 @@ class PlaywrightBrowserAdapter:
     def submit_authentication_step(
         self, session_id, step, value, *, allowed_origins, before_submit
     ):
-        from wally.adapters.browser.authentication import LoginResult, LoginState, advance_login
+        from wally.adapters.browser.authentication import (
+            NETWORK_ERROR_CODES,
+            LoginResult,
+            LoginState,
+            advance_login,
+        )
+        from wally.finance.models import origin
 
         try:
             self.restrict_origins(session_id, allowed_origins)
             page = self._pages[session_id]
         except Exception:
             return LoginResult(LoginState.ORIGIN_CHANGED)
-        return advance_login(
-            page,
-            step,
-            value,
-            check_origin=lambda: self._check_origin(page, allowed_origins),
-            before_submit=before_submit,
-        )
+        network_errors: set[str] = set()
+        http_errors: set[int] = set()
+
+        def relevant(request):
+            return (
+                request.resource_type in ("xhr", "fetch") and origin(request.url) in allowed_origins
+            )
+
+        def failed(request):
+            with suppress(Exception):
+                if relevant(request) and len(network_errors) < 8:
+                    error = request.failure
+                    network_errors.add(
+                        error if error in NETWORK_ERROR_CODES else "unclassified_network_failure"
+                    )
+
+        def responded(response):
+            with suppress(Exception):
+                status = response.status
+                if (
+                    relevant(response.request)
+                    and type(status) is int
+                    and 400 <= status <= 599
+                    and len(http_errors) < 8
+                ):
+                    http_errors.add(status)
+
+        try:
+            page.on("requestfailed", failed)
+            page.on("response", responded)
+            result = advance_login(
+                page,
+                step,
+                value,
+                check_origin=lambda: self._check_origin(page, allowed_origins),
+                before_submit=before_submit,
+            )
+            return replace(
+                result,
+                network_errors=tuple(sorted(network_errors)),
+                http_error_statuses=tuple(sorted(http_errors)),
+            )
+        except Exception:
+            return LoginResult(LoginState.FAILED)
+        finally:
+            with suppress(Exception):
+                page.remove_listener("requestfailed", failed)
+            with suppress(Exception):
+                page.remove_listener("response", responded)
 
     def _run_action(self, session_id: str, page: Any, action: BrowserAction) -> BrowserStepResult:
         params = action.parameters
