@@ -1,6 +1,6 @@
 # Banking authentication foundation
 
-18 October 2026; attended evidence updated 22 October. This extends the existing Playwright and SecretsProvider adapters;
+18 October 2026; attended evidence updated 23 October. This extends the existing Playwright and SecretsProvider adapters;
 it adds no browser system, payment route, authority or approval ceremony. The
 MacBook profile selects Playwright's `chrome` channel (installed Google Chrome
 stable), using [Playwright’s supported channel](https://playwright.dev/python/docs/browsers#google-chrome--microsoft-edge). Earlier Maybank checks and the payment sandbox already used Playwright
@@ -28,7 +28,8 @@ A CAPTCHA, MFA, security-image confirmation or bank-signing challenge must be
 handled through the provider's supported owner interaction. The helper pauses at
 reviewed challenge selectors; it does not click them or solve them. An ambiguous
 submission is not automatically repeated. Callers close failed/expired sessions.
-Only a reviewed authenticated-page condition can establish login success.
+Only a reviewed authenticated-page condition can establish machine-verified login success.
+An owner-reported dashboard is attended evidence, not that machine acceptance.
 
 The existing payment browser profile optionally carries two reviewed login steps
 and its authenticated-page selector. These form part of its reviewed fingerprint;
@@ -58,6 +59,8 @@ These login paths run no metadata health probe before credential acquisition. Th
 to entering an account password in a subprocess. Raw CLI output/errors stay out of
 reports; audits contain references, purpose and bounded outcome messages only.
 Denied/failed/partial requests return no partial credentials and are not retried.
+A missing standard username or password now identifies only the missing field and
+asks for a local item repair; it never returns the other field or raw CLI response.
 The existing [desktop integration](https://www.1password.dev/cli/app-integration)
 still controls unlock and local CLI approval; Wally changes neither its security
 settings nor the bank's settings. A locked or unapproved new process remains an
@@ -231,13 +234,64 @@ A payment executed later can therefore require local authorization again; one
 successful setup does not establish unattended credential availability. No keepalive,
 credential cache, service-account substitution or security-setting change was added.
 
-Shortest supported continuation: obtain a bank-supported explanation/remedy for
+For Maybank, the remaining supported continuation is a bank-supported explanation/remedy for
 the anonymous token-bootstrap protocol failure in this managed Chrome configuration,
 then perform one fresh end-to-end auth-only acceptance. Share only the fixed error,
 public endpoint and comparison outcomes with support, never a HAR, session tokens
 or credential-bearing logs. No external message was sent. A supported remedy must
 preserve browser isolation, runtime origin policy and all bank-required checks;
 no live payment route is enabled by these diagnostics.
+
+## Attended Hong Leong result, 23 October 2026
+
+At the owner's request, authentication investigation switched to Hong Leong Connect
+at [its personal login](https://s.hongleongconnect.my/), using the existing
+Playwright/Chrome and governed 1Password adapters. This was an auth-only operator
+check, not registration or enablement of a production payment route.
+
+The owner renamed the login item to `HLB`. A scoped read initially found its
+standard username field empty; only field presence/type was inspected, never its
+value. After the owner repaired that field locally, pair reads succeeded in about
+**3.2 seconds**. Later reads in the same authorized diagnostic terminal needed no
+new local prompt. This demonstrates reuse of a valid grant, not permanent or
+unattended 1Password availability. An incorrect stored password caused the first
+password submission to return to the username page. The owner identified the
+incorrect password, corrected it locally and explicitly requested another attempt;
+Wally discarded the old pair and reread credentials before opening a fresh
+isolated browser session. There was no automatic password retry.
+
+The initially unseen Wally window was restored and activated on the Mac Mini using
+its own browser PID; the owner confirmed visibility. No personal Chrome profile or
+banking screenshot was used. The successful run followed the bank's native steps:
+
+1. Submit username once; the security-picture step appeared without observed
+   network or HTTP errors.
+2. The owner confirmed the picture matched. Wally then clicked the bank's checkbox
+   itself; owner verification did not require the owner to click the control.
+3. A normal click/focus enabled the initially read-only password field. No DOM
+   attribute or bank security control was overridden.
+4. Fill the freshly retrieved corrected password and submit once. The owner then
+   explicitly confirmed the visible **account overview/dashboard**.
+
+**Attended Hong Leong login succeeded, with owner-confirmed dashboard evidence.**
+The generic post-password selector did not recognize that page and returned
+`transition_not_observed`; no reviewed HLB authenticated-page selector has yet been
+validated. The cause of that selector mismatch was not inspected and is not
+attributed to a frame or bank failure. This is not machine-verified portal acceptance
+or a production-ready unattended login. Wally closed its browser and diagnostic
+terminal after the owner's confirmation. No account content, balances, cookies,
+tokens, security picture or credentials entered reports, screenshots or traces.
+
+The remaining authentication work is to validate a minimal HLB login-success
+condition without collecting account content and incorporate the observed native
+challenge/focus sequence into reviewed runtime configuration/continuation. The
+operator's window-activation and checkbox handling above are not newly deployed
+production features. The bank's security-picture check currently requires owner
+recognition; no trusted reference or supported automatic verification was established.
+No transfer, favourite-recipient exemption, AppAuthorise behavior or payment route
+has been tested. Maybank's separate protocol failure remains unresolved. No bank
+settings, financial baseline, certificates or default transfer-bank configuration
+changed.
 
 ## Fit for one Telegram approval
 
@@ -254,7 +308,8 @@ transfers at any amount in another. This supports investigating an existing
 favourite transfer below RM10,000, but the FAQ says its list is not exhaustive.
 The [general Connect page](https://www.hlb.com.my/en/personal-banking/hlb-connect.html)
 also uses broader authorization wording. No exemption for this account/recipient/
-transaction has been confirmed; no HLB login, transfer or setting change was tried.
+transaction has been confirmed. The attended HLB login above reached the dashboard;
+no transfer or setting change was tried.
 Maybank remains the owner's designated transfer bank until changed.
 
 Authentication does not approve a payment, verify an unpaid balance or establish
@@ -285,4 +340,15 @@ were not rerun for this browser-only change. All 41 focused authentication/secre
 tests, Ruff, local documentation links/fences and `git diff --check` passed. The
 existing offline Chrome authentication demo passed again through the updated
 adapter, with synthetic credentials, separate contexts and no live bank network.
-No successful live bank authentication or unattended secrets access is claimed.
+That historical run established neither live bank authentication nor unattended
+secrets access. The later attended HLB result above supersedes the login limitation;
+unattended access and production acceptance remain unverified.
+
+The 23 October HLB follow-up added the missing-field repair diagnostic and four
+privacy/fail-closed cases. **966 isolated tests passed, five deselected**, with the
+same three real `.env`/Keychain mutations and two socket tests excluded. All 45
+focused authentication/secrets tests passed. Ruff, local documentation links/fences
+and `git diff --check` passed; the offline Playwright/Chrome authentication demo
+passed again with isolated contexts and no live network or payment. These checks
+are separate from the owner's live HLB dashboard confirmation. No live payment
+or unattended availability was validated.

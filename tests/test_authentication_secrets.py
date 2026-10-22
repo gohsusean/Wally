@@ -77,7 +77,7 @@ def test_batch_checks_all_authority_and_references_before_any_read(references, a
         '[{"id":"username","value":"SYNTHETIC-USER-CANARY"}]',
         '[{"id":"username","value":"x"},{"id":"username","value":"y"}]',
         '[{"id":"username","value":"x"},{"id":"password","value":""}]',
-    '[{"id":"username","value":"x"},{"id":"custom-password","value":"y"}]',
+        '[{"id":"username","value":"x"},{"id":"custom-password","value":"y"}]',
     ],
 )
 def test_bad_scoped_response_is_bounded_and_not_retried(payload):
@@ -92,6 +92,40 @@ def test_bad_scoped_response_is_bounded_and_not_retried(payload):
             OnePasswordCliAdapter().resolve_many(REFS)
         assert "CANARY" not in str(failure.value)
         assert read.call_count == 1
+
+
+@pytest.mark.parametrize(
+    "missing,value", [("username", None), ("username", ""), ("password", None), ("password", "")]
+)
+def test_empty_login_field_names_the_repair_without_returning_partial_credentials(
+    tmp_path, missing, value
+):
+    fields = [
+        {"id": "username", "value": VALUES[0]},
+        {"id": "password", "value": VALUES[1]},
+    ]
+    for field in fields:
+        if field["id"] == missing:
+            if value is None:
+                field.pop("value")  # The live empty HLB username omitted this key.
+            else:
+                field["value"] = value
+    with (
+        patch("wally.adapters.secrets.op_cli.shutil.which", return_value="/fake/op"),
+        patch(
+            "wally.adapters.secrets.op_cli.subprocess.run",
+            return_value=SimpleNamespace(
+                returncode=0,
+                stdout=json.dumps(fields),
+            ),
+        ) as read,
+    ):
+        resolver = GovernedSecretsResolver(OnePasswordCliAdapter(), audit=AuditLogger(tmp_path))
+        with pytest.raises(ProviderUnavailableError, match="missing " + missing) as failure:
+            resolver.resolve_many(REFS, authorized=True)
+        assert read.call_count == 1
+        assert not any(value in str(failure.value) for value in VALUES)
+    assert "CANARY" not in next(tmp_path.glob("*.jsonl")).read_text()
 
 
 def test_timeout_has_no_retry_or_partial_result(tmp_path):

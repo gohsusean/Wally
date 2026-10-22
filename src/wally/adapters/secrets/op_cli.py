@@ -139,10 +139,18 @@ class OnePasswordCliAdapter:
             fields = json.loads(raw)
             if not isinstance(fields, list) or len(fields) != 2:
                 raise ValueError
-            values = {field["id"]: field["value"] for field in fields}
-            if set(values) != {"username", "password"} or any(
-                not isinstance(value, str) or not value for value in values.values()
-            ):
+            values = {field["id"]: field.get("value") for field in fields}
+            if set(values) != {"username", "password"}:
+                raise ValueError
+            missing = [name for name in ("username", "password") if values[name] in (None, "")]
+            if missing:
+                raise ProviderUnavailableError(
+                    self.name,
+                    "1Password login item is missing "
+                    + " and ".join(missing)
+                    + "; update the item locally in 1Password.",
+                )
+            if any(not isinstance(value, str) for value in values.values()):
                 raise ValueError
             return tuple(values[path[1]] for path in paths)
         except (ValueError, TypeError, KeyError):
