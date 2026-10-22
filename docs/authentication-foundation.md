@@ -189,6 +189,36 @@ are never returned. Listeners are removed after each step. This closes the earli
 diagnostic gap; it does **not** claim to fix bank authentication. Playwright
 [distinguishes failed requests from HTTP error responses](https://playwright.dev/python/docs/api/class-request#request-failure).
 
+### Entry-URL and driver-version follow-up, 22 October 2026
+
+The owner clarified that the successful manual entry URL was
+[the Maybank homepage](https://www.maybank2u.com.my/), rather than explicitly the
+configured deep link. A fresh origin-restricted Playwright/Chrome context entered
+through `/` and redirected to `/home/m2u/common/login.do`, matching the configured
+login path. The bank's native credential-free bootstrap was invoked once after
+that redirect: no username/password fields, no HTTP response, and the same
+`net::ERR_HTTP2_PROTOCOL_ERROR`. Starting through the homepage did not establish a
+correction, so the configured URL was left unchanged.
+
+The installed versions were Playwright Python **1.61.0** and Chrome stable
+**155.0.8059.86**. Playwright's matching bundled Chromium was not installed.
+[Playwright 1.64's official release](https://github.com/microsoft/playwright/releases/tag/v1.64.0)
+lists testing against Chrome 155, so Python 1.64.0 (the latest official PyPI Python
+release observed) was tested from a temporary dependency directory with the same
+installed Chrome. No Wally virtualenv, lockfile, live service or browser security
+setting was changed. One identical credential-free bootstrap through the homepage
+still failed with the same exact Chromium error and no observed HTTP response.
+A driver update therefore did not validate a fix and was not adopted in production.
+
+All owned sessions were closed. These checks retrieved no 1Password credentials,
+submitted no username/password, changed no bank settings and executed no payment.
+They narrow the URL/version hypotheses but do not establish the underlying cause
+or prove a mandatory security restriction. The normal/manual browser difference
+remains; further work requires a supported explanation rather than security-identity
+changes or repeated credentialed login attempts. Only this evidence report changed;
+Ruff, local documentation links/fences and `git diff --check` passed. The prior
+962-test and offline Chrome results were not rerun or represented as new results.
+
 ### 1Password authorization is recurring
 
 Enabling desktop integration is setup; granting CLI access is a runtime security
