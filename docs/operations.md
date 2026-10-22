@@ -369,3 +369,12 @@ isolation in real Chrome. It does not establish bank acceptance. See [live findi
 blockers and the shortest next check](authentication-foundation.md). Never run the
 live check as an unattended/default test, infer a bank login from a button click,
 or initiate a transfer while diagnosing authentication.
+
+## HLB continuation, 23 October 2026
+
+**23 October final owner decision:** HLB is the sole transfer bank; Maybank
+development and authorization-exemption investigation are stopped. Bank-app
+authorization is required and the owner completes it; every payment still
+needs its exact Telegram approval. The [local security-picture gate](hlb-security-picture.md)
+is implemented with synthetic acceptance; owner enrollment and live acceptance remain.
+This supersedes earlier bank-selection and investigation notes.

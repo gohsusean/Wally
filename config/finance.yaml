@@ -1,11 +1,12 @@
 # Owner-approved Notion financial catalog ingestion only.
 # Source designation grants no record certification or financial actions.
 schema_version: 1
-# Owner choice, 18 October 2026. References and routing intent only: no payment,
+# Owner choice, 23 October 2026: HLB only; bank-app authorization is required.
+# References and routing intent only: no payment,
 # source certification, baseline exception or live executor is enabled here.
 payment_preferences:
-  default_transfer_bank: maybank
-  transfer_login_url: https://www.maybank2u.com.my/home/m2u/common/login.do
+  default_transfer_bank: hlb
+  transfer_login_url: https://s.hongleongconnect.my/
   first_bill_account: fin_d692b4b201b84448b7badf9c7ccbe5f9
   first_bill_definition: fin_3660fe32ae4b4491865c26d00e32c1a8
   first_bill_period_start: '2026-10-01'

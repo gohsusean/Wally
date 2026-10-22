@@ -99,8 +99,8 @@ def load_payment_preferences(path: Path) -> PaymentPreferences | None:
         if not isinstance(raw, dict) or set(raw) != set(PaymentPreferences.__dataclass_fields__):
             raise ValueError
         preferences = PaymentPreferences(**raw)
-        if preferences.default_transfer_bank != "maybank" or preferences.transfer_login_url != (
-            "https://www.maybank2u.com.my/home/m2u/common/login.do"
+        if preferences.default_transfer_bank != "hlb" or preferences.transfer_login_url != (
+            "https://s.hongleongconnect.my/"
         ):
             raise ValueError
         for field in (preferences.first_bill_account, preferences.first_bill_definition):

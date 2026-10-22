@@ -56,6 +56,9 @@ def test_allowlist_and_complete_audit_lines(tmp_path: Path) -> None:
     (repo / "data/audit/secret.jsonl").write_text("excluded")
     (repo / "data/cache").mkdir()
     (repo / "data/cache/token.json").write_text("excluded")
+    private_auth = repo / "data/private-auth/hlb"
+    private_auth.mkdir(parents=True)
+    (private_auth / "picture.sha256").write_text("private-reference-excluded")
     evidence = repo / "data/manual-payment/occurrence"
     evidence.mkdir(parents=True)
     (evidence / "facts.json").write_text('{"amount":"100"}')

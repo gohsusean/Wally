@@ -2160,3 +2160,34 @@ credentials before opening the bank page and re-check the exact binding afterwar
 The offline two-stage Chrome flow passed; complete live Maybank authentication and
 unattended credential access remain unverified. No payment route is enabled and
 no through-2026 financial baseline is changed. See [evidence and limits](authentication-foundation.md).
+
+## ADR-052: HLB only and local security-picture enrollment
+
+**Status:** Accepted by explicit owner instruction, 23 October 2026.
+
+HLB is the sole bank-transfer provider; stop Maybank development. Assume HLB
+bank-app authorization is required and stop exemption investigation. Every payment
+needs its specific Telegram approval; the owner completes required bank-app
+checks. This supersedes earlier Maybank routing and HLB exemption investigation,
+without enabling a live route or changing payment/capability/settlement gates.
+
+The owner authorizes automating only the HLB security-picture recognition step
+after one explicit local enrollment. Capture the actual loaded picture on the
+exact official HTTPS origin in an isolated Playwright session, ask the owner to
+recognize it in that bank window, then persist only a private local pixel hash.
+Images never go to disk, Git, Notion, logs, backups or external services. Repeat
+exact deterministic pixel comparison before ticking the native checkbox and
+before using the existing 1Password password flow. Missing, ambiguous, changed or
+mismatching pictures stop before password entry. No approximate/LLM recognition,
+automatic relearning or fallback owner claim in source text is allowed. Reference
+replacement requires explicit local owner confirmation of the new actual image.
+This narrow recognition automation does not satisfy bank-app, biometric, hardware
+or transaction authorization and adds no execute/verify capability to any surface.
+
+Reuse the existing adapters and guarded login helper. The operator-only enrollment
+command is separate from login and stops before password entry; trusted payment
+profiles bind picture selectors in their reviewed fingerprint and require the gate
+for HLB. Store only the hash in ignored private authentication state, excluded from
+Wally's allowlisted iCloud sync. Synthetic Chrome acceptance proves the mechanics;
+real owner enrollment, post-username selectors and live auth-only acceptance remain
+required. No payment was initiated. See [implementation and runbook](hlb-security-picture.md).

@@ -256,3 +256,12 @@ documentation links/fences and `git diff --check` passed. These checks started n
 live mailbox, bot, bank or biller session.
 See [ADR-051](decisions.md#adr-051-exact-telegram-supervised-payments) and the
 [roadmap](roadmap.md#v019--supervised-payment-automation-in-progress).
+
+## HLB continuation, 23 October 2026
+
+**23 October final owner decision:** HLB is the sole transfer bank; Maybank
+development and authorization-exemption investigation are stopped. Bank-app
+authorization is required and the owner completes it; every payment still
+needs its exact Telegram approval. The [local security-picture gate](hlb-security-picture.md)
+is implemented with synthetic acceptance; owner enrollment and live acceptance remain.
+This supersedes earlier bank-selection and investigation notes.

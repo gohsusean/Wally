@@ -312,3 +312,12 @@ business state with observed/verified baselines, retains historical attempts and
 invalidates affected certification. Direct external writes remain permitted; SQLite
 cannot fence them. The existing complete financial catalog refresh governs financial
 facts. No continuous source monitor or provider conditional-write guarantee exists.
+
+## HLB continuation, 23 October 2026
+
+**23 October final owner decision:** HLB is the sole transfer bank; Maybank
+development and authorization-exemption investigation are stopped. Bank-app
+authorization is required and the owner completes it; every payment still
+needs its exact Telegram approval. The [local security-picture gate](hlb-security-picture.md)
+is implemented with synthetic acceptance; owner enrollment and live acceptance remain.
+This supersedes earlier bank-selection and investigation notes.

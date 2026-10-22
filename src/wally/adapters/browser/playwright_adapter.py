@@ -222,6 +222,53 @@ class PlaywrightBrowserAdapter:
             with suppress(Exception):
                 page.remove_listener("response", responded)
 
+    def enroll_hlb_security_picture(
+        self, session_id, picture, *, confirm_owner, guard, reference=None, replace=False
+    ):
+        from wally.adapters.browser.hlb import HLB_ORIGIN, REFERENCE
+
+        self.restrict_origins(session_id, (HLB_ORIGIN,))
+        picture.enroll(
+            self._pages[session_id],
+            confirm_owner=confirm_owner,
+            guard=guard,
+            reference=reference or REFERENCE,
+            replace=replace,
+        )
+
+    def submit_hlb_password(self, session_id, picture, step, value, *, guard, reference=None):
+        """Native picture checkbox/focus, then the existing guarded password step."""
+        from wally.adapters.browser.authentication import LoginResult, LoginState
+        from wally.adapters.browser.hlb import HLB_ORIGIN, REFERENCE, check_hlb_origin
+
+        reference = reference or REFERENCE
+        try:
+            self.restrict_origins(session_id, (HLB_ORIGIN,))
+            page = self._pages[session_id]
+            picture.confirm(page, reference=reference, guard=guard)
+
+            def checked_guard():
+                guard()
+                picture.verify(page, reference)
+                check_hlb_origin(page)
+                if not page.locator(picture.checkbox_selector).is_checked():
+                    raise ValueError
+
+            checked_guard()
+            # HLB makes the password field editable on native focus. Never alter
+            # readonly/disabled attributes or bank challenge controls.
+            page.locator(step.input_selector).click(timeout=5000)
+            checked_guard()
+            return self.submit_authentication_step(
+                session_id,
+                step,
+                value,
+                allowed_origins=(HLB_ORIGIN,),
+                before_submit=checked_guard,
+            )
+        except Exception:
+            return LoginResult(LoginState.FAILED)
+
     def _run_action(self, session_id: str, page: Any, action: BrowserAction) -> BrowserStepResult:
         params = action.parameters
         if action.action_type == BrowserActionType.NAVIGATE:

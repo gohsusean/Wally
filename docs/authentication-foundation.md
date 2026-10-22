@@ -1,5 +1,12 @@
 # Banking authentication foundation
 
+**23 October final owner decision:** HLB is the sole transfer bank; Maybank
+development and authorization-exemption investigation are stopped. Bank-app
+authorization is required and the owner completes it; every payment still
+needs its exact Telegram approval. The [local security-picture gate](hlb-security-picture.md)
+is implemented with synthetic acceptance; owner enrollment and live acceptance remain.
+Earlier bank-selection/investigation notes below are historical.
+
 18 October 2026; attended evidence updated 23 October. This extends the existing Playwright and SecretsProvider adapters;
 it adds no browser system, payment route, authority or approval ceremony. The
 MacBook profile selects Playwright's `chrome` channel (installed Google Chrome

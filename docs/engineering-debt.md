@@ -408,3 +408,12 @@ offline real-Chrome two-stage login passed. Fresh local access and live Maybank
 login remain acceptance blockers; bank-specific work should stay bounded. HLB's
 possible existing-favourite exemption remains unconfirmed. No payment or bank
 setting change was made and no live route was enabled.
+
+## HLB continuation, 23 October 2026
+
+**23 October final owner decision:** HLB is the sole transfer bank; Maybank
+development and authorization-exemption investigation are stopped. Bank-app
+authorization is required and the owner completes it; every payment still
+needs its exact Telegram approval. The [local security-picture gate](hlb-security-picture.md)
+is implemented with synthetic acceptance; owner enrollment and live acceptance remain.
+This supersedes earlier bank-selection and investigation notes.

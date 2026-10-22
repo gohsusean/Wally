@@ -7,6 +7,7 @@ live route can use this adapter. The included routed HTML sandbox exercises it.
 from dataclasses import asdict, dataclass
 
 from wally.adapters.browser.authentication import LoginState, LoginStep
+from wally.adapters.browser.hlb import HLB_ORIGIN, HLBSecurityPicture
 from wally.finance.models import FinanceError, digest, origin
 from wally.finance.payments import BillPayment, MandatoryChallenge, PaymentQuote, Settlement
 from wally.models.browser import BrowserAction, BrowserActionType, BrowserStepStatus
@@ -32,6 +33,7 @@ class PaymentBrowserProfile:
     username_step: LoginStep | None = None
     password_step: LoginStep | None = None
     authenticated_selector: str = "#authenticated"
+    hlb_picture: HLBSecurityPicture | None = None
 
     @property
     def fingerprint(self):
@@ -50,6 +52,10 @@ class PaymentBrowserProfile:
             raise FinanceError("Automatic login requires configured credential references.")
         if not self.authenticated_selector:
             raise FinanceError("Authentication needs an observed success condition.")
+        if HLB_ORIGIN in self.allowed_origins and not self.hlb_picture:
+            raise FinanceError("HLB login requires an enrolled security-picture gate.")
+        if self.hlb_picture and (self.allowed_origins != (HLB_ORIGIN,) or not self.password_step):
+            raise FinanceError("HLB picture verification requires official-origin staged login.")
         if self.username_step is not None or self.password_step is not None:
             if not self.username_step or not self.password_step or not self.challenge_selector:
                 raise FinanceError(
@@ -138,13 +144,22 @@ class BrowserPaymentProvider:
                 else self.profile.password_step
             )
             if step:
-                result = self.browser.submit_authentication_step(
-                    self._session.session_id,
-                    step,
-                    value,
-                    allowed_origins=self.profile.allowed_origins,
-                    before_submit=guard,
-                )
+                if selector == "#password" and self.profile.hlb_picture:
+                    result = self.browser.submit_hlb_password(
+                        self._session.session_id,
+                        self.profile.hlb_picture,
+                        step,
+                        value,
+                        guard=guard,
+                    )
+                else:
+                    result = self.browser.submit_authentication_step(
+                        self._session.session_id,
+                        step,
+                        value,
+                        allowed_origins=self.profile.allowed_origins,
+                        before_submit=guard,
+                    )
                 if result.state == LoginState.CHALLENGE:
                     raise MandatoryChallenge("A mandatory bank challenge requires the owner.")
                 if result.state != LoginState.ADVANCED:
