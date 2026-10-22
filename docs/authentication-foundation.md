@@ -1,6 +1,6 @@
 # Banking authentication foundation
 
-18 October 2026. This extends the existing Playwright and SecretsProvider adapters;
+18 October 2026; attended evidence updated 22 October. This extends the existing Playwright and SecretsProvider adapters;
 it adds no browser system, payment route, authority or approval ceremony. The
 MacBook profile selects Playwright's `chrome` channel (installed Google Chrome
 stable), using [Playwright’s supported channel](https://playwright.dev/python/docs/browsers#google-chrome--microsoft-edge). Earlier Maybank checks and the payment sandbox already used Playwright
@@ -79,11 +79,11 @@ service was reloaded during this work.
   credentials. A second context did not inherit authentication. This proves the
   reusable browser sequence and isolation, not bank acceptance or live 1Password
   availability.
-- One owner-approved live 1Password pair read succeeded. Later fresh reads timed
+- One owner-approved live 1Password pair read initially succeeded. Later fresh reads timed
   out awaiting access. The desktop app was running and no shell-session,
   service-account or disabled-integration override was present. No security setting
-  was relaxed. Fresh attended access still needs acceptance; reliable unattended
-  access has not been demonstrated.
+  was relaxed. Two further attended reads succeeded on 22 October, as described
+  below; reliable unattended access has not been demonstrated.
 - The successful live read was followed by a browser timeout in the username
   operation before a post-step result was recorded. Its exact cause is unproven;
   it must not be described as a bank rejection or completed username submission.
@@ -94,11 +94,39 @@ service was reloaded during this work.
 - Maybank login remains unverified. No bank password was submitted, no payment
   initiated and no bank settings modified. No live payment profile is enabled.
 
-Shortest live continuation: approve one scoped local 1Password read while the check
-is running, then use the fresh Playwright session to observe the username transition
-and any bank-required challenge. Reuse that same bounded session for password
-submission only when the bank's required identity checks have been satisfied.
-Stop after an independently observed login condition, before any transfer controls.
+### Attended follow-up, 22 October 2026
+
+Two fresh, owner-approved scoped pair reads through the committed resolver and
+1Password adapter succeeded in **16.0 seconds** and **12.6 seconds**. This also
+accepts the committed bare field-ID selection (`username,password`) against the
+live item. Both reads preceded Chrome startup; no health probe, credential cache,
+stdin password entry or automatic retry was used. The earlier expired request did
+not resume when its delayed approval reply arrived.
+
+Both fresh Playwright-controlled Chrome sessions found the username field ready.
+The helper submitted once per session, then reported `transition_not_observed`;
+the username field became disabled and no visible password field or recognized
+challenge appeared. The owner confirmed a loading indicator in the first session.
+The second, separately attended diagnostic observed a same-origin HTTP 201 response
+and a failed same-origin XHR during this step. These observations establish that
+the browser reached submission, not that Maybank accepted or rejected the username.
+The failed request's detailed Chromium error was not captured by the bounded
+diagnostic, so its browser/network/backend cause remains unknown.
+
+A separate credential-free inspection of scripts already loaded by Chrome found
+blocked public resources, including `abc-api.maybanksandbox.com`. The relationship
+of that request to authentication was not established. The origin allowlist was
+not expanded, and no bank or password-manager security setting was changed. No
+response bodies, payloads, cookies, session tokens, page dumps or screenshots were
+reported. Both owned login sessions were closed; neither submitted a bank password.
+
+Shortest continuation: identify the failed same-origin XHR's fixed Chromium error
+code and its endpoint using public-script evidence, without recording request or
+response data. Establish the supported cause before another credential attempt;
+do not relax origin restrictions or bank security based on the loading indicator.
+Once resolved, observe the username transition, satisfy any bank-required identity
+check locally and submit the password at most once in the same bounded session.
+Stop after an independently observed login condition, before transfer controls.
 
 ## Fit for one Telegram approval
 
@@ -134,3 +162,7 @@ passed, including the pre-existing single-Telegram-approval payment simulation.
 The authentication fixture also passed through the existing payment adapter’s
 staged authentication method, without invoking any payment method. These are not
 live bank or payment acceptance results.
+
+The 22 October follow-up changed this evidence report only. All 39 focused secrets
+and browser-authentication tests passed again, as did Ruff and `git diff --check`.
+The earlier full-suite result above was not rerun or represented as a new run.
