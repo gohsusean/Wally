@@ -4,7 +4,9 @@
 development and authorization-exemption investigation are stopped. Bank-app
 authorization is required and the owner completes it; every payment still
 needs its exact Telegram approval. The [local security-picture gate](hlb-security-picture.md)
-is implemented with synthetic acceptance; owner enrollment and live acceptance remain.
+has completed owner enrollment and attended live login acceptance on this machine.
+The second controlled login recognized the enrolled picture automatically and
+detected the authenticated dashboard inside its iframe; see the linked runbook.
 Earlier bank-selection/investigation notes below are historical.
 
 18 October 2026; attended evidence updated 23 October. This extends the existing Playwright and SecretsProvider adapters;

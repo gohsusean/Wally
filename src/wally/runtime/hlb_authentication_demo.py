@@ -21,7 +21,7 @@ HTML = """<!doctype html><form id="user-form"><input id="username"><button>Next<
 <div id="picture-step" hidden><img id="picture" src="/picture.png">
 <input id="confirm" type="checkbox"><form id="password-form">
 <input id="password" type="password" readonly><button>Login</button></form></div>
-<button id="logout" hidden>Logout</button>
+<iframe id="dashboard" hidden srcdoc="<button id='logout'>Logout</button>"></iframe>
 <script>
 const el = id => document.getElementById(id);
 el('user-form').onsubmit = e => { e.preventDefault();
@@ -29,7 +29,7 @@ el('user-form').onsubmit = e => { e.preventDefault();
 el('password').onclick = () => { if (el('confirm').checked) el('password').readOnly = false; };
 el('password-form').onsubmit = e => { e.preventDefault();
   if (el('password').value === 'SYNTHETIC-PASSWORD') {
-    el('picture-step').hidden = true; el('logout').hidden = false;
+    el('picture-step').hidden = true; el('dashboard').hidden = false;
   }
 };
 </script>"""
@@ -83,7 +83,9 @@ def main():
         values = resolver.resolve_many(refs, authorized=True, purpose="offline_hlb_auth")
         browser = OfflineHLBBrowser()
         picture = HLBSecurityPicture("#picture", "#confirm")
-        password_step = LoginStep("#password", ("#logout",), timeout_ms=1000)
+        password_step = LoginStep(
+            "#password", ("#logout",), timeout_ms=1000, next_frame_selector="#dashboard"
+        )
         try:
             for case in ("match", "mismatch", "missing", "ambiguous", "unloaded", "cross_origin"):
                 session = browser.open_session(url=HLB_ORIGIN + "/", allowed_origins=(HLB_ORIGIN,))
@@ -133,7 +135,7 @@ def main():
                 )
                 if case == "match":
                     assert result.state == LoginState.ADVANCED
-                    assert page.locator("#logout").is_visible()
+                    assert page.frame_locator("#dashboard").locator("#logout").is_visible()
                 else:
                     assert result.state == LoginState.FAILED
                     assert page.locator("#password").input_value() == ""

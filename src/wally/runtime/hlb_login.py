@@ -25,21 +25,32 @@ def main():
     modes.add_argument(
         "--replace-picture", action="store_true", help="Explicitly replace enrolled picture"
     )
+    modes.add_argument(
+        "--enroll-and-login",
+        action="store_true",
+        help="Confirm/enroll, then log in in this session",
+    )
     parser.add_argument("--username-ref", required=True)
     parser.add_argument("--password-ref", required=True)
     parser.add_argument(
-        "--picture-selector", required=True, help="Reviewed unique security IMG selector"
+        "--picture-selector",
+        default="xpath=//input[@id='idSBCBConfirmPic']/preceding::img[1]",
+        help="Reviewed unique security IMG selector",
     )
-    parser.add_argument("--checkbox-selector", required=True)
-    parser.add_argument("--password-selector", required=True)
-    parser.add_argument("--submit-selector", required=True)
+    parser.add_argument("--checkbox-selector", default="#idSBCBConfirmPic")
+    parser.add_argument("--password-selector", default="#idPswd")
+    parser.add_argument("--submit-selector", default="#idBtnSubmit2")
     parser.add_argument(
-        "--authenticated-selector", required=True, help="Reviewed authenticated-only selector"
+        "--authenticated-selector",
+        default='a[href*="logout" i]',
+        help="Reviewed authenticated-only selector",
     )
+    parser.add_argument("--authenticated-frame-selector", default="iframe")
     args = parser.parse_args()
-    enrolling = args.enroll or args.replace_picture
+    enrolling = args.enroll or args.replace_picture or args.enroll_and_login
     browser = PlaywrightBrowserAdapter(headless=False, channel="chrome")
     values = ()
+    phase = "local picture enrollment check"
     try:
         if not enrolling:
             read_reference(REFERENCE)  # Fail before credential retrieval if not enrolled.
@@ -48,9 +59,19 @@ def main():
             create_secrets_provider(settings),
             audit=AuditLogger(Path(__file__).resolve().parents[3] / "data/audit"),
         )
-        refs = (args.username_ref,) if enrolling else (args.username_ref, args.password_ref)
+        refs = (
+            (args.username_ref,)
+            if enrolling and not args.enroll_and_login
+            else (args.username_ref, args.password_ref)
+        )
+        phase = "1Password credential retrieval"
+        print("HLB: waiting for local 1Password authorization.", flush=True)
         values = resolver.resolve_many(refs, authorized=True, purpose="owner_hlb_auth_only")
+        phase = "official HLB navigation"
         session = browser.open_session(url=HLB_ORIGIN + "/", allowed_origins=(HLB_ORIGIN,))
+        phase = "HLB login form readiness"
+        browser.wait_for_hlb_login(session.session_id)
+        phase = "HLB username submission"
         result = browser.submit_authentication_step(
             session.session_id,
             LoginStep("#idLoginId", (args.picture_selector,), submit_selector="#idBtnSubmit1"),
@@ -63,6 +84,7 @@ def main():
             return 1
         picture = HLBSecurityPicture(args.picture_selector, args.checkbox_selector)
         if enrolling:
+            phase = "owner-confirmed picture enrollment"
 
             def confirm_owner():
                 return (
@@ -80,8 +102,11 @@ def main():
                 guard=lambda: None,
                 replace=args.replace_picture,
             )
-            print("HLB picture enrolled locally. No password submitted; run auth-only login next.")
-            return 0
+            print("HLB picture enrolled locally.")
+            if not args.enroll_and_login:
+                print("No password submitted; run auth-only login next.")
+                return 0
+        phase = "enrolled picture confirmation and password submission"
         result = browser.submit_hlb_password(
             session.session_id,
             picture,
@@ -89,6 +114,7 @@ def main():
                 args.password_selector,
                 (args.authenticated_selector,),
                 submit_selector=args.submit_selector,
+                next_frame_selector=args.authenticated_frame_selector,
             ),
             values[1],
             guard=lambda: None,
@@ -97,9 +123,7 @@ def main():
         return 0 if result.state == LoginState.ADVANCED else 1
     except Exception:
         # Never surface Playwright DOM/URLs, credential values, images or hashes.
-        print(
-            "HLB login/enrollment stopped. Check local enrollment, origin, selectors and 1Password."
-        )
+        print(f"HLB login/enrollment stopped during {phase}. No automatic retry.")
         return 1
     finally:
         values = ()

@@ -222,6 +222,20 @@ class PlaywrightBrowserAdapter:
             with suppress(Exception):
                 page.remove_listener("response", responded)
 
+    def wait_for_hlb_login(self, session_id):
+        """HLB redirects after DOMContentLoaded; wait for its actual username form."""
+        from wally.adapters.browser.hlb import HLB_ORIGIN, check_hlb_origin
+        from wally.finance.models import FinanceError
+
+        try:
+            self.restrict_origins(session_id, (HLB_ORIGIN,))
+            page = self._pages[session_id]
+            check_hlb_origin(page)
+            page.locator("#idLoginId").wait_for(state="visible", timeout=20000)
+            check_hlb_origin(page)
+        except Exception:
+            raise FinanceError("HLB login form/origin not ready; login stopped.") from None
+
     def enroll_hlb_security_picture(
         self, session_id, picture, *, confirm_owner, guard, reference=None, replace=False
     ):

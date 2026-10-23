@@ -143,6 +143,38 @@ def test_challenge_is_never_clicked_or_filled():
     assert page.fields["#user"].fills == 0
 
 
+def test_next_state_in_reviewed_frame_uses_public_frame_locator():
+    page = Page()
+    dashboard = Page()
+    page.frame_locator = Mock(return_value=dashboard)
+    page.fields["#user"].on_submit = lambda: setattr(dashboard.fields["#next"], "visible", True)
+    result = advance_login(
+        page,
+        replace(step(), next_frame_selector="#bank-dashboard"),
+        CANARY,
+        check_origin=lambda: None,
+        before_submit=lambda: None,
+    )
+    assert result.state == LoginState.ADVANCED
+    assert not page.fields["#next"].visible
+    page.frame_locator.assert_called_with("#bank-dashboard")
+
+
+def test_missing_framed_dashboard_does_not_claim_login_success():
+    page = Page()
+    page.fields["#next"].visible = True  # An outer-page match is insufficient.
+    page.frame_locator = Mock(return_value=Page())
+    result = advance_login(
+        page,
+        replace(step(), next_frame_selector="#bank-dashboard"),
+        CANARY,
+        check_origin=lambda: None,
+        before_submit=lambda: None,
+    )
+    assert result.state == LoginState.STALLED
+    assert page.fields["#user"].submissions == 1
+
+
 def test_timeout_after_success_does_not_repeat_submission_or_echo_the_exception():
     page = Page()
 

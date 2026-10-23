@@ -123,6 +123,28 @@ def test_missing_reference_never_captures_or_learns(page, picture, tmp_path):
     assert not list(tmp_path.iterdir())
 
 
+@pytest.mark.parametrize("problem", [None, "origin", "navigation"])
+def test_hlb_login_waits_for_final_username_form_and_checks_origin(problem):
+    page = Mock()
+    page.url = HLB_ORIGIN + "/"
+    browser = PlaywrightBrowserAdapter()
+    browser._pages["test"] = page
+    browser.restrict_origins = Mock()
+    if problem == "origin":
+        page.url = "https://attacker.invalid/"
+    elif problem == "navigation":
+        page.locator.return_value.wait_for.side_effect = RuntimeError("PRIVATE-URL-CANARY")
+    if problem:
+        with pytest.raises(FinanceError, match="login form/origin not ready"):
+            browser.wait_for_hlb_login("test")
+        if problem == "origin":
+            page.locator.assert_not_called()
+    else:
+        browser.wait_for_hlb_login("test")
+        page.locator.assert_called_once_with("#idLoginId")
+        page.locator.return_value.wait_for.assert_called_once_with(state="visible", timeout=20000)
+
+
 def test_enrollment_requires_explicit_confirmation_and_stability(page, picture, tmp_path):
     path = tmp_path / "private/picture.sha256"
     with pytest.raises(FinanceError):

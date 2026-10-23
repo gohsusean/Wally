@@ -32,6 +32,7 @@ class LoginStep:
     rejection_selector: str = ""
     challenge_selectors: tuple[str, ...] = ()
     timeout_ms: int = 15000
+    next_frame_selector: str = ""  # Only the observed next state may be inside a reviewed frame.
 
     def __post_init__(self):
         if not self.input_selector or not self.next_selectors or not 1 <= self.timeout_ms <= 30000:
@@ -102,7 +103,8 @@ def _observe(page, step):
         return LoginState.CHALLENGE
     if _visible(page, step.rejection_selector):
         return LoginState.REJECTED
-    if any(_visible(page, selector) for selector in step.next_selectors):
+    next_page = page.frame_locator(step.next_frame_selector) if step.next_frame_selector else page
+    if any(_visible(next_page, selector) for selector in step.next_selectors):
         return LoginState.ADVANCED
     return None
 
