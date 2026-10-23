@@ -45,6 +45,9 @@ def load_sources(path: Path) -> tuple[SourceMapping, ...]:
             raw["review_fields"] = {
                 k: FieldMapping(**v) for k, v in raw.get("review_fields", {}).items()
             }
+            raw["payment_review_fields"] = {
+                k: FieldMapping(**v) for k, v in raw.get("payment_review_fields", {}).items()
+            }
             source = SourceMapping(**raw)
             source.validate()
             sources.append(source)

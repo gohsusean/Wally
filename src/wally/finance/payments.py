@@ -21,6 +21,7 @@ from typing import Protocol
 from uuid import UUID, uuid4
 
 from wally.finance.models import FinanceError, Kind, Scope, digest, money, text
+from wally.finance.typical_amount import TypicalAmount
 from wally.models.ops import (
     ExecutionStatus,
     Matter,
@@ -116,6 +117,31 @@ class CertifiedPaymentSource:
             definition.id, Scope.PORTAL_REVIEW, portal_binding
         ):
             raise FinanceError("This exact portal requires governed acceptance and enablement.")
+
+    def read_typical_amount(self, instance_id: str) -> TypicalAmount:
+        # Follow this instance's canonical relation, never a title/account-name search.
+        catalog = self.catalog
+        instance = catalog.store.get(instance_id)
+        if instance.candidate.kind != Kind.INSTANCE:
+            raise FinanceError("An issued canonical bill instance is required.")
+        definition = catalog.store.get(instance.candidate.facts.definition)
+        if definition.candidate.kind != Kind.DEFINITION:
+            raise FinanceError("The payment review requires its exact recurring definition.")
+        locator = definition.candidate.locator
+        sources = [
+            source for source in catalog.sources()
+            if source.kind == Kind.DEFINITION
+            and str(UUID(source.database_id)) == locator.database
+            and str(UUID(source.data_source_id)) == locator.data_source
+        ]
+        if locator.system != "notion":
+            return TypicalAmount("invalid")
+        if len(sources) != 1 or catalog.reader is None:
+            raise FinanceError("Payment review definition source is unavailable or ambiguous.")
+        catalog._source_gate(sources[0])
+        return catalog.reader.typical_amount(
+            sources[0], locator.page, definition.candidate.facts.currency
+        )
 
 
 @dataclass(frozen=True)
@@ -313,6 +339,7 @@ class SupervisedPayments:
             "history": self.history.fingerprint,
             "sandbox": self.provider.sandbox,
             "scope": "one_payment_and_receipt_reconciliation",
+            "typical_amount_review": self._typical_amount_review(bill),
         }
         matter_id = "payment_" + bill.obligation[:24]
         if self.store.get_matter(matter_id) is None:
@@ -360,6 +387,10 @@ class SupervisedPayments:
         self._event(proposal.id, "prepared", {"fingerprint": proposal.fingerprint})
         return proposal
 
+    def _typical_amount_review(self, bill):
+        baseline = self.source.read_typical_amount(bill.instance_id)
+        return {"baseline": asdict(baseline), "notice": baseline.notice(bill.amount, bill.currency)}
+
     def load(self, proposal_id):
         proposal = self.store.get_proposal(proposal_id)
         with self.store._connect() as c:
@@ -388,6 +419,7 @@ class SupervisedPayments:
             or spec["sandbox"] != self.provider.sandbox
             or (approved and proposal.decision_fingerprint != proposal.fingerprint)
             or self.source.read(bill.instance_id) != bill
+            or self._typical_amount_review(bill) != spec.get("typical_amount_review")
         ):
             raise FinanceError("Payment facts, policy, decision or Matter changed.")
         self._validate_bill(bill)

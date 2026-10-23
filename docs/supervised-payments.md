@@ -167,6 +167,24 @@ This deliberately trusts the private Telegram owner account and bot transport;
 account/bot-token compromise can authorize a payment. Bot cloud chats are not
 end-to-end encrypted, and the Mac must be awake, logged in and online.
 
+The payment review also reads the issued instance's exact related Recurring Bills
+definition's **Typical Amount**, using `payment_review_fields.typical_amount` and
+its stable Notion number-property ID. The retained `qhcR` mapping is checked against
+the current schema and page; display names are never used for lookup. This is
+advisory metadata, separate from identity certification, contractual amount policy
+and the issued invoice amount. No scaling from monthly to quarterly is inferred.
+For a positive baseline in the same currency, Decimal arithmetic warns when
+`abs(proposed - typical) >= Decimal("0.10") * typical`, including exactly 10% above
+or below. The card shows both amounts and percentage variance; Approve stays
+available. Blank values omit the comparison. Zero, negative, malformed or
+currency-mismatched baselines show comparison unavailable and do not independently
+block approval. A missing/recreated mapped property fails closed. Unmapped sources
+show comparison unavailable. The exact baseline, definition/property binding and
+rendered notice are part of the reviewed fingerprint and are reread after approval
+and login; changed values or mappings require a fresh review. Previously prepared
+cards without this advisory snapshot must also be prepared again. Bank amounts,
+occurrence claims, through-2026 coverage and settlement verification are unchanged.
+
 The executor atomically reserves both proposal and canonical account/occurrence,
 sharing the existing manual-handoff claim namespace. It then resolves credentials
 through `GovernedSecretsResolver`, fills only configured browser fields and obtains

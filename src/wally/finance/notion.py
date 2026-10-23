@@ -6,6 +6,7 @@ certifies rows and never interprets titles, prose, formulas or Runtime Action.
 
 from __future__ import annotations
 
+import json
 from contextlib import suppress
 from dataclasses import asdict, dataclass, field, replace
 from typing import Any
@@ -26,6 +27,7 @@ from wally.finance.models import (
     identity_constraints,
     parse_facts,
 )
+from wally.finance.typical_amount import TypicalAmount
 
 VERSION = "2025-09-03"
 SUPPORTED = {"rich_text", "checkbox", "select", "multi_select", "date", "number", "url", "relation"}
@@ -60,6 +62,7 @@ class SourceMapping:
     role: str = "finance"
     personal_subjects: dict[str, str] = field(default_factory=dict)
     review_fields: dict[str, FieldMapping] = field(default_factory=dict)
+    payment_review_fields: dict[str, FieldMapping] = field(default_factory=dict)
 
     @property
     def key(self) -> str:
@@ -68,6 +71,8 @@ class SourceMapping:
     @property
     def fingerprint(self) -> str:
         data = asdict(self)
+        # Advisory metadata is bound to payment reviews, not identity certificates.
+        data.pop("payment_review_fields")
         if not self.personal_subjects:
             data.pop("personal_subjects")  # Preserve existing designations.
         if not self.review_fields:
@@ -76,6 +81,11 @@ class SourceMapping:
 
     def validate(self) -> None:
         _ = self.key
+        if not isinstance(self.payment_review_fields, dict) or any(
+            self.kind != Kind.DEFINITION or name != "typical_amount" or mapping.type != "number"
+            for name, mapping in self.payment_review_fields.items()
+        ):
+            raise FinanceError("Unknown payment review-only field mapping.")
         if not isinstance(self.personal_subjects, dict):
             raise FinanceError("Personal exceptions must be an explicit page mapping.")
         if not isinstance(self.review_fields, dict) or any(
@@ -133,7 +143,10 @@ class SourceMapping:
         if set(self.fields) & set(self.constants):
             raise FinanceError("Mapped fields conflict with constants.")
         ids = [
-            unquote(m.property_id) for m in (*self.fields.values(), *self.review_fields.values())
+            unquote(m.property_id) for m in (
+                *self.fields.values(), *self.review_fields.values(),
+                *self.payment_review_fields.values(),
+            )
         ]
         if len(set(ids)) != len(ids) or any(not i for i in ids):
             raise FinanceError("Ambiguous stable property mapping.")
@@ -199,6 +212,42 @@ class NotionFinanceReader:
                 matches[0].get("relation", {}).get("data_source_id")
             ) != notion_id(mapping.target_data_source):
                 raise FinanceError("Relation schema target changed.")
+
+    def typical_amount(self, source: SourceMapping, page_id: str, currency: str) -> TypicalAmount:
+        """Read the exact related definition by stable ID; never use its display name.
+
+        Invalid values remain advisory. Missing/recreated properties or changed page
+        identity cannot silently masquerade as an unchanged blank baseline.
+        """
+        source.validate()
+        mapping = source.payment_review_fields.get("typical_amount")
+        if mapping is None:
+            return TypicalAmount("invalid", currency, digest([source.key, "unmapped"]))
+        schema = self.schema(source)
+        matches = [
+            p for p in schema.get("properties", {}).values()
+            if unquote(str(p.get("id", ""))) == unquote(mapping.property_id)
+        ]
+        if len(matches) != 1 or matches[0].get("type") != "number":
+            raise FinanceError("Typical Amount stable property is missing or changed type.")
+        page_id = notion_id(page_id)
+        page = self.request("GET", f"/pages/{page_id}")
+        self.check_page(page, source)
+        if notion_id(page.get("id")) != page_id:
+            raise FinanceError("Typical Amount definition identity changed.")
+        properties = [
+            p for p in page.get("properties", {}).values()
+            if unquote(str(p.get("id", ""))) == unquote(mapping.property_id)
+        ]
+        if len(properties) != 1 or properties[0].get("type") != "number":
+            raise FinanceError("Typical Amount page property contract changed.")
+        prop = properties[0]
+        value = prop.get("number", "invalid")
+        amount = "" if value is None else str(value) if type(value) in (int, float) else "invalid"
+        return TypicalAmount(
+            amount, currency,
+            digest([source.key, page_id, asdict(mapping), json.dumps(prop, sort_keys=True)]),
+        )
 
     def paginated(self, method: str, path: str, *, body: dict | None = None) -> list[dict]:
         cursor = None

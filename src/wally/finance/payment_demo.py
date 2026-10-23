@@ -27,6 +27,7 @@ from wally.finance.payments import (
     BillPayment,
     SupervisedPayments,
 )
+from wally.finance.typical_amount import TypicalAmount
 from wally.gateway.service import GatewayRuntime
 from wally.models.knowledge import KnowledgeClass
 from wally.models.principal import Capability
@@ -51,6 +52,7 @@ def uid(number):
 
 class DemoSource:
     def __init__(self):
+        self.typical_amount = TypicalAmount()
         self.bill = BillPayment(
             "sandbox-instance",
             uid(10),
@@ -70,6 +72,10 @@ class DemoSource:
         if instance_id != self.bill.instance_id:
             raise ValueError("Unknown sandbox instance")
         return self.bill
+
+    def read_typical_amount(self, instance_id):
+        self.read(instance_id)
+        return self.typical_amount
 
 
 class SandboxBrowser(PlaywrightBrowserAdapter):

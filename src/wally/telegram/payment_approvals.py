@@ -110,6 +110,10 @@ class TelegramPaymentApprovals:
             + "\n"
             + escape(f"Fee: {bill.currency} {quote.fee}")
             + "\n"
+            + (
+                escape(spec["typical_amount_review"]["notice"]) + "\n"
+                if spec.get("typical_amount_review", {}).get("notice") else ""
+            )
             + "Approve this one payment, then verify and record its receipt.\n"
             + (
                 escape("Transfer tracking reference: " + quote.transaction) + "\n"

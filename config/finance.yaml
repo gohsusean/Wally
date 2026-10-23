@@ -63,6 +63,13 @@ sources:
   data_source_id: 3884d585-1c89-8029-9974-000bb244b0e0
   kind: definition
   role: finance
+  # Retained schema ID, checked against the current schema on every payment review.
+  # Advisory only: never a certified contractual/invoice amount.
+  payment_review_fields:
+    typical_amount:
+      property_id: qhcR
+      type: number
+      optional: true
   fields:
     account:
       property_id: O%3FFf
