@@ -74,11 +74,17 @@ class PlaywrightBrowserAdapter:
                 "browser", "Configured Playwright browser could not start; no fallback was used."
             ) from None
 
-    def open_session(self, *, url: str, allowed_origins: tuple[str, ...] = ()) -> BrowserSession:
+    def open_session(
+        self, *, url: str, allowed_origins: tuple[str, ...] = (), allow_read_pages: bool = False
+    ) -> BrowserSession:
         self._ensure_browser()
         assert self._browser is not None
         # new_page owns a separate non-persistent context, closed with the page.
-        page = self._browser.new_page(service_workers="block", accept_downloads=False)
+        if allow_read_pages:
+            context = self._browser.new_context(service_workers="block", accept_downloads=False)
+            page = context.new_page()
+        else:
+            page = self._browser.new_page(service_workers="block", accept_downloads=False)
         session_id = str(uuid.uuid4())
         self._pages[session_id] = page
         try:
@@ -383,13 +389,11 @@ class PlaywrightBrowserAdapter:
     def close_session(self, session_id: str) -> None:
         page = self._pages.pop(session_id, None)
         if page is not None:
-            try:
+            with suppress(Exception):
                 page.close()
-            except Exception:
-                # Cleanup failures must not expose browser diagnostics or leave
-                # the remaining owned sessions/driver unclosed at shutdown.
-                with suppress(Exception):
-                    page.context.close()
+            # Close auxiliary read pages too, even when closing the main page fails.
+            with suppress(Exception):
+                page.context.close()
 
     def read_fields(self, session_id: str, selectors: dict[str, str]) -> dict[str, str]:
         """Trusted deterministic adapters read selected fields, never the page body.

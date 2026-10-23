@@ -93,11 +93,7 @@ class CertifiedPaymentSource:
             )
         ):
             raise FinanceError("A current owner-responsible enabled obligation is required.")
-        portal_binding = catalog.binding(definition.id, Scope.PORTAL_REVIEW)
-        if not catalog.store.accepted(definition.id, portal_binding) or not catalog.store.enabled(
-            definition.id, Scope.PORTAL_REVIEW, portal_binding
-        ):
-            raise FinanceError("This exact portal requires governed acceptance and enablement.")
+        self._check_route(definition)
         return BillPayment(
             record.id,
             str(UUID(account.candidate.locator.page)),
@@ -112,6 +108,14 @@ class CertifiedPaymentSource:
             digest([asdict(e) for e in instance.evidence]),
             catalog.binding(record.id),
         )
+
+    def _check_route(self, definition):
+        catalog = self.catalog
+        portal_binding = catalog.binding(definition.id, Scope.PORTAL_REVIEW)
+        if not catalog.store.accepted(definition.id, portal_binding) or not catalog.store.enabled(
+            definition.id, Scope.PORTAL_REVIEW, portal_binding
+        ):
+            raise FinanceError("This exact portal requires governed acceptance and enablement.")
 
 
 @dataclass(frozen=True)
@@ -222,6 +226,9 @@ class SupervisedPayments:
     def _gate(self):
         if not self.enabled() or (not self.provider.sandbox and not self.live_validated):
             raise FinanceError("Payment execution is disabled or this live route is unvalidated.")
+        required = getattr(self.source, "required_transaction_namespace", "")
+        if required and self.provider.transaction_namespace != required:
+            raise FinanceError("The certified transfer source requires its exact bank route.")
 
     def identify_unpaid(self, instance_id: str, *, context: RequestContext):
         """Only an explicit authenticated owner /unpaid command can lift coverage.
@@ -435,7 +442,9 @@ class SupervisedPayments:
             raise FinanceError("Payment decision was already used.")
         self._event(proposal_id, "decision", {"confirmation": confirmation.id, **presentation})
 
-    def execute(self, proposal_id, *, context: RequestContext, guard=lambda: False):
+    def execute(
+        self, proposal_id, *, context: RequestContext, guard=lambda: False, on_pending=lambda: None
+    ):
         self.authority.authorize(context, Capability.EXECUTE_PAYMENT)
         self.authority.authorize(context, Capability.VERIFY_PAYMENT)
         proposal, spec, bill, quote = self._current(proposal_id, approved=True)
@@ -537,17 +546,36 @@ class SupervisedPayments:
             self._event(proposal_id, "submission_entered", {"transaction": quote.transaction})
             submitted = True  # Includes a transport exception from submit: outcome unknown.
             self.provider.submit(bill, quote, guard=revalidate)
+            return self.reconcile(proposal_id, context=context)
         except MandatoryChallenge:
-            return self._outcome(
+            pending = self._outcome(
                 execution, "challenge_pending" if submitted else "challenge_required"
             )
+            wait = getattr(self.provider, "await_authorization", None)
+            if not submitted or wait is None:
+                return pending
+            # Persist pending BEFORE notifying/waiting. No new money-moving action
+            # is permitted here, even if the original execution approval expires.
+            with suppress(Exception):
+                on_pending()
+
+            def read_guard():
+                self.authority.authorize(context, Capability.VERIFY_PAYMENT)
+                if not guard():
+                    raise FinanceError("Payment worker lost its read-only recovery lease.")
+
+            try:
+                wait(guard=read_guard)
+                read_guard()
+                return self.reconcile(proposal_id, context=context)
+            except Exception:
+                return pending
         except Exception:
             # Never stringify provider exceptions: they may contain auth/page material.
             return self._outcome(execution, "uncertain" if submitted else "not_submitted")
         finally:
             with suppress(Exception):
                 self.provider.close()
-        return self.reconcile(proposal_id, context=context)
 
     def reconcile(self, proposal_id, *, context: RequestContext):
         """Read-only payment recovery; never calls submit or releases a duplicate claim."""
@@ -573,9 +601,9 @@ class SupervisedPayments:
                 settlement.transaction != quote.transaction
                 or settlement.bill_digest != quote.bill_digest
                 or settlement.funding != quote.funding
-                or settlement.status != "settled"
+                or settlement.status not in {"settled", "pending", "failed"}
                 or not settlement.reference
-                or len(settlement.evidence_hash) != 64
+                or not re.fullmatch(r"[a-f0-9]{64}", settlement.evidence_hash)
             ):
                 raise FinanceError("Provider has not independently confirmed this exact payment.")
         except Exception:
@@ -583,6 +611,11 @@ class SupervisedPayments:
         if row["settlement"] and json.loads(row["settlement"]) != asdict(settlement):
             self._event(proposal_id, "contradictory_settlement", {})
             raise FinanceError("Settlement evidence changed; retain the claim for investigation.")
+        if settlement.status != "settled":
+            self._event(proposal_id, "provider_outcome", asdict(settlement))
+            return self._outcome(
+                execution, "bank_pending" if settlement.status == "pending" else "bank_failed"
+            )
         with self.store._connect() as c:
             c.execute(
                 "UPDATE payment_attempts SET settlement=? WHERE proposal_id=?",
@@ -654,7 +687,7 @@ class SupervisedPayments:
             ExecutionStatus.VERIFIED_SUCCESS
             if outcome == "settled"
             else ExecutionStatus.EXECUTED_UNVERIFIED
-            if outcome in {"uncertain", "challenge_pending"}
+            if outcome in {"uncertain", "challenge_pending", "bank_pending"}
             else ExecutionStatus.FAILED
         )
         updated = replace(

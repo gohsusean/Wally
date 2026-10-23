@@ -2191,3 +2191,57 @@ for HLB. Store only the hash in ignored private authentication state, excluded f
 Wally's allowlisted iCloud sync. Synthetic Chrome acceptance proves the mechanics;
 real owner enrollment, post-username selectors and live auth-only acceptance remain
 required. No payment was initiated. See [implementation and runbook](hlb-security-picture.md).
+
+## ADR-053: Supervised HLB existing-beneficiary transfers
+
+**Status:** Implemented and tested in simulation, 23 October 2026. Real transfer
+acceptance and live submission enablement remain pending. The owner explicitly
+authorized this implementation/testing and prohibited actual submission/approval
+requests in this iteration. HLB picture verification, login and dashboard detection
+are complete and reused, not reopened as acceptance work.
+
+Reuse ADR-051's proposal/Telegram card, separate runtime decision/execution stages,
+narrow payment worker, shared occurrence claims and verified Notion receipts. Add
+one deterministic HLB adapter with a reviewed selector profile and a default-off
+submission lock. No new executor capability, Gateway operation, scheduler, bank,
+beneficiary management or authentication exemption is introduced.
+
+A transfer destination must come from an existing evidence-certified receiving
+Account, bound to the same issuer and responsibility/property scope as the issued
+bill. A utility customer identifier is not a bank account. Reuse retained ADR-050
+evidence/certificates; never require unrelated recertification or owner attestation.
+The source binds both certificates. Transfers use the validated HLB payment profile
+and identity-chain enablement; they do not require logging into/accepting an unrelated
+biller portal. The generic portal source retains its existing portal gate.
+
+An explicit preparation request may authenticate HLB **read-only** through the
+existing governed 1Password/picture gate to inspect existing beneficiaries and
+complete history/scheduled/mandate inventories before proposing. This is not payment
+authority. Credentials stay in-process in the existing resolver. The exact Telegram
+callback, fresh execution-time checks and durable claims remain compulsory for
+entry/submission. Reuse one isolated in-memory bank context with independently
+navigated read pages; close its entire context on completion/shutdown. No bank
+cookies/session state, images, traces, HAR or screenshots are persisted.
+
+The exact card includes bank/account, payee, amount/currency, period, invoice/source,
+zero fee, expiry and the bank-app requirement. Select only an existing beneficiary
+and compare every bank review field after the final authorization guard. Submit
+at most once. Persist a pending outcome before notifying the owner and performing
+bounded read-only app-authorization waiting. Never click through a challenge or
+replace mandatory app/biometric authorization. Timeouts/interruption preserve claims.
+
+Show a unique tracking reference on the exact card and enter it separately from
+the invoice. Settlement comes only from an independently navigated complete
+bank-history read matching every material field, that tracking reference and one
+bank-issued reference, never from the submit or app
+response. Pending/failed/unknown outcomes cannot mark paid, reconcile Notion or
+release a duplicate claim. Later reconciliation can authenticate read-only and
+recover settlement/Notion readback without another transfer click. Contradictory
+settlement is retained for investigation; retrieval failures preserve valid evidence.
+
+Through-2026 administrative coverage and tenant-water exclusions remain intact.
+No actual payment/card or beneficiary change occurred. The profile shipped here is
+synthetic, all Chrome requests in acceptance are locally fulfilled/aborted, and live
+transfer/history selectors are deliberately absent. Attended form/history mapping
+must stop before submission. See [implementation, recovery and remaining live
+acceptance](hlb-supervised-transfers.md).

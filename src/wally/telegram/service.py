@@ -84,6 +84,11 @@ class TelegramService:
         self._hits: list[datetime] = []
         self._notion_approvals = notion_approvals
         self._payment_approvals = payment_approvals
+        if payment_approvals is not None:
+            payment_approvals.notify_progress = lambda proposal_id: self._transport.send_message(
+                self._ingress.chat_id() or self._config.chat_id,
+                payment_approvals.result(proposal_id),
+            )
         if config.chat_id:
             self._ingress.remember_chat(config.chat_id)
 

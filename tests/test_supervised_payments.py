@@ -261,9 +261,12 @@ def test_uncertain_submission_reconciles_without_resubmitting(world):
 def test_login_or_submit_response_is_not_settlement(world, status):
     world.browser.ledger_status = status
     proposal, _ = run(world)
-    assert attempt(world).status == ExecutionStatus.EXECUTED_UNVERIFIED
+    expected = (ExecutionStatus.FAILED if status == "failed"
+                else ExecutionStatus.EXECUTED_UNVERIFIED)
+    assert attempt(world).status == expected
     assert world.notion.creates == 0
-    assert "unconfirmed" in world.approvals.result(proposal.id)
+    result = world.approvals.result(proposal.id)
+    assert ("failure" if status == "failed" else "unconfirmed") in result
 
 
 def test_interruption_after_claim_retains_duplicate_block(world, monkeypatch):

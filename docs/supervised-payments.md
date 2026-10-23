@@ -1,5 +1,13 @@
 # v0.19 supervised payments
 
+**23 October HLB update:** security-picture verification, automated login and framed
+dashboard detection are complete. The [HLB transfer workflow](hlb-supervised-transfers.md)
+now adds existing-beneficiary entry, exact review, bank-app waiting and independent
+history verification, tested end to end in an offline Chrome simulation. Live
+transfer/history mapping and real-transaction acceptance remain pending; no payment
+route or actual payment approval was enabled. This supersedes older challenge and
+HLB enrollment status notes below.
+
 **18 October 2026: implemented sandbox foundation; live milestone incomplete.**
 Every actual payment requires a fresh, exact, single-use Telegram payment approval.
 Login approval, a financial certificate, an old proposal decision and bank
@@ -263,5 +271,7 @@ See [ADR-051](decisions.md#adr-051-exact-telegram-supervised-payments) and the
 development and authorization-exemption investigation are stopped. Bank-app
 authorization is required and the owner completes it; every payment still
 needs its exact Telegram approval. The [local security-picture gate](hlb-security-picture.md)
-is implemented with synthetic acceptance; owner enrollment and live acceptance remain.
+and automated login/dashboard detection have passed attended live acceptance.
+The [transfer workflow](hlb-supervised-transfers.md) is tested in simulation; actual
+transfer/history views and a real transaction remain unvalidated.
 This supersedes earlier bank-selection and investigation notes.

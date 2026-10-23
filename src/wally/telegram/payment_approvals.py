@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import time
+from contextlib import suppress
 from datetime import UTC, datetime
 from html import escape
 
@@ -21,6 +22,7 @@ class TelegramPaymentApprovals:
         self.store = payments.store
         self.outbox = NotificationOutbox(self.store)
         self.dispatch_guard = lambda: False
+        self.notify_progress = lambda proposal_id: None
         with self.store._connect() as c:
             c.execute(
                 "CREATE TABLE IF NOT EXISTS telegram_payment_reviews ("
@@ -95,6 +97,8 @@ class TelegramPaymentApprovals:
             + "\n"
             + escape(f"{bill.currency} {bill.amount} · {bill.occurrence}")
             + "\n"
+            + escape(f"Period: {bill.period_start} to {bill.period_end}")
+            + "\n"
             + "Destination: "
             + escape(bill.destination)
             + "\n"
@@ -104,7 +108,14 @@ class TelegramPaymentApprovals:
             + "From: "
             + escape(quote.funding)
             + "\n"
+            + escape(f"Fee: {bill.currency} {quote.fee}")
+            + "\n"
             + "Approve this one payment, then verify and record its receipt.\n"
+            + (
+                escape("Transfer tracking reference: " + quote.transaction) + "\n"
+                + "Then authorize this exact transfer in the HLB bank app when prompted.\n"
+                if getattr(self.payments.provider, "requires_bank_app", False) else ""
+            )
             + "Expires "
             + human_time(datetime.fromisoformat(proposal.expires_at), now=datetime.now(UTC))
         )
@@ -145,13 +156,22 @@ class TelegramPaymentApprovals:
             )
         elif execution and execution.outcome == "challenge_pending":
             status = (
-                "Bank app or hardware approval is required. Payment remains unconfirmed; "
-                "reconcile before trying again."
+                "Bank app approval is required. Authorize this exact transfer in the bank app "
+                "when prompted. Payment remains unconfirmed; reconcile before trying again."
             )
         elif execution and execution.outcome == "challenge_required":
             status = "Bank app or hardware approval is required. No payment was submitted."
         elif execution and execution.outcome == "not_submitted":
             status = "Payment stopped before submission. Review the cause before preparing again."
+        elif execution and execution.outcome == "bank_failed":
+            status = (
+                "Bank history reports failure. No retry was made; review before another payment."
+            )
+        elif execution and execution.outcome == "bank_pending":
+            status = (
+                "Bank history reports pending; payment is unconfirmed. "
+                "Do not pay again; reconcile the existing transfer."
+            )
         else:
             status = "Payment outcome is unconfirmed. Reconcile before any new payment."
         return TelegramHTML(
@@ -231,10 +251,14 @@ class TelegramPaymentApprovals:
                     external_request_ref=str(callback["id"]),
                 )
                 self.payments.execute(
-                    proposal.id, context=worker, guard=self.confirmation.dispatch_allowed
+                    proposal.id, context=worker, guard=self.confirmation.dispatch_allowed,
+                    on_pending=lambda: self.notify_progress(proposal.id),
                 )
         except Exception:
             # Provider error strings may contain credentials. Persist bounded events only.
             self.payments._event(proposal.id, "review_stopped", {})
             return "Payment stopped. Check its recorded outcome before trying again."
+        finally:
+            with suppress(Exception):
+                self.payments.provider.close()
         return "Payment processed. Check the result message."
