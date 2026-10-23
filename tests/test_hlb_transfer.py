@@ -3,6 +3,7 @@
 from dataclasses import asdict, replace
 
 import pytest
+from playwright.sync_api import Error as PlaywrightError
 
 from tests.finance_fixture import ATTEST, PROOF, FixtureInvoiceAccounts, catalog_fixture
 from wally.adapters.browser.hlb_transfer import HLBTransferProvider
@@ -49,9 +50,12 @@ def test_hlb_card_app_history_notion_and_replay(world):
     assert "MYR 100.00" in card
     assert "HLB current ending 1234" in card
     assert world.browser.submissions == 0  # Preparing/logging in has no payment side effect.
+    assert world.browser.entry_reads == 0
     world.telegram.handle_update(callback)
     assert execution(world, proposal).status == ExecutionStatus.VERIFIED_SUCCESS
     assert world.browser.submissions == world.browser.authorizations == 1
+    assert world.browser.entry_reads == 1
+    assert world.browser.submit_clicks == 0  # Review/Next initiated the bank-app request.
     assert world.notion.creates == world.notion.reads == 1
     assert any("Bank app" in str(m["text"]) for m in world.transport.sent)
     world.telegram.handle_update(callback)
@@ -68,7 +72,7 @@ def test_inspection_gate_cannot_submit_even_after_exact_approval(world):
     proposal, callback = prepare_card(world)
     world.telegram.handle_update(callback)
     assert execution(world, proposal).status != ExecutionStatus.VERIFIED_SUCCESS
-    assert world.browser.submissions == world.notion.creates == 0
+    assert world.browser.submissions == world.notion.creates == world.browser.entry_reads == 0
 
 
 @pytest.mark.parametrize("change", ["duplicate", "incomplete", "recipient"])
@@ -101,12 +105,16 @@ def test_preflight_blocks_unsafe_inventory_before_proposal(world, change):
         ("tracking", "UNREVIEWED-TRANSFER"),
     ],
 )
-def test_bank_review_must_match_every_approved_field(world, field, value):
+def test_changed_request_or_review_never_clicks_another_debit(world, field, value):
     proposal, callback = prepare_card(world)
     world.browser.review_changes = {field: value}
     world.telegram.handle_update(callback)
     assert execution(world, proposal).status != ExecutionStatus.VERIFIED_SUCCESS
-    assert world.browser.submissions == world.notion.creates == 0
+    # Bank/amount/etc in the outgoing body are checked before dispatch. Fee/mode
+    # contradictions first visible in the response remain uncertain after initiation.
+    assert world.browser.submissions == (1 if field in {"fee", "mode"} else 0)
+    assert world.browser.submit_clicks == world.notion.creates == 0
+    assert execution(world, proposal).outcome == "uncertain"
 
 
 @pytest.mark.parametrize("status,outcome", [("pending", "bank_pending"), ("failed", "bank_failed")])
@@ -177,6 +185,9 @@ def test_profile_cannot_use_another_bank_or_omit_material_fields():
         replace(profile, password_ref="op://x/y/password?attribute=secret"),
         replace(profile, app_timeout_seconds=0),
         replace(profile, review_selector=profile.submit_selector),
+        replace(profile, history_url=profile.entry_url),
+        replace(profile, payment_fields=profile.payment_fields[:-1]),
+        replace(profile, read_requests=(("POST", profile.payment_requests[0][1]),)),
     ):
         with pytest.raises(FinanceError):
             _ = changed.fingerprint
@@ -201,6 +212,7 @@ def test_reject_closes_the_read_only_preflight_without_transfer(world):
     assert world.store.list_executions(proposal_id=proposal.id) == []
     assert world.provider._session is None
     assert world.browser.submissions == 0
+    assert world.browser.entry_reads == 0
 
 
 def test_lost_worker_lease_during_bank_app_wait_retains_pending_claim(world):
@@ -283,3 +295,136 @@ def test_confirmation_page_is_never_the_settlement_reader(world):
         world.provider.verify(bill, quote)
     assert world.notion.creates == 0
     assert world.browser.ledger_reads > 0
+
+
+def test_no_callback_or_direct_review_can_cross_the_boundary(world):
+    proposal, _ = prepare_card(world)
+    _, _, bill, quote = world.payments.load(proposal.id)
+    assert world.browser.entry_reads == world.browser.submissions == 0
+    for action in (world.provider.enter_review, world.provider.submit):
+        with pytest.raises(FinanceError, match="Telegram payment authorization"):
+            action(bill, quote, guard=lambda: True)
+    assert world.browser.entry_reads == world.browser.submissions == 0
+
+
+@pytest.mark.parametrize("expired", ["card", "proposal"])
+def test_expired_telegram_approval_never_enters_the_form(world, expired):
+    proposal, callback = prepare_card(world)
+    with world.store._connect() as connection:
+        if expired == "card":
+            connection.execute("UPDATE telegram_payment_reviews SET expires_at=0")
+        else:
+            connection.execute(
+                "UPDATE proposals SET expires_at='2000-01-01T00:00:00+00:00' WHERE id=?",
+                (proposal.id,),
+            )
+    world.telegram.handle_update(callback)
+    assert world.store.list_executions() == []
+    assert world.browser.entry_reads == world.browser.submissions == 0
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("payee", "Changed beneficiary"), ("destination", "TESTBANK:9999999999"),
+        ("destination", "OTHERBANK:0001234567"), ("amount", "101.00"), ("currency", "USD"),
+        ("account_page_id", "00000000-0000-0000-0000-000000000099"),
+        ("account_reference", "ANOTHER-BILLING-ACCOUNT"), ("instance_id", "another-bill"),
+        ("period_start", "2027-02-01"), ("period_end", "2027-02-28"),
+    ],
+)
+def test_changed_approved_transaction_requires_fresh_telegram_card(world, field, value):
+    _, callback = prepare_card(world)
+    world.source.bill = replace(world.source.bill, **{field: value})
+    world.telegram.handle_update(callback)
+    assert world.browser.entry_reads == world.browser.submissions == 0
+    assert world.store.list_executions() == []
+
+
+@pytest.mark.parametrize("change", ["amount", "expiry", "lease"])
+def test_changed_authorization_after_entry_stops_before_review_request(world, change):
+    proposal, callback = prepare_card(world)
+
+    def drift():
+        if change == "amount":
+            world.source.bill = replace(world.source.bill, amount="101.00")
+        elif change == "expiry":
+            with world.store._connect() as connection:
+                connection.execute(
+                    "UPDATE proposals SET expires_at='2000-01-01T00:00:00+00:00' WHERE id=?",
+                    (proposal.id,),
+                )
+        else:
+            world.telegram.set_dispatch_guard(lambda: False)
+
+    world.browser.on_entry = drift
+    world.telegram.handle_update(callback)
+    assert world.browser.entry_reads == 1
+    assert world.browser.submissions == world.browser.submit_clicks == 0
+    assert execution(world, proposal).outcome == "uncertain"  # Entry was already claimed.
+
+
+@pytest.mark.parametrize("problem", ["retry", "navigation", "lost-response"])
+def test_browser_retry_or_unexpected_navigation_retains_claim_and_never_reinitiates(world, problem):
+    if problem == "retry":
+        world.browser.retry_review = True
+    elif problem == "navigation":
+        world.browser.unexpected_navigation = True
+    else:
+        world.browser.drop_submit_response = True
+    proposal, callback = prepare_card(world)
+    world.telegram.handle_update(callback)
+    world.telegram.handle_update({**callback, "update_id": 2})
+    assert world.browser.submissions == world.browser.entry_reads == 1
+    assert world.browser.submit_clicks == 0
+    assert execution(world, proposal).outcome in {"uncertain", "challenge_pending"}
+    with pytest.raises(FinanceError):
+        prepare_card(world)
+    # Reconciliation can only read history, including after a blocked request.
+    world.browser.authorizations = 1
+    assert reconcile(world, proposal).status == ExecutionStatus.VERIFIED_SUCCESS
+    assert world.browser.submissions == 1
+
+
+def test_preflight_blocks_redirect_to_payment_before_telegram(world):
+    world.provider.profile = replace(
+        world.provider.profile,
+        beneficiary_url=world.provider.profile.beneficiary_url + "?redirect-to-entry=1",
+    )
+    original = world.browser._route
+
+    def redirect(route):
+        if route.request.url.endswith("?redirect-to-entry=1"):
+            route.fulfill(status=302, headers={"Location": world.provider.profile.entry_url})
+        else:
+            original(route)
+
+    world.browser._route = redirect
+    with pytest.raises((PlaywrightError, FinanceError)):
+        prepare_card(world)
+    assert world.browser.entry_reads == world.browser.submissions == 0
+    assert world.store.list_executions() == []
+
+
+def test_authorization_expiring_during_final_request_check_blocks_dispatch(world, monkeypatch):
+    import time
+
+    original = world.provider._request_allowed
+    read = world.source.read
+    clock = time.time()
+
+    def request_guard(request):
+        if request.url.endswith('/fixture/submit'):
+            def slow_read(instance_id):
+                bill = read(instance_id)
+                monkeypatch.setattr(time, 'time', lambda: clock + 301)
+                return bill
+            world.source.read = slow_read
+        return original(request)
+
+    world.provider._request_allowed = request_guard
+    proposal, callback = prepare_card(world)
+    world.telegram.handle_update(callback)
+    assert world.browser.entry_reads == 1
+    assert world.browser.submissions == world.browser.submit_clicks == 0
+    assert execution(world, proposal).outcome == 'uncertain'

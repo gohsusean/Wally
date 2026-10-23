@@ -81,6 +81,7 @@ class PlaywrightBrowserAdapter:
         allowed_origins: tuple[str, ...] = (),
         allow_read_pages: bool = False,
         allow_receipt_downloads: bool = False,
+        request_guard=None,
     ) -> BrowserSession:
         if type(allow_receipt_downloads) is not bool or (
             allow_receipt_downloads and (not allow_read_pages or not allowed_origins)
@@ -102,6 +103,17 @@ class PlaywrightBrowserAdapter:
             if allowed_origins:
                 # Install on the isolated context before any remote script/navigation.
                 self.restrict_origins(session_id, allowed_origins)
+            if request_guard is not None:
+                # Install before the first navigation; fallback preserves origin and
+                # offline-routing policies already installed on this isolated context.
+                def guarded_request(route):
+                    try:
+                        allowed = request_guard(route.request) is True
+                    except Exception:
+                        allowed = False
+                    route.fallback() if allowed else route.abort()
+
+                page.context.route("**/*", guarded_request)
             page.goto(url, wait_until="domcontentloaded")
             if allowed_origins:
                 self._check_origin(page, allowed_origins)

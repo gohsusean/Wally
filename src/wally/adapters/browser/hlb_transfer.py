@@ -18,7 +18,12 @@ from uuid import uuid4
 from wally.adapters.browser.authentication import LoginState, LoginStep
 from wally.adapters.browser.hlb import HLB_ORIGIN, REFERENCE, HLBSecurityPicture, check_hlb_origin
 from wally.finance.models import FinanceError, digest, origin
-from wally.finance.payments import MandatoryChallenge, PaymentQuote, Settlement
+from wally.finance.payments import (
+    MandatoryChallenge,
+    PaymentQuote,
+    Settlement,
+    require_payment_submission,
+)
 from wally.runtime.secrets_safety import evaluate_secret_reference
 
 # Separate ledger reads bind every material field, including bank and source account.
@@ -66,12 +71,30 @@ class HLBTransferProfile:
     app_timeout_seconds: int = 120
     sandbox: bool = False
     submission_enabled: bool = False  # Also blocks entry/review: review can initiate AppAuthorise.
+    # Exact method/URL contracts, including auth/static resources. No live defaults.
+    read_requests: tuple[tuple[str, str], ...] = ()
+    payment_requests: tuple[tuple[str, str], ...] = ()
+    payment_fields: tuple[tuple[str, str], ...] = ()  # Expected field -> exact request-body key.
 
     @property
     def fingerprint(self):
         for url in (self.entry_url, self.history_url, self.beneficiary_url):
             if origin(url) != HLB_ORIGIN:
                 raise FinanceError("HLB transfers require the exact official HTTPS origin.")
+        reads = {("GET", HLB_ORIGIN + "/"), ("GET", self.history_url),
+                 ("GET", self.beneficiary_url), *self.read_requests}
+        payments = {("GET", self.entry_url), *self.payment_requests}
+        if reads & payments or any(
+            method not in {"GET", "POST"} or origin(url) != HLB_ORIGIN
+            for method, url in reads | payments
+        ):
+            raise FinanceError("HLB read and payment request contracts must be distinct and exact.")
+        if (
+            set(dict(self.payment_fields)) != set(TRANSFER_FIELDS)
+            or len({key for _, key in self.payment_fields}) != len(TRANSFER_FIELDS)
+            or len(self.payment_fields) != len(TRANSFER_FIELDS)
+        ):
+            raise FinanceError("HLB payment request fields require an exact reviewed mapping.")
         for ref in (self.username_ref, self.password_ref):
             if not evaluate_secret_reference(ref).allowed or "?" in ref or "#" in ref:
                 raise FinanceError("HLB credentials require plain governed secret references.")
@@ -120,6 +143,45 @@ class HLBTransferProvider:
         self._session = None
         self._quote = None
         self._submitted = set()
+        self._authorization = None
+        self._request_claims = set()
+        self._request_blocked = False
+
+    def _request_allowed(self, request):
+        """Deny unknown routes and repeated consequential requests BEFORE dispatch."""
+        p = self.profile
+        key = (request.method, request.url)
+        reads = {("GET", HLB_ORIGIN + "/"), ("GET", p.history_url),
+                 ("GET", p.beneficiary_url), *p.read_requests}
+        if key in reads:
+            return True
+        try:
+            if (
+                self._request_blocked or not p.submission_enabled or self._authorization is None
+                or key not in {("GET", p.entry_url), *p.payment_requests}
+            ):
+                raise FinanceError("Unapproved HLB request.")
+            authorization, bill, quote = self._authorization
+            authorization.check(bill, quote)
+            if key in p.payment_requests:
+                body = request.post_data_json
+                expected = self._expected(bill, quote.funding, quote.transaction)
+                if not isinstance(body, dict) or any(
+                    body.get(field) != expected[name] for name, field in p.payment_fields
+                ):
+                    raise FinanceError("HLB request differs from the exact approved payment.")
+            claim = (quote.transaction, *key)
+            if claim in self._request_claims:
+                raise FinanceError("HLB request already dispatched; reconcile without retry.")
+            self._request_claims.add(claim)
+            return True
+        except Exception:
+            self._request_blocked = True
+            return False
+
+    def _check_requests(self):
+        if self._request_blocked:
+            raise FinanceError("Unexpected/repeated HLB request blocked; reconcile without retry.")
 
     @property
     def sandbox(self):
@@ -144,7 +206,8 @@ class HLBTransferProvider:
         )
         try:
             self._session = self.browser.open_session(
-                url=HLB_ORIGIN + "/", allowed_origins=(HLB_ORIGIN,), allow_read_pages=True
+                url=HLB_ORIGIN + "/", allowed_origins=(HLB_ORIGIN,), allow_read_pages=True,
+                request_guard=self._request_allowed,
             )
             sid = self._session.session_id
             self.browser.wait_for_hlb_login(sid)
@@ -246,6 +309,7 @@ class HLBTransferProvider:
             return [self._fields(row, p.history_fields) for row in rows.all()]
 
     def _inventory(self, bill):
+        self._check_requests()
         expected = self._expected(bill, self.profile.funding)
         with self._read_page(self.profile.beneficiary_url) as page:
             recipient = self._fields(page, self.profile.beneficiary_fields)
@@ -265,6 +329,7 @@ class HLBTransferProvider:
             for r in rows
         ):
             raise FinanceError("HLB history contains a potential duplicate; reconcile first.")
+        self._check_requests()
         return digest({"recipient": recipient, "history": rows, "funding": expected["funding"]})
 
     def prepare(self, bill):
@@ -309,9 +374,14 @@ class HLBTransferProvider:
         p = self.profile
         if not p.submission_enabled:
             raise FinanceError("HLB authorization/review is disabled before any bank form action.")
+        authorization = require_payment_submission(bill, quote)
         if quote.transaction in self._submitted or self.inspect(bill, quote) != quote:
             raise FinanceError("HLB review changed or this adapter has already submitted.")
         guard()
+        # Entry navigation itself is consequential. Reserve it before goto, not
+        # after a click/response, so redirects and transport loss cannot reopen it.
+        self._submitted.add(quote.transaction)
+        self._authorization = (authorization, bill, quote)
         page = self._page()
         page.goto(p.entry_url, wait_until="domcontentloaded")
         check_hlb_origin(page)
@@ -325,19 +395,32 @@ class HLBTransferProvider:
         form.locator(p.reference_selector).fill(bill.reference, timeout=5000)
         form.locator(p.tracking_selector).fill(quote.transaction, timeout=5000)
         guard()
-        # Real HLB review can initiate an executable AppAuthorise request. A lost
-        # response or later review mismatch must never permit this action again.
-        self._submitted.add(quote.transaction)
+        authorization.check(bill, quote)
+        for selector, value in (
+            (p.funding_selector, p.funding_option),
+            (p.beneficiary_selector, p.beneficiary_option),
+            (p.amount_selector, bill.amount),
+            (p.reference_selector, bill.reference),
+            (p.tracking_selector, quote.transaction),
+        ):
+            if form.locator(selector).input_value(timeout=5000) != value:
+                raise FinanceError("HLB form differs from the exact approved payment.")
+        authorization.check(bill, quote)
         form.locator(p.review_selector).click(timeout=5000)
+        self._check_requests()
         self._check_review(bill, quote)
 
     def _check_review(self, bill, quote):
         page = self._page()
         form = self._form(page)
         challenge = form.locator(self.profile.challenge_selector)
-        if challenge.count() and challenge.is_visible():
-            raise MandatoryChallenge("HLB requires bank authorization before proceeding.")
-        fields = self._fields(form, self.profile.review_fields)
+        pending = challenge.count() == 1 and challenge.is_visible()
+        try:
+            fields = self._fields(form, self.profile.review_fields)
+        except FinanceError:
+            if pending:
+                raise MandatoryChallenge("HLB bank-app authorization is required.") from None
+            raise
         if fields != {
             **self._expected(bill, quote.funding, quote.transaction),
             "fee": "0.00",
@@ -345,15 +428,16 @@ class HLBTransferProvider:
         }:
             raise FinanceError("HLB review differs from the exact approved payment.")
         check_hlb_origin(page)
+        if pending:
+            self._check_requests()
+            raise MandatoryChallenge("Complete this exact HLB transfer in the bank app.")
 
     def submit(self, bill, quote, *, guard):
         if not self.profile.submission_enabled:
             raise FinanceError("HLB authorization/review is disabled before any bank form action.")
         self.enter_review(bill, quote, guard=guard)
-        guard()
-        self._check_review(bill, quote)  # Re-read AFTER the final authorization check.
-        self._form(self._page()).locator(self.profile.submit_selector).click(timeout=5000)
-        # Bank-app authorization is always expected; completion still needs ledger evidence.
+        # Review/Next already initiates AppAuthorise. Never click another debit
+        # control, even if the bank still displays one labelled Submit.
         raise MandatoryChallenge("Complete this exact HLB transfer in the bank app.")
 
     def await_authorization(self, *, guard):
@@ -388,6 +472,7 @@ class HLBTransferProvider:
         )
 
     def close(self):
+        self._authorization = None
         if self._session is not None:
             self.browser.close_session(self._session.session_id)
             self._session = None

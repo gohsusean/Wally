@@ -14,6 +14,7 @@ import sqlite3
 import time
 import unicodedata
 from contextlib import suppress
+from contextvars import ContextVar, copy_context
 from dataclasses import asdict, dataclass, replace
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -49,6 +50,39 @@ PAYMENT_POLICY = ChannelPolicy(
     "trusted_exact_payment_worker",
     frozenset({Capability.READ_CONTEXT, Capability.EXECUTE_PAYMENT, Capability.VERIFY_PAYMENT}),
 )
+
+
+@dataclass
+class _SubmissionAuthorization:
+    """Ephemeral worker scope, never reconstructed from saved approval/provenance."""
+
+    bill_digest: str
+    quote_digest: str
+    check_current: object
+    active: bool = True
+
+    def check(self, bill, quote):
+        if (
+            not self.active
+            or digest(asdict(bill)) != self.bill_digest
+            or digest(asdict(quote)) != self.quote_digest
+        ):
+            raise FinanceError("A fresh exact Telegram payment authorization is required.")
+        self.check_current()
+
+
+_SUBMISSION: ContextVar[_SubmissionAuthorization | None] = ContextVar(
+    "payment_submission", default=None
+)
+
+
+def require_payment_submission(bill, quote):
+    """Only the worker's authenticated, claimed execution can enter an HLB form."""
+    authorization = _SUBMISSION.get()
+    if authorization is None:
+        raise FinanceError("A fresh exact Telegram payment authorization is required.")
+    authorization.check(bill, quote)
+    return authorization
 
 
 @dataclass(frozen=True)
@@ -652,12 +686,16 @@ class SupervisedPayments:
             raise FinanceError("Execution record conflict; retained payment claim blocks retry.")
         self._event(proposal_id, "execution_authorized", {"confirmation": confirmation.id})
 
-        def revalidate():
+        def revalidate(*, dispatched=False):
             self.authority.authorize(context, Capability.EXECUTE_PAYMENT)
             self.authority.authorize(context, Capability.VERIFY_PAYMENT)
             if time.time() >= confirmation.expires_at or not guard():
                 raise FinanceError("Execution authorization expired or lease lost.")
-            if self._current(proposal_id, approved=True)[:2] != (proposal, spec):
+            current = self._current(proposal_id, approved=True, dispatched=dispatched)
+            if (
+                current[:2] != (proposal, spec)
+                or time.time() >= confirmation.expires_at or not guard()
+            ):
                 raise FinanceError("Payment changed before submission.")
 
         submitted = False
@@ -667,7 +705,20 @@ class SupervisedPayments:
             revalidate()  # Source, duplicate, target and approval reread after secrets/login.
             self._event(proposal_id, "submission_entered", {"transaction": quote.transaction})
             submitted = True  # Includes a transport exception from submit: outcome unknown.
-            self.provider.submit(bill, quote, guard=revalidate)
+            # Bind only AFTER exact human confirmation, current-evidence checks and
+            # durable occurrence/transaction claims. HLB also checks this scope before
+            # entry navigation and from its network policy (without nested browser reads).
+            callback_context = copy_context()  # Browser callbacks run on a separate greenlet.
+            authorization = _SubmissionAuthorization(
+                digest(asdict(bill)), digest(asdict(quote)),
+                lambda: callback_context.run(revalidate, dispatched=True),
+            )
+            token = _SUBMISSION.set(authorization)
+            try:
+                self.provider.submit(bill, quote, guard=revalidate)
+            finally:
+                authorization.active = False
+                _SUBMISSION.reset(token)
             return self.reconcile(proposal_id, context=context)
         except MandatoryChallenge:
             pending = self._outcome(

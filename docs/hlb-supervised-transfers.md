@@ -5,12 +5,12 @@ opening HLB's transfer review initiated AppAuthorise. The owner approved in the
 bank app and payment completed before any Telegram card, without a final Submit
 click. Independent history/detail and the original receipt verified settlement.
 This is an incident, **not successful supervised-payment acceptance**. No live
-payment factory is installed or enabled. The synthetic submit sequence below
-does not establish the real bank's action boundary.
+payment factory is installed or enabled. The offline flow now reproduces review
+initiating AppAuthorise; it does not establish live selector/request contracts.
 
 Do not open transfer review during reconnaissance. `submission_enabled=False`
-now blocks `enter_review` and `submit` before any bank form action. Review dispatch
-also claims the adapter's transaction before its click, preventing another review
+blocks `enter_review` and `submit` before any bank form action. Entry navigation
+also claims the adapter's transaction before dispatch, preventing another review
 after a lost response or mismatched result. A later Back click does not establish
 cancellation. Uncertain outcomes require independent history reads, never another
 authorization request. See [the incident decision](decisions.md#adr-053-live-boundary-correction-24-october-2026).
@@ -51,13 +51,16 @@ records the route and authorization boundaries.
    callback on that exact delivered card can authorize its separate decision and
    execution stages. Preparing, logging in, certification and old approval cannot
    authorize a transfer. No actual card was requested in this iteration.
-4. The narrow worker reserves its durable occurrence/intent claim, re-reads current
-   facts/decision/Matter/target/inventory/lease/deadlines, and fills the existing
-   beneficiary, source account, exact amount and reference. It checks the complete
-   bank review after the final authorization guard. Only immediate MYR transfers
+4. The narrow worker consumes the exact execution confirmation, reserves its durable
+   occurrence/transaction claim and re-reads current facts, decision, Matter, target,
+   inventory, lease and deadlines. Only then does it bind an ephemeral submission
+   scope covering the complete bill and quote. HLB requires that scope before entry
+   navigation, checks the filled controls before Review/Next, and checks the exact
+   outgoing payment fields before dispatch. Only immediate MYR transfers
    with zero fees are supported. There is no beneficiary creation/editing, scheduled
    debit, exemption investigation, second bank or generic model browser action.
-5. After the single submit click, the worker durably records `challenge_pending`
+5. Review/Next is the payment submission; there is no later Submit click. The worker
+   durably records `challenge_pending`
    before sending the bank-app instruction. It waits up to the profile's bounded
    timeout using read-only browser observations. It never presses another transfer,
    continuation or authorization control. Owner bank-app/biometric authorization is
@@ -79,6 +82,40 @@ of an unrelated utility-provider login. The generic portal-payment source retain
 its portal gate. Identity/recipient certification, enablement, exact Telegram
 approval, HLB route validation and independent verification all remain mandatory.
 No new capability is granted to Telegram, Codex, CLI or ChatGPT.
+
+### Review boundary correction and retained evidence
+
+The retained `authorization-incident.json` records that opening transfer review
+initiated AppAuthorise, no Telegram card was presented/approved, and no final
+Submit was clicked. The consequential action is the transfer form's Next into
+review, followed by owner bank-app approval. The record does not retain its exact
+live DOM selector or HTTP endpoint; neither is guessed from the synthetic profile.
+Back did not establish cancellation. Preserve the original incident record,
+settled occurrence hold, bank receipt, sent confirmation and Notion history.
+
+`SupervisedPayments.execute` binds a process-local submission scope only after
+the authenticated Telegram decision/execution confirmations and durable attempt
+claims. `HLBTransferProvider.enter_review` requires that scope **before navigating
+to the transfer form**, and again before Review/Next. An arbitrary guard callback,
+persisted decision or caller-supplied channel cannot create that scope. Its complete
+bill/quote fingerprints bind beneficiary/bank account, amount/currency, bill and
+billing-account identity, billing period, evidence, route, funding and expiry.
+Current facts, decision, Matter, lease and deadlines are rechecked; expiry during
+those reads also blocks dispatch. The scope is invalidated when submission exits.
+
+The isolated browser installs a request guard before its initial navigation.
+Profiles explicitly enumerate safe `read_requests`, consequential `payment_requests`
+and request-body `payment_fields`; the profile fingerprint binds all three. Unknown
+routes/redirects and mismatched payment fields are blocked before network dispatch.
+Each consequential method/URL is claimed before dispatch, so browser retries cannot
+repeat it. Read-only recovery remains available after a blocked request. The
+synthetic owner-app callback is local test infrastructure, never a bypass for HLB.
+
+There is no production request/selector profile or payment factory. Live submission
+remains disabled. A separate live acceptance request still needs reviewed actual
+read/auth/payment request contracts, complete duplicate inventories, an eligible
+unpaid obligation and the exact Telegram card before entering the consequential
+flow. The already settled Tropicana Gardens occurrence is not an acceptance candidate.
 
 ## Simulation and recovery
 
@@ -107,7 +144,15 @@ Existing payment tests cover forged/replayed/stale callbacks, expired approval,
 source/Matter/policy drift, lease loss, occurrence conflicts, ambiguous Notion writes,
 through-2026 coverage and preserved settlement after failed retrieval.
 
-Verification covered **1,012 passing isolated tests** against the staged source,
+The review-boundary correction passed **391 isolated regression tests** against
+`0e6dcae` plus only its seven changed files, including **58 HLB transfer cases**.
+Coverage includes missing/rejected/expired approval, all approved identity/amount/
+period changes, expiry during the final request check, replay, mandatory bank-app
+authorization, outgoing-body mismatch, unexpected navigation, preflight redirect,
+browser retry and lost-response recovery. Ruff, local links, Markdown fences and
+`git diff --check` passed. All Chrome traffic was fulfilled locally or aborted.
+
+Earlier route verification covered **1,012 passing isolated tests** against the staged source,
 including **37 HLB transfer tests**. The three real `.env`/Keychain mutation tests
 and two local socket tests were excluded. Two interpreter-identity fixtures passed
 after the temporary source snapshot linked the existing virtualenv. Ruff, all
@@ -132,7 +177,7 @@ files. Reuse and map that evidence under ADR-050; do not ask the owner to certif
 unrelated records or repeat a valid identity attestation.
 
 The shipped HLB profile is explicitly synthetic. There are **no guessed live
-transfer/history selector defaults**. `submission_enabled` defaults false, in
+transfer/history selector or request defaults**. `submission_enabled` defaults false, in
 addition to the existing disabled/unvalidated worker gate. Supplying a YAML flag,
 replaying a card or successful login cannot activate a production route. No service
 was restarted, no credentials changed, no beneficiary altered and no actual
@@ -141,11 +186,10 @@ payment approval requested.
 Read-only reconnaissance is limited to beneficiary/history inspection and receipt
 retrieval. Never exercise `enter_review` or the form's Next control before the exact
 Telegram authorization: bank-app approval can complete payment from that review.
-Before a live factory can be installed, the worker must durably treat review dispatch
-as a potentially submitted payment, support its mandatory challenge there and recover
-by independent history without a later debit click. The existing synthetic final-Submit
-sequence is not an accepted production sequence. Complete history/scheduled/mandate
-inventory, live selector composition and exact Telegram acceptance remain open.
+The worker now treats entry/review dispatch as potentially submitted, supports its
+mandatory challenge there and recovers by independent history without another debit
+click. Complete history/scheduled/mandate inventory, reviewed live selector/request
+composition and exact Telegram acceptance remain open. Live submission stays disabled.
 
 There is no new bank enrollment, credential setup or infrastructure requirement
 introduced here. Existing 1Password authorization can still require local unlock.

@@ -13,7 +13,11 @@ from pathlib import Path
 
 from wally.adapters.browser.authentication import LoginState, LoginStep
 from wally.adapters.browser.hlb import HLB_ORIGIN, HLBSecurityPicture
-from wally.adapters.browser.hlb_transfer import HLBTransferProfile, HLBTransferProvider
+from wally.adapters.browser.hlb_transfer import (
+    TRANSFER_FIELDS,
+    HLBTransferProfile,
+    HLBTransferProvider,
+)
 from wally.adapters.browser.playwright_adapter import PlaywrightBrowserAdapter
 from wally.finance.payment_demo import CANARIES, PASS_REF, USER_REF, build_demo, prepare_card
 from wally.runtime.hlb_authentication_demo import png
@@ -108,6 +112,10 @@ def fixture_profile(*, submission_enabled=True):
         app_timeout_seconds=2,
         sandbox=True,
         submission_enabled=submission_enabled,
+        read_requests=(("GET", HLB_ORIGIN + "/fixture/picture.png"),
+                       ("POST", HLB_ORIGIN + "/fixture/app-authorize")),
+        payment_requests=(("POST", HLB_ORIGIN + "/fixture/submit"),),
+        payment_fields=tuple((key, key) for key in TRANSFER_FIELDS),
     )
 
 
@@ -130,10 +138,18 @@ class SimulatedHLBBrowser(PlaywrightBrowserAdapter):
         self.source = None
         self.reference = None
         self.sent_fields = None
+        self.entry_reads = 0
+        self.submit_clicks = 0
+        self.on_entry = lambda: None
+        self.retry_review = False
+        self.unexpected_navigation = False
 
     def restrict_origins(self, session_id, origins):
         super().restrict_origins(session_id, origins)
-        self._pages[session_id].context.route("**/*", self._route)
+        page = self._pages[session_id]
+        if not getattr(page, "_fixture_routed", False):
+            page.context.route("**/*", self._route)
+            page._fixture_routed = True
 
     def expected(self):
         return HLBTransferProvider._expected(self.source.bill, "HLB current ending 1234")
@@ -159,6 +175,10 @@ class SimulatedHLBBrowser(PlaywrightBrowserAdapter):
             self.authorizations += 1
             route.fulfill(content_type="application/json", body="{}")
             return
+        if path == "/fixture/final-submit":
+            self.submit_clicks += 1
+            route.fulfill(content_type="application/json", body="{}")
+            return
         if path == "/":
             html = LOGIN
         elif path == "/fixture/beneficiary":
@@ -182,6 +202,8 @@ class SimulatedHLBBrowser(PlaywrightBrowserAdapter):
                 }
                 html += '<div class="transaction">' + fields_html(row) + "</div>"
         elif path == "/fixture/entry":
+            self.entry_reads += 1
+            self.on_entry()
             review = {**self.expected(), "fee": "0.00", "mode": "immediate", **self.review_changes}
             html = (
                 """<select id="source"><option value="existing-source">Current</option></select>
@@ -198,8 +220,6 @@ class SimulatedHLBBrowser(PlaywrightBrowserAdapter):
             el('review').onclick = () => {
                 REFLECT_INPUTS
                 el('reviewed').hidden = false; el('submit').hidden = false;
-            };
-            el('submit').onclick = () => {
                 const data = Object.fromEntries(
                     [...document.querySelectorAll('#reviewed span')]
                     .map(e => [e.className, e.textContent]));
@@ -208,12 +228,25 @@ class SimulatedHLBBrowser(PlaywrightBrowserAdapter):
                     el('app-required').hidden = false;
                     APP_AUTHORIZATION
                 });
+                RETRY_REVIEW
+                UNEXPECTED_NAVIGATION
+            };
+            el('submit').onclick = () => {
+                fetch('/fixture/final-submit', {method: 'POST'});
             };
             </script>"""
             )
             app = """setTimeout(() => fetch('/fixture/app-authorize', {method: 'POST'})
                       .then(() => el('bank-result').hidden = false), 600);"""
             html = html.replace("APP_AUTHORIZATION", app if self.app_completes else "")
+            html = html.replace(
+                "RETRY_REVIEW",
+                "fetch('/fixture/submit', {method: 'POST', body: JSON.stringify(data)});"
+                if self.retry_review else "",
+            ).replace(
+                "UNEXPECTED_NAVIGATION",
+                "location.href = '/fixture/unreviewed';" if self.unexpected_navigation else "",
+            )
             reflected = "\n".join(
                 f"document.querySelector('.{key}').textContent = el('{key}').value;"
                 for key in ("amount", "reference", "tracking")

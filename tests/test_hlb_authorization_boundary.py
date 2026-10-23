@@ -24,27 +24,13 @@ def test_disabled_route_stops_before_review_can_initiate_app_authorise(entry):
     guard.assert_not_called()
 
 
-@pytest.mark.parametrize("failure", ["lost_review_response", "review_mismatch"])
-def test_uncertain_review_cannot_start_another_authorization_request(failure):
+@pytest.mark.parametrize("entry", ["enter_review", "submit"])
+def test_even_enabled_route_cannot_use_an_arbitrary_guard_as_telegram_approval(entry):
     browser = Mock(offline_simulation=True)
     provider = HLBTransferProvider(browser, fixture_profile(), Mock())
-    bill, quote = Mock(), Mock(transaction="exact-reviewed-transaction")
-    provider.inspect = Mock(return_value=quote)
-    page = Mock(url="https://s.hongleongconnect.my/transfer")
-    form = Mock()
-    provider._page = Mock(return_value=page)
-    provider._form = Mock(return_value=form)
-    review = form.locator.return_value.click
-    provider._check_review = Mock()
-    if failure == "lost_review_response":
-        review.side_effect = TimeoutError("Review response lost")
-    else:
-        provider._check_review.side_effect = FinanceError("Review mismatch")
-    with pytest.raises((TimeoutError, FinanceError)):
-        provider.enter_review(bill, quote, guard=Mock())
-    with pytest.raises(FinanceError, match="already submitted"):
-        provider.submit(bill, quote, guard=Mock())
-    review.assert_called_once()
+    with pytest.raises(FinanceError, match="Telegram payment authorization"):
+        getattr(provider, entry)(Mock(), Mock(), guard=lambda: True)
+    assert browser.mock_calls == []
 
 
 @pytest.mark.parametrize("enabled", [False, True])
