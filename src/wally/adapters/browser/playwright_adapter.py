@@ -245,11 +245,11 @@ class PlaywrightBrowserAdapter:
         try:
             self.restrict_origins(session_id, (HLB_ORIGIN,))
             page = self._pages[session_id]
-            picture.confirm(page, reference=reference, guard=guard)
+            expected = picture.confirm(page, reference=reference, guard=guard)
 
             def checked_guard():
                 guard()
-                picture.verify(page, reference)
+                picture.verify(page, reference, expected=expected)
                 check_hlb_origin(page)
                 if not page.locator(picture.checkbox_selector).is_checked():
                     raise ValueError

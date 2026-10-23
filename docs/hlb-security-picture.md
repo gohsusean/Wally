@@ -26,7 +26,9 @@ is never included in audit/tool results. Unsafe permissions/symlink paths fail
 closed. Browser traces, screenshots, HAR, video and persistent sessions stay off.
 
 Future logins compare repeated exact pixel fingerprints to the enrolled reference,
-rechecking origin, reference and image after the authorization guard. Only a match
+pinning that reference for the whole attempt and rechecking origin, reference and
+image after the authorization guard. A replacement reference stops the current
+attempt even when the displayed image matches the replacement. Only a match
 can tick the native checkbox. A normal focus click enables HLB's password field;
 the existing guarded login helper then fills/submits the scoped 1Password password
 once. The picture and checkbox are rechecked before password fill and submission.
@@ -72,6 +74,8 @@ Unit checks cover exact match, mismatch, missing/hidden/ambiguous/unreadable ima
 HTTPS origin rejection, reference permissions/symlinks, explicit replacement,
 post-confirmation drift and the existing payment adapter's password gate. The
 local-sync test verifies the private reference stays outside its backup allowlist.
+Reference-and-image replacement during confirmation or before password focus also
+stops the attempt; a fresh login is required after explicitly enrolling a change.
 
 ```sh
 .venv/bin/python -B -m wally.runtime.hlb_authentication_demo
@@ -97,3 +101,12 @@ with the three real `.env`/Keychain mutation tests and two socket tests excluded
 All 82 focused authentication/picture/preferences/sync tests, Ruff, local documentation
 links/fences, `git diff --check` and both offline Chrome authentication demos passed.
 Unrelated pre-existing working-tree changes are excluded from this commit.
+
+Reference-binding follow-up, 23 October: two regression tests first reproduced
+acceptance of a replacement reference/image during an active login. The attempt
+now retains its original fingerprint through checkbox confirmation, password fill
+and submission. **965 isolated tests passed** against a clean source snapshot plus
+this follow-up, with the same five exclusions; all **84 focused tests**, Ruff,
+documentation links/fences, `git diff --check` and both offline Chrome demos passed.
+The snapshot used the existing virtualenv without installing dependencies. No usable
+local enrollment reference was present; owner enrollment and live acceptance remain.

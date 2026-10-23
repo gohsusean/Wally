@@ -164,6 +164,49 @@ def test_drift_after_authorization_stops_before_checkbox(page, picture, tmp_path
     page.checkbox.check.assert_not_called()
 
 
+def test_reference_and_picture_drift_cannot_rebind_confirmation(page, picture, tmp_path):
+    path = tmp_path / "private/picture.sha256"
+    enroll(picture, page, path)
+
+    def drift():
+        page.image.evaluate.return_value["rgba"] = base64.b64encode(b"x" * 1024).decode()
+        path.write_text(picture.capture(page) + "\n")
+
+    with pytest.raises(FinanceError, match="reference changed"):
+        picture.confirm(page, reference=path, guard=drift)
+    page.checkbox.check.assert_not_called()
+
+
+def test_reference_replacement_after_checkbox_stops_before_password(page, picture, tmp_path):
+    path = tmp_path / "private/picture.sha256"
+    enroll(picture, page, path)
+    browser = PlaywrightBrowserAdapter()
+    browser._pages["test"] = page
+    browser.restrict_origins = Mock()
+    browser.submit_authentication_step = Mock(return_value=LoginResult(LoginState.ADVANCED))
+    calls = 0
+
+    def drift():
+        nonlocal calls
+        calls += 1
+        if calls == 2:  # After checkbox confirmation, before password focus/fill.
+            page.image.evaluate.return_value["rgba"] = base64.b64encode(b"x" * 1024).decode()
+            path.write_text(picture.capture(page) + "\n")
+
+    result = browser.submit_hlb_password(
+        "test",
+        picture,
+        LoginStep("#password", ("#logout",)),
+        "PASSWORD-CANARY",
+        reference=path,
+        guard=drift,
+    )
+    assert result == LoginResult(LoginState.FAILED)
+    page.checkbox.check.assert_called_once()
+    page.checkbox.click.assert_not_called()
+    browser.submit_authentication_step.assert_not_called()
+
+
 @pytest.mark.parametrize("unsafe", ["permissions", "symlink", "directory", "malformed"])
 def test_unsafe_reference_is_rejected(page, picture, tmp_path, unsafe):
     path = tmp_path / "private/picture.sha256"

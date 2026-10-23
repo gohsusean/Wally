@@ -96,32 +96,37 @@ class HLBSecurityPicture:
                 "HLB security picture missing, ambiguous or unreadable; login stopped."
             ) from None
 
-    def verify(self, page, reference):
-        expected = read_reference(reference)
+    def verify(self, page, reference, *, expected=None):
+        enrolled = read_reference(reference)
+        if expected is not None and not hmac.compare_digest(enrolled, expected):
+            raise FinanceError("HLB picture reference changed; login stopped.")
+        expected = enrolled
         first = self.capture(page)
         if not hmac.compare_digest(first, expected) or not hmac.compare_digest(
             self.capture(page), expected
         ):
             raise FinanceError("HLB security picture mismatch or change; login stopped.")
+        return expected
 
     def confirm(self, page, *, reference=REFERENCE, guard):
         """Only an exact stable match can tick the native confirmation checkbox."""
-        self.verify(page, reference)
+        expected = self.verify(page, reference)
         guard()
-        self.verify(page, reference)  # Re-read after any human/credential prompt.
+        self.verify(page, reference, expected=expected)  # Re-read without rebinding this attempt.
         try:
             check_hlb_origin(page)
             checkbox = page.locator(self.checkbox_selector)
             if checkbox.count() != 1 or not checkbox.is_visible() or not checkbox.is_enabled():
                 raise ValueError
             checkbox.check(timeout=5000)
-            self.verify(page, reference)
+            self.verify(page, reference, expected=expected)
             if not checkbox.is_checked():
                 raise ValueError
         except FinanceError:
             raise
         except Exception:
             raise FinanceError("HLB picture confirmation failed; login stopped.") from None
+        return expected  # Internal only; retain this binding through password submission.
 
     def enroll(self, page, *, confirm_owner, reference=REFERENCE, replace=False, guard):
         """Explicit local owner ceremony, never invoked by verify or mismatch recovery."""
