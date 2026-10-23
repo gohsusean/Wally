@@ -19,8 +19,8 @@ class CertifiedTransferSource(CertifiedPaymentSource):
 
     required_transaction_namespace = "https://s.hongleongconnect.my"
 
-    def __init__(self, catalog, recipients):
-        super().__init__(catalog)
+    def __init__(self, catalog, recipients, *, invoice_accounts=None):
+        super().__init__(catalog, invoice_accounts=invoice_accounts)
         self.recipients = {str(UUID(page)): record for page, record in recipients.items()}
         if len(self.recipients) != len(recipients):
             raise FinanceError("Ambiguous transfer recipient bindings.")

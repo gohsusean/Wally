@@ -81,8 +81,12 @@ class SourceMapping:
 
     def validate(self) -> None:
         _ = self.key
+        payment_types = {
+            Kind.DEFINITION: {"typical_amount": "number"},
+            Kind.PROVIDER: {"confirmation_required": "checkbox", "confirmation_email": "email"},
+        }.get(self.kind, {})
         if not isinstance(self.payment_review_fields, dict) or any(
-            self.kind != Kind.DEFINITION or name != "typical_amount" or mapping.type != "number"
+            payment_types.get(name) != mapping.type
             for name, mapping in self.payment_review_fields.items()
         ):
             raise FinanceError("Unknown payment review-only field mapping.")
@@ -248,6 +252,26 @@ class NotionFinanceReader:
             amount, currency,
             digest([source.key, page_id, asdict(mapping), json.dumps(prop, sort_keys=True)]),
         )
+
+    def payment_confirmation(self, source: SourceMapping, page_id: str):
+        fields = source.payment_review_fields
+        if set(fields) != {"confirmation_required", "confirmation_email"}:
+            raise FinanceError("Provider confirmation fields require stable property mappings.")
+        schema = self.schema(source)
+        for mapping in fields.values():
+            matches = [
+                p for p in schema.get("properties", {}).values()
+                if unquote(str(p.get("id", ""))) == unquote(mapping.property_id)
+            ]
+            if len(matches) != 1 or matches[0].get("type") != mapping.type:
+                raise FinanceError("Provider confirmation schema changed.")
+        page = self.request("GET", f"/pages/{notion_id(page_id)}")
+        self.check_page(page, source)
+        if notion_id(page.get("id")) != notion_id(page_id):
+            raise FinanceError("Provider confirmation page identity changed.")
+        values = {name: self.value(page, mapping) for name, mapping in fields.items()}
+        binding = digest([source.key, page_id, asdict(source)["payment_review_fields"], values])
+        return values, binding
 
     def paginated(self, method: str, path: str, *, body: dict | None = None) -> list[dict]:
         cursor = None

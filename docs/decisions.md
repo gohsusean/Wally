@@ -2245,3 +2245,37 @@ synthetic, all Chrome requests in acceptance are locally fulfilled/aborted, and 
 transfer/history selectors are deliberately absent. Attended form/history mapping
 must stop before submission. See [implementation, recovery and remaining live
 acceptance](hlb-supervised-transfers.md).
+
+## ADR-054: Mandatory billing identity and associated receipt confirmation
+
+**Status:** Owner-directed, 23 October 2026; isolated implementation verified.
+Live transfer/receipt/Gmail/Notion acceptance remains incomplete.
+
+All supervised bill payments require a confident match between the current related
+Notion Bill Accounts Account Number and the identifier extracted from this exact
+invoice/statement. Permit only formatting normalization; preserve letters, digits,
+leading zeros and order. Missing/ambiguous/mismatched evidence blocks preparation
+and authorization without rewriting either source. Re-read the original evidence
+and mapped account after human authorization. Bind the raw references and document
+hashes to the exact reviewed fingerprint. Beneficiary bank-account checks remain
+independent and mandatory. No source, extraction output or provenance supplies
+authority. Existing provider parsers must explicitly implement the gate; there is
+no guessed/default extraction or fallback to historical invoices.
+
+The same exact Telegram payment approval additionally covers its associated
+provider-configured receipt email. This intentionally extends the narrow worker's
+payment scope under ADR-051/053, without granting generic email or execution
+capabilities to Telegram, Codex, CLI, ChatGPT or the legacy ToolRegistry. Follow
+the actual bill-account/provider relation, review the live confirmation requirement
+and recipient, and reject drift. Only an independently settled payment may obtain
+and send the matched original bank receipt. Reserve a durable unique email claim
+before send; verify Gmail SENT evidence and exact attachment bytes. Ambiguous sends
+recover by reads, never repeated emails or transfers. Retain payment settlement
+when email fails and separately reconcile exact receipt/email evidence in Notion.
+
+Tropicana Gardens Q4 is the first-payment candidate; Casaman stays on hold pending
+its invoice. A specific owner unpaid instruction lifts only that obligation's
+administrative coverage and never authorizes a transfer. Exact Telegram approval,
+bank-app authorization, source/recipient verification, duplicate protection and
+independent settlement remain mandatory. See the [implementation and live
+blockers](bill-account-and-receipt-checks.md).

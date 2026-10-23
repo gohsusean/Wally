@@ -20,8 +20,14 @@ from decimal import Decimal
 from typing import Protocol
 from uuid import UUID, uuid4
 
+from wally.finance.bill_identity import (
+    BillingAccountError,
+    require_billing_account_match,
+    reviewed_account_match,
+)
 from wally.finance.models import FinanceError, Kind, Scope, digest, money, text
-from wally.finance.typical_amount import TypicalAmount
+from wally.finance.receipts import ConfirmationTarget
+from wally.finance.typical_amount import TypicalAmount, comparable_period
 from wally.models.ops import (
     ExecutionStatus,
     Matter,
@@ -59,6 +65,9 @@ class BillPayment:
     period_end: str
     evidence_hash: str
     catalog_binding: str
+    account_reference: str = ""
+    invoice_account_reference: str = ""
+    account_match_binding: str = ""
 
     @property
     def obligation(self):
@@ -72,8 +81,9 @@ class BillPayment:
 class CertifiedPaymentSource:
     """Reuse existing evidence, complete refresh, certificates and enablement."""
 
-    def __init__(self, catalog):
+    def __init__(self, catalog, *, invoice_accounts=None):
         self.catalog = catalog
+        self.invoice_accounts = invoice_accounts
 
     def read(self, instance_id: str) -> BillPayment:
         catalog = self.catalog
@@ -95,6 +105,13 @@ class CertifiedPaymentSource:
         ):
             raise FinanceError("A current owner-responsible enabled obligation is required.")
         self._check_route(definition)
+        catalog_binding = catalog.binding(record.id)
+        if self.invoice_accounts is None:
+            raise FinanceError("Invoice account extraction is unavailable; payment is blocked.")
+        identity = reviewed_account_match(
+            account.candidate.facts.identifier, instance.evidence,
+            self.invoice_accounts.read(instance.evidence), account.candidate.fingerprint,
+        )
         return BillPayment(
             record.id,
             str(UUID(account.candidate.locator.page)),
@@ -107,7 +124,8 @@ class CertifiedPaymentSource:
             instance.period_start,
             instance.period_end,
             digest([asdict(e) for e in instance.evidence]),
-            catalog.binding(record.id),
+            catalog_binding,
+            **identity,
         )
 
     def _check_route(self, definition):
@@ -139,8 +157,40 @@ class CertifiedPaymentSource:
         if len(sources) != 1 or catalog.reader is None:
             raise FinanceError("Payment review definition source is unavailable or ambiguous.")
         catalog._source_gate(sources[0])
-        return catalog.reader.typical_amount(
+        baseline = catalog.reader.typical_amount(
             sources[0], locator.page, definition.candidate.facts.currency
+        )
+        return replace(baseline, comparable=comparable_period(
+            definition.candidate.facts.frequency,
+            instance.candidate.facts.period_start, instance.candidate.facts.period_end,
+        ))
+
+    def read_confirmation(self, instance_id: str) -> ConfirmationTarget:
+        catalog = self.catalog
+        # Settlement/app waiting can outlive the pre-submit catalog snapshot.
+        # Re-follow current relations rather than emailing a stale provider.
+        catalog.refresh()
+        instance = catalog.store.get(instance_id)
+        if instance.candidate.kind != Kind.INSTANCE:
+            raise FinanceError("Confirmation requires the exact issued instance.")
+        definition = catalog.store.get(instance.candidate.facts.definition)
+        account = catalog.store.get(definition.candidate.facts.account)
+        provider = catalog.store.get(account.candidate.facts.provider)
+        locator = provider.candidate.locator
+        sources = [
+            source for source in catalog.sources()
+            if source.kind == Kind.PROVIDER and source.key == (
+                f"notion:{locator.database}:{locator.data_source}"
+            )
+        ]
+        if locator.system != "notion" or len(sources) != 1 or catalog.reader is None:
+            raise FinanceError("Current linked Bill Providers confirmation source is unavailable.")
+        catalog._source_gate(sources[0])
+        values, binding = catalog.reader.payment_confirmation(sources[0], locator.page)
+        return ConfirmationTarget(
+            values["confirmation_required"], values["confirmation_email"],
+            account.candidate.facts.identifier, definition.candidate.locator.page,
+            digest([binding, account.id, definition.id]),
         )
 
 
@@ -202,10 +252,12 @@ class SupervisedPayments:
         *,
         enabled=lambda: False,
         live_validated=False,
+        confirmations=None,
     ):
         self.store, self.authority, self.source = store, authority, source
         self.provider, self.history, self.resolver = provider, history, resolver
         self.enabled, self.live_validated = enabled, live_validated
+        self.confirmations = confirmations
         with store._connect() as c:
             c.executescript("""
                 CREATE TABLE IF NOT EXISTS payment_specs (
@@ -240,6 +292,15 @@ class SupervisedPayments:
                     "ADD COLUMN catalog_binding TEXT NOT NULL DEFAULT ''"
                 )
             attempt_columns = {row[1] for row in c.execute("PRAGMA table_info(payment_attempts)")}
+            for name in ("confirmation", "confirmation_key", "confirmation_reconciliation"):
+                if name not in attempt_columns:
+                    c.execute(
+                        f"ALTER TABLE payment_attempts ADD COLUMN {name} TEXT NOT NULL DEFAULT ''"
+                    )
+            c.execute(
+                "CREATE UNIQUE INDEX IF NOT EXISTS payment_receipt_email_once "
+                "ON payment_attempts(confirmation_key) WHERE confirmation_key!=''"
+            )
             if "prepared_key" not in attempt_columns:
                 c.execute(
                     "ALTER TABLE payment_attempts ADD COLUMN prepared_key TEXT NOT NULL DEFAULT ''"
@@ -252,6 +313,10 @@ class SupervisedPayments:
     def _gate(self):
         if not self.enabled() or (not self.provider.sandbox and not self.live_validated):
             raise FinanceError("Payment execution is disabled or this live route is unvalidated.")
+        if not self.provider.sandbox and (
+            self.confirmations is None or not callable(getattr(self.provider, "receipt", None))
+        ):
+            raise FinanceError("Live payments require validated receipt and confirmation handling.")
         required = getattr(self.source, "required_transaction_namespace", "")
         if required and self.provider.transaction_namespace != required:
             raise FinanceError("The certified transfer source requires its exact bank route.")
@@ -286,6 +351,9 @@ class SupervisedPayments:
         self._event("", "owner_identified_specific_unpaid", {"instance_id": instance_id})
 
     def _validate_bill(self, bill):
+        require_billing_account_match(bill.account_reference, bill.invoice_account_reference)
+        if not re.fullmatch(r"[a-f0-9]{64}", bill.account_match_binding):
+            raise FinanceError("The billing-account evidence match is missing or stale.")
         for value in asdict(bill).values():
             text(value)
         UUID(bill.account_page_id)
@@ -340,7 +408,10 @@ class SupervisedPayments:
             "sandbox": self.provider.sandbox,
             "scope": "one_payment_and_receipt_reconciliation",
             "typical_amount_review": self._typical_amount_review(bill),
+            "confirmation": self.confirmations.review(bill) if self.confirmations else None,
         }
+        if spec["confirmation"] is not None:
+            spec["scope"] = "one_payment_receipt_and_associated_confirmation"
         matter_id = "payment_" + bill.obligation[:24]
         if self.store.get_matter(matter_id) is None:
             self.store.save_matter(
@@ -409,6 +480,14 @@ class SupervisedPayments:
         proposal, spec, bill, quote = self.load(proposal_id)
         expected = ProposalStatus.APPROVED if approved else ProposalStatus.PROPOSED
         matter = self.store.get_matter(proposal.matter_id)
+        current_bill = self.source.read(bill.instance_id)
+        if any(
+            getattr(current_bill, field) != getattr(bill, field)
+            for field in ("account_reference", "invoice_account_reference", "account_match_binding")
+        ):
+            raise BillingAccountError(
+                "Billing account details changed; a fresh payment review is required."
+            )
         if (
             proposal.status != expected
             or matter is None
@@ -418,8 +497,10 @@ class SupervisedPayments:
             or spec["history"] != self.history.fingerprint
             or spec["sandbox"] != self.provider.sandbox
             or (approved and proposal.decision_fingerprint != proposal.fingerprint)
-            or self.source.read(bill.instance_id) != bill
+            or current_bill != bill
             or self._typical_amount_review(bill) != spec.get("typical_amount_review")
+            or (self.confirmations.review(bill) if self.confirmations else None)
+            != spec.get("confirmation")
         ):
             raise FinanceError("Payment facts, policy, decision or Matter changed.")
         self._validate_bill(bill)
@@ -602,6 +683,8 @@ class SupervisedPayments:
                 return self.reconcile(proposal_id, context=context)
             except Exception:
                 return pending
+        except BillingAccountError:
+            return self._outcome(execution, "uncertain" if submitted else "billing_account_changed")
         except Exception:
             # Never stringify provider exceptions: they may contain auth/page material.
             return self._outcome(execution, "uncertain" if submitted else "not_submitted")
@@ -670,6 +753,31 @@ class SupervisedPayments:
             finished_at=datetime.now(UTC).isoformat(),
         )
         execution = self._outcome(execution, "settled")
+        # The original exact payment review authorizes its associated receipt email.
+        # Email outcome is separate from bank settlement and can never resubmit money.
+        if spec.get("confirmation") is not None:
+            try:
+                if self.confirmations is None:
+                    raise FinanceError("Receipt confirmation adapter is unavailable.")
+
+                def email_guard():
+                    self.authority.authorize(context, Capability.VERIFY_PAYMENT)
+                    current = self.store.get_proposal(proposal_id)
+                    if (
+                        current.status != ProposalStatus.APPROVED
+                        or current.fingerprint != proposal.fingerprint
+                        or current.decision_fingerprint != proposal.fingerprint
+                        or self.load(proposal_id)[1] != spec
+                        or self.history.fingerprint != spec["history"]
+                        or self.provider.fingerprint != spec["route"]
+                    ):
+                        raise FinanceError("Exact payment/email authorization changed.")
+
+                self.confirmations.finish(
+                    self, proposal, spec, bill, quote, settlement, guard=email_guard
+                )
+            except Exception:
+                self._event(proposal_id, "confirmation_follow_up", {})
         # Reserve Notion dispatch once. Ambiguous POST is recovered by a separate read,
         # never replayed. Payment settlement is preserved even if Notion is unavailable.
         with self.store._connect() as c:
@@ -703,6 +811,34 @@ class SupervisedPayments:
                     (proposal_id,),
                 )
             self._event(proposal_id, "notion_verified", {})
+        if spec.get("confirmation") is not None:
+            try:
+                with self.store._connect() as c:
+                    current = c.execute(
+                        "SELECT confirmation,reconciliation FROM payment_attempts "
+                        "WHERE proposal_id=?",
+                        (proposal_id,),
+                    ).fetchone()
+                if current["reconciliation"] != "verified":
+                    raise FinanceError("Payment receipt must be independently recorded first.")
+                details = json.loads(current["confirmation"]) if current["confirmation"] else {
+                    "state": "outstanding"
+                }
+                self.history.record_confirmation(
+                    bill, settlement, details, guard=email_guard
+                )
+                with self.store._connect() as c:
+                    c.execute(
+                        "UPDATE payment_attempts SET confirmation_reconciliation='verified' "
+                        "WHERE proposal_id=?", (proposal_id,),
+                    )
+            except Exception:
+                with self.store._connect() as c:
+                    c.execute(
+                        "UPDATE payment_attempts SET confirmation_reconciliation='unconfirmed' "
+                        "WHERE proposal_id=?", (proposal_id,),
+                    )
+                self._event(proposal_id, "confirmation_record_follow_up", {})
         return execution
 
     def _duplicates(self, bill):

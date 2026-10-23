@@ -7,8 +7,8 @@ schema_version: 1
 payment_preferences:
   default_transfer_bank: hlb
   transfer_login_url: https://s.hongleongconnect.my/
-  first_bill_account: fin_d692b4b201b84448b7badf9c7ccbe5f9
-  first_bill_definition: fin_3660fe32ae4b4491865c26d00e32c1a8
+  first_bill_account: fin_9691874d69644676ae930f724fb098fd
+  first_bill_definition: fin_d1059498a95d467d942bcd9339a3fd3a
   first_bill_period_start: '2026-10-01'
   first_bill_period_end: '2026-12-31'
 sources:
@@ -28,6 +28,13 @@ sources:
   data_source_id: 3904d585-1c89-80ff-b151-000be6c5d278
   kind: provider
   role: finance
+  payment_review_fields:
+    confirmation_required:
+      property_id: VPIA
+      type: checkbox
+    confirmation_email:
+      property_id: FMT%3B
+      type: email
   fields:
     issuer:
       property_id: v%3Ako

@@ -4,6 +4,7 @@ Uses existing Notion REST client/registry contracts. No arbitrary metadata updat
 credential fields, catalog certification or Matter resolution is exposed here.
 """
 
+import json
 from dataclasses import asdict, dataclass
 from decimal import Decimal
 
@@ -23,12 +24,21 @@ class PaymentHistoryTarget:
     currency: str
     receipt: str
     evidence: str
+    recurring_bill: str = ""
+    paid_date: str = ""
+    confirmation_sent: str = ""
+    confirmation_date: str = ""
 
     @property
     def fingerprint(self):
         notion_id(self.database_id)
         notion_id(self.data_source_id)
-        fields = [v for k, v in asdict(self).items() if k not in {"database_id", "data_source_id"}]
+        optional = {"recurring_bill", "paid_date", "confirmation_sent", "confirmation_date"}
+        fields = [
+            v
+            for k, v in asdict(self).items()
+            if k not in {"database_id", "data_source_id"} and (v or k not in optional)
+        ]
         if any(not v for v in fields) or len(set(fields)) != len(fields):
             raise FinanceError("Payment History needs distinct reviewed property IDs.")
         return digest(asdict(self))
@@ -72,6 +82,18 @@ class NotionPaymentHistory:
             "receipt": "rich_text",
             "evidence": "rich_text",
         }
+        expected.update(
+            {
+                name: kind
+                for name, kind in {
+                    "recurring_bill": "relation",
+                    "paid_date": "date",
+                    "confirmation_sent": "checkbox",
+                    "confirmation_date": "date",
+                }.items()
+                if getattr(self.target, name)
+            }
+        )
         props = {p["id"]: p["type"] for p in source["properties"].values()}
         if any(props.get(getattr(self.target, k)) != v for k, v in expected.items()):
             raise FinanceError("Payment History schema changed.")
@@ -163,5 +185,90 @@ class NotionPaymentHistory:
                     p.get("plain_text", p.get("text", {}).get("content", "")) for p in found or []
                 )
                 value = "".join(p["text"]["content"] for p in value)
+                if key == self.target.evidence and found.startswith("{"):
+                    found = json.loads(found).get("settlement_hash")
             if found != value:
                 raise FinanceError("Payment History receipt readback did not match.")
+
+    def record_confirmation(self, bill, settlement, details, *, guard):
+        """Update only this verified receipt's email evidence; never recreate a payment.
+
+        Repeated recovery reads detect an already applied PATCH. Receipt settlement
+        stays independently checkable when email is outstanding or its response was lost.
+        """
+        self.verify_record(bill, settlement)
+        rows = self._rows(bill)
+        if len(rows) != 1:
+            raise FinanceError("Confirmation receipt target is ambiguous.")
+        page_id = notion_id(rows[0]["id"])
+        allowed = {
+            "state",
+            "recipient",
+            "message_id",
+            "thread_id",
+            "rfc822_id",
+            "sent_at",
+            "receipt_sha256",
+            "paid_date",
+            "definition_page_id",
+        }
+        evidence = {
+            "settlement_hash": settlement.evidence_hash,
+            "confirmation": {k: v for k, v in details.items() if k in allowed},
+        }
+        props = {self.target.evidence: rich(json.dumps(evidence, sort_keys=True))}
+        if self.target.recurring_bill and details.get("definition_page_id"):
+            props[self.target.recurring_bill] = {
+                "relation": [{"id": notion_id(details["definition_page_id"])}]
+            }
+        if self.target.paid_date and details.get("paid_date"):
+            props[self.target.paid_date] = {"date": {"start": details["paid_date"]}}
+        sent = details.get("state") == "sent"
+        if self.target.confirmation_sent:
+            props[self.target.confirmation_sent] = {"checkbox": sent}
+        if self.target.confirmation_date:
+            props[self.target.confirmation_date] = {
+                "date": {"start": details["sent_at"]} if sent else None
+            }
+
+        def matches():
+            response = self.reader.get(f"/pages/{page_id}")
+            response.raise_for_status()
+            page = response.json()
+            if (
+                notion_id(page.get("id")) != page_id
+                or page.get("archived")
+                or page.get("in_trash")
+                or notion_id(page.get("parent", {}).get("data_source_id"))
+                != notion_id(self.target.data_source_id)
+            ):
+                raise FinanceError("Confirmation receipt readback target changed.")
+            actual = {p["id"]: p for p in page["properties"].values()}
+            for key, expected in props.items():
+                kind, value = next(iter(expected.items()))
+                found = actual.get(key, {}).get(kind)
+                if kind == "rich_text":
+                    found = "".join(
+                        p.get("plain_text", p.get("text", {}).get("content", ""))
+                        for p in found or []
+                    )
+                    value = "".join(p["text"]["content"] for p in value)
+                elif kind == "relation":
+                    found = [notion_id(p["id"]) for p in found or []]
+                    value = [notion_id(p["id"]) for p in value]
+                elif kind == "date":
+                    found = found.get("start") if found else None
+                    value = value.get("start") if value else None
+                if found != value:
+                    return False
+            return True
+
+        if matches():
+            return
+        with self.write_client() as client:
+            self.verify_record(bill, settlement)
+            guard()
+            response = client.patch(f"/pages/{page_id}", json={"properties": props})
+            response.raise_for_status()
+        if not matches():
+            raise FinanceError("Confirmation receipt metadata is unconfirmed.")

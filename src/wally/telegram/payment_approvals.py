@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import json
 import time
 from contextlib import suppress
 from datetime import UTC, datetime
 from html import escape
 
+from wally.finance.bill_identity import BillingAccountError
 from wally.finance.payments import PAYMENT_WORKER
 from wally.models.ops import ExecutionStatus, ProposalIntent, ProposalStatus
 from wally.presentation import TelegramHTML, human_time
@@ -62,6 +64,8 @@ class TelegramPaymentApprovals:
                         [
                             execution.outcome if execution else "interrupted",
                             attempt["reconciliation"],
+                            attempt["confirmation"],
+                            attempt["confirmation_reconciliation"],
                         ]
                     ),
                     owner_user_id=self.owner_user_id,
@@ -102,6 +106,8 @@ class TelegramPaymentApprovals:
             + "Destination: "
             + escape(bill.destination)
             + "\n"
+            + "Billing account (Notion): " + escape(bill.account_reference) + "\n"
+            + "Invoice billing account: " + escape(bill.invoice_account_reference) + " · matched\n"
             + "Bill reference: "
             + escape(bill.reference)
             + "\n"
@@ -115,6 +121,12 @@ class TelegramPaymentApprovals:
                 if spec.get("typical_amount_review", {}).get("notice") else ""
             )
             + "Approve this one payment, then verify and record its receipt.\n"
+            + (
+                "After verified payment, email the bank receipt to "
+                + escape(spec["confirmation"]["recipient"]) + ".\n"
+                if (spec.get("confirmation") or {}).get("required")
+                else ""
+            )
             + (
                 escape("Transfer tracking reference: " + quote.transaction) + "\n"
                 + "Then authorize this exact transfer in the HLB bank app when prompted.\n"
@@ -158,6 +170,15 @@ class TelegramPaymentApprovals:
                 if row["reconciliation"] == "verified"
                 else " Notion update is unconfirmed; do not pay again."
             )
+            if spec.get("confirmation") and spec["confirmation"]["required"]:
+                email = json.loads(row["confirmation"]) if row["confirmation"] else {}
+                status += (
+                    " Receipt email verified sent."
+                    if email.get("state") == "sent"
+                    else " Receipt email needs follow-up; do not pay again."
+                )
+                if row["confirmation_reconciliation"] != "verified":
+                    status += " Email status in Notion is unconfirmed."
         elif execution and execution.outcome == "challenge_pending":
             status = (
                 "Bank app approval is required. Authorize this exact transfer in the bank app "
@@ -167,6 +188,10 @@ class TelegramPaymentApprovals:
             status = "Bank app or hardware approval is required. No payment was submitted."
         elif execution and execution.outcome == "not_submitted":
             status = "Payment stopped before submission. Review the cause before preparing again."
+        elif execution and execution.outcome == "billing_account_changed":
+            status = (
+                "Billing account details changed. No payment was submitted; prepare a fresh review."
+            )
         elif execution and execution.outcome == "bank_failed":
             status = (
                 "Bank history reports failure. No retry was made; review before another payment."
@@ -258,6 +283,9 @@ class TelegramPaymentApprovals:
                     proposal.id, context=worker, guard=self.confirmation.dispatch_allowed,
                     on_pending=lambda: self.notify_progress(proposal.id),
                 )
+        except BillingAccountError as error:
+            self.payments._event(proposal.id, "billing_account_review_stopped", {})
+            return str(error)
         except Exception:
             # Provider error strings may contain credentials. Persist bounded events only.
             self.payments._event(proposal.id, "review_stopped", {})

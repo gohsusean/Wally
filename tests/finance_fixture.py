@@ -2,6 +2,7 @@
 
 from dataclasses import asdict
 
+from wally.finance.bill_identity import InvoiceAccounts
 from wally.finance.models import Kind, ReviewProfile, Scope
 from wally.finance.service import ATTESTATIONS, FinanceService
 from wally.finance.store import FinanceStore
@@ -16,6 +17,16 @@ PROOF = [
     }
 ]
 ATTEST = dict.fromkeys(ATTESTATIONS, True)
+
+
+class FixtureInvoiceAccounts:
+    """Synthetic extractor for the exact documents in catalog_fixture only."""
+
+    def read(self, evidence):
+        return tuple(
+            InvoiceAccounts(e.reference, e.content_hash, ("000123456789",))
+            for e in evidence if e.kind in {"invoice", "statement"}
+        )
 
 
 class Approve:

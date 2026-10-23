@@ -4,7 +4,7 @@ from dataclasses import asdict, replace
 
 import pytest
 
-from tests.finance_fixture import ATTEST, PROOF, catalog_fixture
+from tests.finance_fixture import ATTEST, PROOF, FixtureInvoiceAccounts, catalog_fixture
 from wally.adapters.browser.hlb_transfer import HLBTransferProvider
 from wally.adapters.browser.playwright_adapter import PlaywrightBrowserAdapter
 from wally.finance.hlb_transfer_demo import (
@@ -238,10 +238,14 @@ def recipient_fixture(tmp_path):
 def test_transfer_source_reuses_certificates_and_never_uses_customer_number(tmp_path):
     catalog, ids, recipient = recipient_fixture(tmp_path)
     page = catalog.store.get(ids["account"]).candidate.locator.page
-    source = CertifiedTransferSource(catalog, {page: recipient.id})
+    source = CertifiedTransferSource(
+        catalog, {page: recipient.id}, invoice_accounts=FixtureInvoiceAccounts()
+    )
     certificate = catalog.store.certificate(recipient.id, Scope.IDENTITY)
     bill = source.read(ids["instance"])
     assert bill.destination == "TESTBANK:0001234567"
+    assert bill.account_reference == bill.invoice_account_reference == "000123456789"
+    assert bill.account_reference not in bill.destination
     assert bill.amount == "100.00"
     assert bill.catalog_binding != catalog.binding(ids["instance"])
     assert catalog.store.certificate(recipient.id, Scope.IDENTITY) == certificate
@@ -253,7 +257,9 @@ def test_transfer_source_reuses_certificates_and_never_uses_customer_number(tmp_
 def test_missing_recipient_does_not_fall_back_to_customer_identifier(tmp_path):
     catalog, ids, _ = recipient_fixture(tmp_path)
     with pytest.raises(FinanceError, match="recipient"):
-        CertifiedTransferSource(catalog, {}).read(ids["instance"])
+        CertifiedTransferSource(
+            catalog, {}, invoice_accounts=FixtureInvoiceAccounts()
+        ).read(ids["instance"])
 
 
 def test_tenant_responsibility_remains_excluded(tmp_path):
@@ -264,7 +270,9 @@ def test_tenant_responsibility_remains_excluded(tmp_path):
         replace(account.candidate, facts=replace(account.candidate.facts, responsibility="other"))
     )
     with pytest.raises(FinanceError):
-        CertifiedTransferSource(catalog, {page: recipient.id}).read(ids["instance"])
+        CertifiedTransferSource(
+            catalog, {page: recipient.id}, invoice_accounts=FixtureInvoiceAccounts()
+        ).read(ids["instance"])
 
 
 def test_confirmation_page_is_never_the_settlement_reader(world):

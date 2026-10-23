@@ -8,7 +8,7 @@ from datetime import UTC, datetime
 import httpx
 import pytest
 
-from tests.finance_fixture import catalog_fixture
+from tests.finance_fixture import FixtureInvoiceAccounts, catalog_fixture
 from wally.exceptions import AuthorizationError, ProviderUnavailableError
 from wally.finance.models import FinanceError, Scope
 from wally.finance.payment_demo import (
@@ -399,7 +399,7 @@ def test_certificate_source_reuses_exact_records_and_enablement(tmp_path):
         attestations=ATTEST,
         context=authority.issue("cli"),
     )
-    source = CertifiedPaymentSource(catalog)
+    source = CertifiedPaymentSource(catalog, invoice_accounts=FixtureInvoiceAccounts())
     bill = source.read(instance.id)
     assert bill.amount == "100.00"
     assert bill.catalog_binding == catalog.binding(instance.id)

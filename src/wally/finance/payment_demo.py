@@ -66,6 +66,9 @@ class DemoSource:
             "2027-01-31",
             "a" * 64,
             "b" * 64,
+            account_reference="SANDBOX-CUSTOMER-001",
+            invoice_account_reference="SANDBOX-CUSTOMER-001",
+            account_match_binding="c" * 64,
         )
 
     def read(self, instance_id):
@@ -172,6 +175,7 @@ class DemoNotion:
         )
         self.pages = {}
         self.creates = 0
+        self.patches = 0
         self.reads = 0
         self.client = httpx.Client(
             base_url="https://api.notion.com/v1", transport=httpx.MockTransport(self.handle)
@@ -203,6 +207,11 @@ class DemoNotion:
                 key: {"id": key, **value} for key, value in data["properties"].items()
             }
             self.pages[data["id"]] = data
+        elif request.method == "PATCH" and path.startswith("/pages/"):
+            self.patches += 1
+            data = self.pages[path.split("/")[-1]]
+            for key, value in json.loads(request.content)["properties"].items():
+                data["properties"][key] = {"id": key, **value}
         elif request.method == "GET" and path.startswith("/pages/"):
             self.reads += 1
             data = self.pages[path.split("/")[-1]]

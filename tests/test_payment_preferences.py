@@ -28,7 +28,7 @@ def test_owner_choice_is_retained_without_rewriting_source_mappings():
     assert selected.transfer_login_url == "https://s.hongleongconnect.my/"
     assert selected.first_bill_period_start == "2026-10-01"
     assert selected.first_bill_period_end == "2026-12-31"
-    assert selected.first_bill_account == "fin_d692b4b201b84448b7badf9c7ccbe5f9"
+    assert selected.first_bill_account == "fin_9691874d69644676ae930f724fb098fd"
     assert len(selected.fingerprint) == 64
     assert load_sources(path)
     assert load_profiles(path) == {}

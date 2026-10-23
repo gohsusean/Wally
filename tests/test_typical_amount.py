@@ -15,7 +15,7 @@ from wally.finance.models import FinanceError, Kind, Scope, digest
 from wally.finance.notion import FieldMapping
 from wally.finance.payment_demo import build_demo, prepare_card
 from wally.finance.payments import CertifiedPaymentSource
-from wally.finance.typical_amount import TypicalAmount
+from wally.finance.typical_amount import TypicalAmount, comparable_period
 from wally.models.ops import ExecutionStatus, ProposalStatus
 
 
@@ -62,6 +62,26 @@ def test_invalid_baselines_are_unavailable(baseline):
 
 def test_currency_mismatch_is_unavailable():
     assert "comparison unavailable" in TypicalAmount("100", "USD").notice("100", "MYR")
+
+
+@pytest.mark.parametrize(
+    "frequency,start,end,expected",
+    [
+        ("quarterly", "2026-10-01", "2026-12-31", True),
+        ("quarterly", "2026-10-01", "2026-10-31", False),
+        ("quarterly", "2026-10-01", "2026-11-30", False),
+        ("quarterly", "2026-11-01", "2027-01-31", False),
+        ("monthly", "2027-01-01", "2027-01-31", True),
+        ("monthly", "2027-01-01", "2027-03-31", False),
+        ("annual", "2026-01-01", "2026-12-31", True),
+    ],
+)
+def test_typical_amount_requires_comparable_billing_periods(frequency, start, end, expected):
+    assert comparable_period(frequency, start, end) is expected
+    if not expected:
+        notice = TypicalAmount("960.96", "MYR", comparable=False).notice("320.32", "MYR")
+        assert "periods are not comparable" in notice
+        assert "warning" not in notice
 
 
 @pytest.fixture
@@ -181,7 +201,9 @@ def notion_source(tmp_path):
     schema["Renamed typical label"] = {"id": "qhcR", "type": "number"}
     page = fixture.page(Kind.DEFINITION)
     page["properties"]["Renamed typical label"] = {
-        "id": "qhcR", "type": "number", "number": 90.01,
+        "id": "qhcR",
+        "type": "number",
+        "number": 90.01,
     }
     # A misleading display name must never win over the stable mapped ID.
     page["properties"]["Typical Amount"] = {"id": "unrelated", "type": "number", "number": 999}
@@ -189,7 +211,10 @@ def notion_source(tmp_path):
     records = catalog.refresh()
     for record in records:
         catalog.certify(
-            record.id, Scope.IDENTITY, evidence=PROOF, attestations=ATTEST,
+            record.id,
+            Scope.IDENTITY,
+            evidence=PROOF,
+            attestations=ATTEST,
             context=catalog.authority.issue("cli"),
         )
     definition = next(r for r in records if r.candidate.kind == Kind.DEFINITION)
@@ -197,11 +222,22 @@ def notion_source(tmp_path):
     instance = catalog.register_local(
         Kind.INSTANCE,
         {
-            "definition": definition.id, "occurrence": "2027-01", "stage": "issued",
-            "currency": "MYR", "amount": "100.00", "due_date": "2027-01-20",
-            "invoice_reference": "INV2027", "amount_basis": "invoice_total",
-            "evidence": [{"source": "primary_document", "reference": "fixture:invoice",
-                          "content_hash": "a" * 64, "kind": "invoice"}],
+            "definition": definition.id,
+            "occurrence": "2027-01",
+            "stage": "issued",
+            "currency": "MYR",
+            "amount": "100.00",
+            "due_date": "2027-01-20",
+            "invoice_reference": "INV2027",
+            "amount_basis": "invoice_total",
+            "evidence": [
+                {
+                    "source": "primary_document",
+                    "reference": "fixture:invoice",
+                    "content_hash": "a" * 64,
+                    "kind": "invoice",
+                }
+            ],
         },
         context=catalog.authority.issue("cli"),
     )
@@ -253,7 +289,8 @@ def test_notion_structural_drift_fails_closed(notion_source, drift):
         request = catalog.reader.request
         catalog.reader.request = lambda method, path, **kwargs: (
             {**request(method, path, **kwargs), "id": source.database_id}
-            if path.startswith("/pages/") else request(method, path, **kwargs)
+            if path.startswith("/pages/")
+            else request(method, path, **kwargs)
         )
     with pytest.raises(FinanceError):
         CertifiedPaymentSource(catalog).read_typical_amount(instance.id)

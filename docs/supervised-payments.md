@@ -141,6 +141,10 @@ move money. Telegram can authorize Wally's scope without replacing bank checks.
 
 ## Implemented behavior
 
+The [mandatory billing-account and receipt checks](bill-account-and-receipt-checks.md)
+apply to every provider. Billing identifiers must match the current related Notion
+account before preparation, independently of beneficiary bank-account validation.
+
 `CertifiedPaymentSource` reuses the existing catalog refresh, certificates,
 dependency bindings, owner responsibility and chain enablement. No recertification
 prompt is added. Preparation accepts an issued instance ID, not a model-authored
