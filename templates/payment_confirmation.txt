@@ -1,0 +1,11 @@
+Subject: Payment Receipt – {account_number} – {period}
+
+Hi team,
+
+Please find attached the bank payment receipt
+for {identifier_label} {account_number}.
+
+Amount paid: RM{amount}
+Payment date: {payment_date}
+
+Thank you.

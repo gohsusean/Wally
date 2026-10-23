@@ -16,7 +16,14 @@ from wally.finance.models import FinanceError, Kind, digest
 from wally.finance.notion import FieldMapping
 from wally.finance.payment_demo import build_demo, prepare_card, uid
 from wally.finance.payments import PAYMENT_WORKER, CertifiedPaymentSource
-from wally.finance.receipts import BankReceipt, ConfirmationTarget, ReceiptConfirmations
+from wally.finance.receipts import (
+    BankReceipt,
+    ConfirmationTarget,
+    ReceiptConfirmations,
+    bank_payment_date,
+    billing_period,
+    render_confirmation,
+)
 from wally.models.ops import ExecutionStatus, ProposalStatus
 
 PDF = b"%PDF-1.7\nSYNTHETIC BANK RECEIPT ONLY\n%%EOF\n"
@@ -68,7 +75,7 @@ class Gmail:
                 raise RuntimeError("synthetic lost send response")
             return {"id": "sent-1", "threadId": "thread-1"}
         if url.endswith("/messages"):
-            assert "in:sent rfc822msgid:" in params["q"] or '"WALLY-' in params["q"]
+            assert 'subject:"Payment Receipt' in params["q"] or '"WALLY-' in params["q"]
             return (
                 self.inventory
                 if self.inventory is not None
@@ -134,10 +141,20 @@ def test_payment_approval_covers_exact_receipt_email_and_replays_do_not_resend(w
     assert result["recipient"] == "provider@example.test"
     assert result["message_id"] == "sent-1"
     assert result["receipt_sha256"] == hashlib.sha256(PDF).hexdigest()
-    assert "CSM 020" in result["body"]
-    assert "2027-01-01 to 2027-01-31" in result["body"]
-    assert "MYR 100.00" in result["body"]
-    assert "2026-10-23" in result["body"]
+    assert result["subject"] == "Payment Receipt – CSM 020 – January 2027"
+    assert result["body"] == (
+        "Hi team,\n\n"
+        "Please find attached the bank payment receipt\nfor account CSM 020.\n\n"
+        "Amount paid: RM100.00\nPayment date: 23 October 2026\n\nThank you.\n"
+    )
+    outgoing = result["subject"] + result["body"]
+    for internal in (
+        "WALLY", proposal.id, world.source.bill.instance_id, world.source.bill.payee,
+        world.source.bill.reference, world.browser.receipt,
+    ):
+        assert internal not in outgoing
+    attachment = world.gmail.sent[0]["payload"]["parts"][1]
+    assert base64.urlsafe_b64decode(attachment["body"]["data"]) == PDF
     assert "Receipt email verified sent" in world.approvals.result(proposal.id)
     assert "Email status in Notion is unconfirmed" not in world.approvals.result(proposal.id)
     page = next(iter(world.notion.pages.values()))
@@ -336,6 +353,10 @@ def test_linked_provider_confirmation_uses_stable_ids_and_live_values(notion_sou
     assert target.required is True
     assert target.recipient == "live@example.test"
     assert target.account_reference == "000123456789"
+    assert target.identifier_label == "account"  # Utility customer number, not the unit.
+    unit = fixture.page(Kind.PROPERTY)["properties"]["unit"]["rich_text"][0]
+    unit["plain_text"] = unit["text"]["content"] = "000123456789"
+    assert payment_source.read_confirmation(instance.id).identifier_label == "unit"
     provider["properties"]["Renamed address"]["email"] = "changed@example.test"
     changed = payment_source.read_confirmation(instance.id)
     assert changed.recipient == "changed@example.test"
@@ -345,7 +366,7 @@ def test_linked_provider_confirmation_uses_stable_ids_and_live_values(notion_sou
         payment_source.read_confirmation(instance.id)
 
 
-def test_gmail_rewritten_message_id_recovers_lost_send_by_unique_body_reference(world):
+def test_gmail_rewritten_message_id_recovers_lost_send_without_body_reference(world):
     def rewrite(sent):
         for header in sent["payload"]["headers"]:
             if header["name"].casefold() == "message-id":
@@ -374,3 +395,145 @@ def test_rewritten_message_id_still_requires_exact_body_and_pdf(world):
     assert email_state(world)["state"] == "uncertain"
     reconcile(world, proposal)
     assert world.gmail.send_count == world.browser.submissions == 1
+
+
+@pytest.mark.parametrize(
+    "start,end,expected",
+    [
+        ("2026-10-01", "2026-12-31", "Q4 2026"),
+        ("2027-01-01", "2027-03-31", "Q1 2027"),
+        ("2026-10-01", "2026-10-31", "October 2026"),
+        ("2028-02-01", "2028-02-29", "February 2028"),
+    ],
+)
+def test_verified_invoice_period_labels(start, end, expected):
+    assert billing_period(start, end) == expected
+
+
+@pytest.mark.parametrize(
+    "start,end",
+    [
+        ("", ""), ("2026-10-01", ""), ("", "2026-12-31"),
+        ("2026-10-01", "2026-12-30"), ("2026-10-02", "2026-12-31"),
+        ("2026-11-01", "2027-01-31"), ("2026-12-31", "2026-10-01"),
+        ("Q4 2026", "Q4 2026"),
+    ],
+)
+def test_missing_or_ambiguous_period_holds_email(world, start, end):
+    bill = replace(world.source.bill, period_start=start, period_end=end)
+    receipt = BankReceipt("", "", "", "2026-10-23", PDF)
+    with pytest.raises(FinanceError, match="billing period"):
+        render_confirmation(bill, asdict(world.target), receipt)
+    assert world.gmail.send_count == 0
+
+
+def test_ambiguous_period_keeps_settlement_and_holds_email_for_follow_up(world):
+    world.source.bill = replace(world.source.bill, period_end="2027-01-30")
+    world.browser.quote_bill = world.source.bill
+    proposal, callback = prepare_card(world)
+    world.telegram.handle_update(callback)
+    reconcile(world, proposal)
+    assert world.store.list_executions()[0].status == ExecutionStatus.VERIFIED_SUCCESS
+    assert "email needs follow-up" in world.approvals.result(proposal.id)
+    assert world.gmail.send_count == 0
+    assert world.browser.submissions == world.notion.creates == 1
+    path = world.payments.confirmations.evidence_directory / proposal.id / "bank-receipt.pdf"
+    assert path.read_bytes() == PDF
+
+
+def test_tropicana_example_renders_without_property_or_invoice_names(world):
+    bill = replace(
+        world.source.bill, amount="960.96", period_start="2026-10-01", period_end="2026-12-31",
+        payee="Tropicana Gardens", reference="PRIVATE-INVOICE-123",
+    )
+    target = replace(world.target, account_reference="B2-28-03A", identifier_label="unit")
+    receipt = BankReceipt("", "", "", "2026-10-23", PDF)
+    subject, body = render_confirmation(bill, asdict(target), receipt)
+    assert subject == "Payment Receipt – B2-28-03A – Q4 2026"
+    assert body == (
+        "Hi team,\n\n"
+        "Please find attached the bank payment receipt\nfor unit B2-28-03A.\n\n"
+        "Amount paid: RM960.96\nPayment date: 23 October 2026\n\nThank you.\n"
+    )
+    assert bill.payee not in subject + body
+    assert bill.reference not in subject + body
+
+
+@pytest.mark.parametrize(
+    "value,expected",
+    [
+        ("2026-10-23", "2026-10-23"),
+        ("2026-10-22T17:00:00Z", "2026-10-23"),
+        ("2026-10-23T23:30:00-04:00", "2026-10-24"),
+    ],
+)
+def test_actual_bank_date_is_in_malaysia_time(value, expected):
+    assert bank_payment_date(value).isoformat() == expected
+
+
+@pytest.mark.parametrize("value", ["", "2026-10-23T01:00:00", "2026-02-30", "yesterday"])
+def test_missing_or_ambiguous_bank_date_requires_review(value):
+    with pytest.raises(FinanceError, match="bank payment date"):
+        bank_payment_date(value)
+
+
+def test_editing_plain_text_template_changes_new_email_only(world, tmp_path, monkeypatch):
+    from wally.finance import receipts
+
+    template = tmp_path / "payment_confirmation.txt"
+    template.write_text(
+        "Subject: Receipt for {account_number} – {period}\n\n"
+        "Hello,\nRM{amount} paid on {payment_date} for {identifier_label} {account_number}.\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(receipts, "PAYMENT_TEMPLATE", template)
+    bill = world.source.bill
+    receipt = BankReceipt("", "", "", "2026-10-23", PDF)
+    subject, body = render_confirmation(bill, asdict(world.target), receipt)
+    assert subject == "Receipt for CSM 020 – January 2027"
+    assert body == "Hello,\nRM100.00 paid on 23 October 2026 for account CSM 020.\n"
+
+
+def test_already_sent_legacy_email_is_never_rerendered_or_resent(world, tmp_path, monkeypatch):
+    from wally.finance import receipts
+
+    proposal, callback = prepare_card(world)
+    world.telegram.handle_update(callback)
+    previous = {**email_state(world), "subject": "Legacy subject", "body": "Legacy WALLY reference"}
+    world.payments.confirmations._save(world.store, proposal.id, previous)
+    monkeypatch.setattr(receipts, "PAYMENT_TEMPLATE", tmp_path / "missing.txt")
+    reconcile(world, proposal)
+    assert email_state(world)["body"] == previous["body"]
+    assert world.gmail.send_count == world.browser.submissions == 1
+
+
+def test_legacy_uncertain_claim_recovers_frozen_email_without_resend(world):
+    world.gmail.lose_response = True
+    proposal, callback = prepare_card(world)
+    world.telegram.handle_update(callback)
+    _, spec, bill, quote = world.payments.load(proposal.id)
+    reviewed = dict(spec["confirmation"])
+    reviewed.pop("identifier_label")
+    settlement = world.provider.verify(bill, quote)
+    result = world.payments.confirmations.finish(
+        world.payments, proposal, {**spec, "confirmation": reviewed}, bill, quote, settlement,
+        guard=lambda: None,
+    )
+    assert result["state"] == "sent"
+    assert world.gmail.send_count == world.browser.submissions == 1
+
+
+@pytest.mark.parametrize("template", [None, "Subject: {unknown}\n\nHello", "Hello"])
+def test_missing_or_invalid_template_holds_email(world, tmp_path, monkeypatch, template):
+    from wally.finance import receipts
+
+    path = tmp_path / "payment_confirmation.txt"
+    if template is not None:
+        path.write_text(template, encoding="utf-8")
+    monkeypatch.setattr(receipts, "PAYMENT_TEMPLATE", path)
+    proposal, callback = prepare_card(world)
+    world.telegram.handle_update(callback)
+    assert world.store.list_executions()[0].status == ExecutionStatus.VERIFIED_SUCCESS
+    assert "email needs follow-up" in world.approvals.result(proposal.id)
+    assert world.gmail.send_count == 0
+    assert world.browser.submissions == 1

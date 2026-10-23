@@ -9,9 +9,59 @@ import sqlite3
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, date, datetime
 from pathlib import Path
+from uuid import uuid4
+from zoneinfo import ZoneInfo
 
 from wally.finance.bill_identity import require_billing_account_match
-from wally.finance.models import FinanceError, digest, text
+from wally.finance.models import FinanceError, digest, money, text
+from wally.finance.typical_amount import comparable_period
+
+PAYMENT_TEMPLATE = Path(__file__).resolve().parents[3] / "templates/payment_confirmation.txt"
+
+
+def bank_payment_date(value: str) -> date:
+    """Date-only bank receipts already express MYT; timestamps must carry an offset."""
+    try:
+        if re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
+            return date.fromisoformat(value)
+        timestamp = datetime.fromisoformat(value)
+        if timestamp.tzinfo is not None:
+            return timestamp.astimezone(ZoneInfo("Asia/Kuala_Lumpur")).date()
+    except (ValueError, TypeError):
+        pass
+    raise FinanceError("The receipt requires an unambiguous actual bank payment date.")
+
+
+def billing_period(start: str, end: str) -> str:
+    """Label only a complete verified invoice month or calendar quarter."""
+    if comparable_period("monthly", start, end):
+        return date.fromisoformat(start).strftime("%B %Y")
+    if comparable_period("quarterly", start, end):
+        first = date.fromisoformat(start)
+        return f"Q{(first.month - 1) // 3 + 1} {first.year}"
+    raise FinanceError("Invoice billing period is missing or ambiguous; review the email.")
+
+
+def render_confirmation(bill, target, receipt):
+    # The independent bank ledger has matched this exact bill amount/digest.
+    if bill.currency != "MYR":
+        raise FinanceError("The receipt template requires a verified MYR payment.")
+    values = {
+        "account_number": text(target["account_reference"]),
+        "identifier_label": target.get("identifier_label", "account"),
+        "period": billing_period(bill.period_start, bill.period_end),
+        "amount": money(bill.amount, bill.currency),
+        "payment_date": bank_payment_date(receipt.paid_date).strftime("%d %B %Y").lstrip("0"),
+    }
+    try:
+        rendered = PAYMENT_TEMPLATE.read_text(encoding="utf-8").format(**values)
+        subject, separator, body = rendered.partition("\n\n")
+        if not subject.startswith("Subject: ") or not separator or not body.strip():
+            raise ValueError
+        subject = text(subject.removeprefix("Subject: "))
+    except (OSError, ValueError, KeyError, IndexError, AttributeError):
+        raise FinanceError("Payment confirmation template needs review.") from None
+    return subject, body
 
 
 @dataclass(frozen=True)
@@ -21,11 +71,14 @@ class ConfirmationTarget:
     account_reference: str
     definition_page_id: str
     binding: str
+    identifier_label: str = "account"
 
     def validate(self):
         if type(self.required) is not bool:
             raise FinanceError("Confirmation requirement is unreadable.")
         text(self.account_reference)
+        if self.identifier_label not in {"unit", "account"}:
+            raise FinanceError("Confirmation account label requires review.")
         if self.required and not re.fullmatch(
             r"[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9.-]+", self.recipient
         ):
@@ -54,8 +107,7 @@ class BankReceipt:
             or not 20 <= len(self.content) <= 10_000_000
         ):
             raise FinanceError("The actual bank receipt is not bound to this verified payment.")
-        if date.fromisoformat(self.paid_date).isoformat() != self.paid_date:
-            raise FinanceError("The receipt requires the actual bank transaction date.")
+        bank_payment_date(self.paid_date)
 
 
 class ReceiptConfirmations:
@@ -89,7 +141,10 @@ class ReceiptConfirmations:
             return previous
         if settlement.status != "settled":
             raise FinanceError("Only independently settled payments can email a receipt.")
-        if self.review(bill) != reviewed:
+        current = self.review(bill)
+        if previous.get("state") in {"sending", "uncertain"} and "identifier_label" not in reviewed:
+            current.pop("identifier_label", None)  # Legacy claims recover their frozen email only.
+        if current != reviewed:
             raise FinanceError("Confirmation destination changed; retain a follow-up.")
         # A lost send response/crash may already have sent mail. Never send again.
         if previous.get("state") in {"sending", "uncertain"}:
@@ -119,35 +174,23 @@ class ReceiptConfirmations:
                 proposal.id,
                 {
                     "state": "not_required",
-                    "paid_date": receipt.paid_date,
+                    "paid_date": bank_payment_date(receipt.paid_date).isoformat(),
                     "receipt_sha256": receipt.sha256,
                     "receipt_path": str(path.resolve()),
                     "definition_page_id": reviewed["definition_page_id"],
                 },
             )
         key = digest([payments.provider.transaction_namespace, settlement.reference])
-        confirmation_reference = f"WALLY-{key}"
-        subject = f"Payment confirmation — {bill.payee} — {reviewed['account_reference']}"
-        body = (
-            f"Payment for {reviewed['account_reference']}\n"
-            f"Billing period: {bill.period_start} to {bill.period_end}\n"
-            f"Amount: {bill.currency} {bill.amount}\n"
-            f"Payment date: {receipt.paid_date}\n"
-            f"Bank reference: {settlement.reference}\n"
-            f"Invoice/reference: {bill.reference}\n\n"
-            "The bank payment receipt is attached.\n"
-            f"Confirmation reference: {confirmation_reference}\n"
-        )
+        subject, body = render_confirmation(bill, reviewed, receipt)
         details = {
             "state": "sending",
             "recipient": reviewed["recipient"],
-            "rfc822_id": f"<wally-payment-{key}@wally.local>",
-            "confirmation_reference": confirmation_reference,
+            "rfc822_id": f"<{uuid4().hex}@wally.local>",
             "subject": subject,
             "body": body,
             "receipt_sha256": receipt.sha256,
             "receipt_path": str(path.resolve()),
-            "paid_date": receipt.paid_date,
+            "paid_date": bank_payment_date(receipt.paid_date).isoformat(),
             "definition_page_id": reviewed["definition_page_id"],
         }
         guard()

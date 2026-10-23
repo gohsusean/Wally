@@ -187,10 +187,19 @@ class CertifiedPaymentSource:
             raise FinanceError("Current linked Bill Providers confirmation source is unavailable.")
         catalog._source_gate(sources[0])
         values, binding = catalog.reader.payment_confirmation(sources[0], locator.page)
+        identifier_label = "account"
+        if account.candidate.facts.subject_kind == "property":
+            subject = catalog.store.get(account.candidate.facts.subject)
+            if (
+                subject.candidate.kind == Kind.PROPERTY
+                and subject.candidate.facts.unit == account.candidate.facts.identifier
+            ):
+                identifier_label = "unit"
         return ConfirmationTarget(
             values["confirmation_required"], values["confirmation_email"],
             account.candidate.facts.identifier, definition.candidate.locator.page,
             digest([binding, account.id, definition.id]),
+            identifier_label,
         )
 
 

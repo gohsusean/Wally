@@ -39,12 +39,15 @@ class GmailReceiptMailer:
         marker = details.get("confirmation_reference", "")
         if marker and not re.fullmatch(r"WALLY-[a-f0-9]{64}", marker):
             raise FinanceError("Gmail confirmation reference is invalid.")
-        # Gmail can replace supplied Message-ID headers. A unique body reference
-        # survives that rewrite; the exact body and original PDF still must match.
+        # Retain legacy reference recovery for existing claims. New concise emails
+        # use provider-facing fields; exact body and original PDF must still match,
+        # and an ambiguous inventory can never cause another send. Gmail may rewrite
+        # the transport Message-ID, including when the send response is lost.
+        subject = details["subject"].replace("\\", "\\\\").replace('"', '\\"')
         query = (
             f'in:sent to:{details["recipient"]} "{marker}"'
             if marker
-            else "in:sent rfc822msgid:" + details["rfc822_id"].strip("<>")
+            else f'in:sent to:{details["recipient"]} subject:"{subject}"'
         )
         result = request(
             "GET",
@@ -73,7 +76,6 @@ class GmailReceiptMailer:
             sent.get("id") != message_id
             or "SENT" not in sent.get("labelIds", [])
             or not re.fullmatch(r"<[^<>\s@]+@[^<>\s@]+>", _header_value(headers, "Message-ID"))
-            or (not marker and _header_value(headers, "Message-ID") != details["rfc822_id"])
             or (details.get("message_id") and details["message_id"] != message_id)
             or parseaddr(_header_value(headers, "To"))[1].casefold()
             != details["recipient"].casefold()
