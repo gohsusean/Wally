@@ -160,7 +160,7 @@ The registry can route "Run the weekly backup" to a `weekly-backup` webhook, but
 
 1. In [Google Cloud Console](https://console.cloud.google.com/), enable **Gmail API** and **Google Calendar API**.
 2. Create an OAuth 2.0 **Desktop** client ID and copy the client ID and secret.
-3. Run `uv run python scripts/google_auth.py --client-id ... --client-secret ...` and add the refresh token to `.env`.
+3. Set the existing client ID and secret privately in `.env`, then run `.venv/bin/python scripts/google_auth.py`. Complete local browser consent; the refresh token is saved privately without printing it.
 4. Enable communications in `config/macbook.yaml`: `providers.communications.enabled: true`
 
 Example: "Summarise unread email from the property manager" searches Gmail. Sending email or creating calendar events requires CLI approval.

@@ -47,7 +47,11 @@ PIXELS = """async img => {
 
 
 def check_hlb_origin(page):
-    """Exact official HTTPS origin; Playwright's normal TLS validation is retained."""
+    """Exact official HTTPS origin; local menu fragments do not change origin.
+
+    Playwright's normal TLS validation is retained. This is an origin check,
+    never acceptance of a transfer route, review fields or settlement evidence.
+    """
     try:
         url = urlsplit(page.url)
         if (
@@ -56,7 +60,6 @@ def check_hlb_origin(page):
             or url.port not in (None, 443)
             or url.username
             or url.password
-            or url.fragment
         ):
             raise ValueError
     except Exception:

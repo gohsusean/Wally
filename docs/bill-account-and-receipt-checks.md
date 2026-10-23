@@ -46,8 +46,9 @@ under the existing evidence directory. Confirmation includes the billing referen
 period, actual amount/date and bank reference and attaches those exact bytes.
 
 An additive claim in `payment_attempts`, unique by bank namespace/reference, is
-reserved before Gmail send. A deterministic Message-ID permits independent Gmail
-SENT readback, verifying recipient, subject, body and attachment hash. Lost responses,
+reserved before Gmail send. A unique confirmation reference in the exact body permits independent Gmail
+SENT readback even when Gmail rewrites Message-ID, verifying recipient, subject,
+body and attachment hash. Returned Gmail IDs are also retained before readback. Lost responses,
 ambiguous inventory, failed sends or mismatched readback retain an uncertain email
 claim. Recovery reads Gmail and never repeats send or bank submission. An email
 problem preserves verified payment settlement and leaves a durable follow-up event.
@@ -67,18 +68,55 @@ live Notion comparisons and the owner's specific unpaid instruction are retained
 privately under `data/manual-payment/`; no invoice or owner data belongs in Git.
 That instruction is evidence of the baseline exception, never transfer approval.
 
-Read-only HLB login/picture verification succeeded during this continuation. The
-temporary navigation inspector stopped before any transfer entry; a later fresh
-session failed governed 1Password retrieval. Existing-beneficiary entry, review,
-complete history/scheduled inventory and independently matched original bank-receipt
-download remain unvalidated. No guessed selectors or production payment factory
-are installed. The local Gmail runtime also failed OAuth refresh; the connected
-Gmail search tool remains available, which does not validate unattended runtime
-send access.
+After local owner unlock and fresh CLI approval, governed HLB credential retrieval,
+picture verification and login succeeded. An observed menu fragment exposed an
+overstrict origin check: URL fragments do not change the exact HTTPS origin. The
+check now allows same-origin fragments while still rejecting wrong host/scheme,
+ports and URL credentials; picture and transfer evidence checks are unchanged.
+The actual DuitNow-to-account/IBG transfer-entry and View History pages were reached
+without entering an amount or submitting a transfer. The observed favourites were
+Casaman Management and Sean SCB; no Tropicana beneficiary was verified. The owner
+was asked for its existing label. No favourite creation/modification is authorized.
+Amount/review, complete history/scheduled inventory and original bank-receipt
+matching remain unvalidated. No guessed production selector profile or live payment
+factory is installed. Casaman was not selected or acted on.
 
-The existing production Notion Payment History uses native Receipt files and lacks
-some columns of the synthetic receipt contract. Its live target/native receipt
-attachment/readback still needs supported mapping and validation. The adapter
-extensions and simulated Gmail/Notion tests do not prove that integration. No live
-submission, payment card, email or settlement write occurred. Submission remains
-disabled until the exact transaction receives its authenticated Telegram approval.
+The production Notion Payment History mapping is now pinned to the existing
+property IDs and both relation targets. Its operational classification, database
+parent and property types passed the real adapter's read-only gate. It uses the
+existing Reference Number, Notes, Paid Date, Bill and Provider Account fields,
+with a reviewed fixed MYR currency because there is no currency column.
+`NativeNotionPaymentHistory` attaches the retained original PDF to Receipt files,
+then downloads the saved attachment through a separate unauthenticated client
+and compares its SHA-256. No schema changes or fictitious payment records were
+made. File uploads use private exclusive claims; uncertain creates/sends cannot
+repeat POST. Unknown download hosts fail closed. Simulated tests cover original
+bytes, readback, relation drift, currency mismatch and lost upload responses;
+production upload/download remains unproven until a real verified receipt exists.
+
+The local Gmail refresh failed with Google's `invalid_grant`. The repaired
+`scripts/google_auth.py` opens local browser consent using configured client
+credentials, verifies refresh and granted scopes, and atomically saves only the
+replacement refresh token in the ignored `.env`. It never accepts client secrets
+on the command line or prints tokens/callback URLs; sensitive OAuth library logs
+are suppressed. Existing configuration and tokens survive incomplete consent.
+The initial consent attempt timed out; a fresh attended consent completed and the
+replacement token refreshed successfully with the required granted scopes. The
+runtime mailbox matched the owner's existing Gmail connection. Self-addressed
+transport diagnostics demonstrated that Gmail rewrites supplied Message-ID even
+with complete headers. Receipt recovery therefore searches a unique bank-reference
+binding carried in the exact email body, checks one SENT result, exact recipient,
+subject/body and original attachment SHA-256, and retains Gmail's actual IDs as
+send evidence. Successful send responses are persisted before readback. Lost
+responses remain claimed and recover by reads without sending again. Legacy claims
+retain their original Message-ID matching. A self-addressed synthetic PDF passed
+the production matcher including attachment download/hash. No property-manager
+email or actual invoice export occurred.
+
+The new native receipt mapping does not install a production payment factory or
+validate live HLB selectors. No live submission, payment card, payment-confirmation
+email or settlement write occurred. Submission remains disabled until the exact transaction receives
+its authenticated Telegram approval.
+
+Implementation follows Google's [desktop OAuth flow](https://developers.google.com/identity/protocols/oauth2/native-app)
+and Notion's [native file upload flow](https://developers.notion.com/guides/data-apis/uploading-small-files).

@@ -125,6 +125,8 @@ class ReceiptConfirmations:
                     "definition_page_id": reviewed["definition_page_id"],
                 },
             )
+        key = digest([payments.provider.transaction_namespace, settlement.reference])
+        confirmation_reference = f"WALLY-{key}"
         subject = f"Payment confirmation — {bill.payee} — {reviewed['account_reference']}"
         body = (
             f"Payment for {reviewed['account_reference']}\n"
@@ -134,12 +136,13 @@ class ReceiptConfirmations:
             f"Bank reference: {settlement.reference}\n"
             f"Invoice/reference: {bill.reference}\n\n"
             "The bank payment receipt is attached.\n"
+            f"Confirmation reference: {confirmation_reference}\n"
         )
-        key = digest([payments.provider.transaction_namespace, settlement.reference])
         details = {
             "state": "sending",
             "recipient": reviewed["recipient"],
             "rfc822_id": f"<wally-payment-{key}@wally.local>",
+            "confirmation_reference": confirmation_reference,
             "subject": subject,
             "body": body,
             "receipt_sha256": receipt.sha256,
@@ -169,7 +172,10 @@ class ReceiptConfirmations:
                 guard()
                 if self.review(bill) != reviewed:
                     raise FinanceError("Confirmation destination changed before send.")
-                self.mailer.send_receipt_email(details, receipt.content)
+                sent = self.mailer.send_receipt_email(details, receipt.content)
+                if isinstance(sent, dict) and sent.get("id"):
+                    details = {**details, "message_id": sent["id"]}
+                    self._save(store, proposal.id, details)
                 evidence = self.mailer.verify_receipt_email(details)
             if not evidence:
                 raise FinanceError("Gmail has not independently confirmed the receipt email.")

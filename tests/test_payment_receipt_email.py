@@ -68,7 +68,7 @@ class Gmail:
                 raise RuntimeError("synthetic lost send response")
             return {"id": "sent-1", "threadId": "thread-1"}
         if url.endswith("/messages"):
-            assert "in:sent rfc822msgid:" in params["q"]
+            assert "in:sent rfc822msgid:" in params["q"] or '"WALLY-' in params["q"]
             return (
                 self.inventory
                 if self.inventory is not None
@@ -343,3 +343,34 @@ def test_linked_provider_confirmation_uses_stable_ids_and_live_values(notion_sou
     fixture.schemas[source.data_source_id]["properties"]["Renamed address"]["id"] = "recreated"
     with pytest.raises(FinanceError, match="schema changed"):
         payment_source.read_confirmation(instance.id)
+
+
+def test_gmail_rewritten_message_id_recovers_lost_send_by_unique_body_reference(world):
+    def rewrite(sent):
+        for header in sent["payload"]["headers"]:
+            if header["name"].casefold() == "message-id":
+                header["value"] = "<gmail-rewritten@mail.gmail.com>"
+
+    world.gmail.change = rewrite
+    world.gmail.lose_response = True
+    proposal, callback = prepare_card(world)
+    world.telegram.handle_update(callback)
+    assert email_state(world)["state"] == "uncertain"
+    reconcile(world, proposal)
+    assert email_state(world)["state"] == "sent"
+    assert email_state(world)["sent_rfc822_id"] == "<gmail-rewritten@mail.gmail.com>"
+    assert world.gmail.send_count == world.browser.submissions == 1
+
+
+def test_rewritten_message_id_still_requires_exact_body_and_pdf(world):
+    def rewrite(sent):
+        sent["payload"]["parts"][0]["body"]["data"] = base64.urlsafe_b64encode(
+            b"wrong body"
+        ).decode()
+
+    world.gmail.change = rewrite
+    proposal, callback = prepare_card(world)
+    world.telegram.handle_update(callback)
+    assert email_state(world)["state"] == "uncertain"
+    reconcile(world, proposal)
+    assert world.gmail.send_count == world.browser.submissions == 1

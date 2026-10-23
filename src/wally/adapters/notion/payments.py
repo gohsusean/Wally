@@ -28,19 +28,46 @@ class PaymentHistoryTarget:
     paid_date: str = ""
     confirmation_sent: str = ""
     confirmation_date: str = ""
+    fixed_currency: str = ""
+    receipt_file: str = ""
+    account_source_id: str = ""
+    recurring_bill_source_id: str = ""
 
     @property
     def fingerprint(self):
         notion_id(self.database_id)
         notion_id(self.data_source_id)
-        optional = {"recurring_bill", "paid_date", "confirmation_sent", "confirmation_date"}
+        optional = {
+            "recurring_bill",
+            "paid_date",
+            "confirmation_sent",
+            "confirmation_date",
+            "receipt_file",
+            "account_source_id",
+            "recurring_bill_source_id",
+        }
+        if self.fixed_currency:
+            if self.currency or self.fixed_currency != "MYR":
+                raise FinanceError("A fixed MYR receipt target requires no currency column.")
+            optional.add("currency")
         fields = [
             v
             for k, v in asdict(self).items()
-            if k not in {"database_id", "data_source_id"} and (v or k not in optional)
+            if k
+            not in {
+                "database_id",
+                "data_source_id",
+                "fixed_currency",
+                "account_source_id",
+                "recurring_bill_source_id",
+            }
+            and (v or k not in optional)
         ]
         if any(not v for v in fields) or len(set(fields)) != len(fields):
             raise FinanceError("Payment History needs distinct reviewed property IDs.")
+        for source in (self.account_source_id, self.recurring_bill_source_id):
+            if source:
+                notion_id(source)
         return digest(asdict(self))
 
 
@@ -58,6 +85,7 @@ class NotionPaymentHistory:
         return self.target.fingerprint
 
     def _gate(self):
+        _ = self.target.fingerprint
         record = self.registry.find_by_key_or_id(self.target.database_id)
         if (
             record is None
@@ -90,15 +118,29 @@ class NotionPaymentHistory:
                     "paid_date": "date",
                     "confirmation_sent": "checkbox",
                     "confirmation_date": "date",
+                    "receipt_file": "files",
                 }.items()
                 if getattr(self.target, name)
             }
         )
+        if self.target.fixed_currency:
+            expected.pop("currency")
         props = {p["id"]: p["type"] for p in source["properties"].values()}
         if any(props.get(getattr(self.target, k)) != v for k, v in expected.items()):
             raise FinanceError("Payment History schema changed.")
+        properties = {p["id"]: p for p in source["properties"].values()}
+        for field, source_id in (
+            (self.target.account, self.target.account_source_id),
+            (self.target.recurring_bill, self.target.recurring_bill_source_id),
+        ):
+            if source_id and notion_id(
+                properties.get(field, {}).get("relation", {}).get("data_source_id", "")
+            ) != notion_id(source_id):
+                raise FinanceError("Payment History relation target changed.")
 
     def _rows(self, bill):
+        if self.target.fixed_currency and bill.currency != self.target.fixed_currency:
+            raise FinanceError("Payment currency differs from the reviewed receipt target.")
         self._gate()
         response = self.reader.post(
             f"/data_sources/{self.target.data_source_id}/query",
@@ -130,15 +172,19 @@ class NotionPaymentHistory:
 
     def _properties(self, bill, settlement):
         t = self.target
-        return {
+        if t.fixed_currency and bill.currency != t.fixed_currency:
+            raise FinanceError("Payment currency differs from the reviewed receipt target.")
+        props = {
             t.title: {"title": [{"type": "text", "text": {"content": "Payment receipt"}}]},
             t.account: {"relation": [{"id": bill.account_page_id}]},
             t.occurrence: rich(bill.occurrence),
             t.amount: {"number": float(Decimal(bill.amount))},
-            t.currency: rich(bill.currency),
             t.receipt: rich(settlement.reference),
             t.evidence: rich(settlement.evidence_hash),
         }
+        if t.currency:
+            props[t.currency] = rich(bill.currency)
+        return props
 
     def record(self, bill, settlement, *, guard):
         self.check(bill)
@@ -207,6 +253,7 @@ class NotionPaymentHistory:
             "message_id",
             "thread_id",
             "rfc822_id",
+            "sent_rfc822_id",
             "sent_at",
             "receipt_sha256",
             "paid_date",

@@ -116,6 +116,19 @@ def test_origin_rejected_before_image_interaction(page, picture, tmp_path, url):
     page.checkbox.check.assert_not_called()
 
 
+def test_official_menu_fragment_preserves_picture_and_exact_origin_gate(page, picture, tmp_path):
+    path = tmp_path / "private/picture.sha256"
+    enroll(picture, page, path)
+    page.url = HLB_ORIGIN + "/dashboard#menu"
+    picture.confirm(page, reference=path, guard=lambda: None)
+    page.checkbox.check.assert_called_once()
+    page.checkbox.check.reset_mock()
+    page.url = "https://attacker.test/#https://s.hongleongconnect.my/"
+    with pytest.raises(FinanceError):
+        picture.confirm(page, reference=path, guard=lambda: None)
+    page.checkbox.check.assert_not_called()
+
+
 def test_missing_reference_never_captures_or_learns(page, picture, tmp_path):
     with pytest.raises(FinanceError):
         picture.confirm(page, reference=tmp_path / "missing", guard=lambda: None)

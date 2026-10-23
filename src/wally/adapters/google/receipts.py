@@ -2,6 +2,7 @@
 
 import base64
 import hashlib
+import re
 from datetime import UTC, datetime
 from email.header import decode_header, make_header
 from email.message import EmailMessage
@@ -35,11 +36,21 @@ class GmailReceiptMailer:
 
     def verify_receipt_email(self, details):
         request = self.communications._request
+        marker = details.get("confirmation_reference", "")
+        if marker and not re.fullmatch(r"WALLY-[a-f0-9]{64}", marker):
+            raise FinanceError("Gmail confirmation reference is invalid.")
+        # Gmail can replace supplied Message-ID headers. A unique body reference
+        # survives that rewrite; the exact body and original PDF still must match.
+        query = (
+            f'in:sent to:{details["recipient"]} "{marker}"'
+            if marker
+            else "in:sent rfc822msgid:" + details["rfc822_id"].strip("<>")
+        )
         result = request(
             "GET",
             GMAIL_API + "/users/me/messages",
             params={
-                "q": "in:sent rfc822msgid:" + details["rfc822_id"].strip("<>"),
+                "q": query,
                 "maxResults": 2,
             },
         )
@@ -61,7 +72,9 @@ class GmailReceiptMailer:
         if (
             sent.get("id") != message_id
             or "SENT" not in sent.get("labelIds", [])
-            or _header_value(headers, "Message-ID") != details["rfc822_id"]
+            or not re.fullmatch(r"<[^<>\s@]+@[^<>\s@]+>", _header_value(headers, "Message-ID"))
+            or (not marker and _header_value(headers, "Message-ID") != details["rfc822_id"])
+            or (details.get("message_id") and details["message_id"] != message_id)
             or parseaddr(_header_value(headers, "To"))[1].casefold()
             != details["recipient"].casefold()
             or str(make_header(decode_header(_header_value(headers, "Subject"))))
@@ -99,5 +112,6 @@ class GmailReceiptMailer:
         return {
             "message_id": message_id,
             "thread_id": sent.get("threadId", ""),
+            "sent_rfc822_id": _header_value(headers, "Message-ID"),
             "sent_at": datetime.fromtimestamp(int(sent["internalDate"]) / 1000, UTC).isoformat(),
         }
