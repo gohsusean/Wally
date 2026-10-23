@@ -60,63 +60,56 @@ relation, bank payment date and confirmation checkbox/date. Narrow idempotent PA
 recovery reads an already applied update without repeating payment or email. The
 general opening baseline and unrelated Notion records are untouched.
 
-## Current acceptance boundary, 23 October 2026
+## Current acceptance boundary, 24 October 2026
 
-Tropicana Gardens Q4 replaces Casaman as the first-payment selection. Casaman stays
-on hold pending its invoice. The original Tropicana three-page invoice, its hash,
-live Notion comparisons and the owner's specific unpaid instruction are retained
-privately under `data/manual-payment/`; no invoice or owner data belongs in Git.
-That instruction is evidence of the baseline exception, never transfer approval.
+Tropicana Gardens Q4 replaced Casaman as the first-payment selection. The original
+three monthly invoices, billing-account match, exact quarterly amount, zero Typical
+Amount variance and the owner's specific unpaid instruction are retained privately.
+Casaman remains on hold pending its invoice. That unpaid instruction never supplied
+transfer approval.
 
-After local owner unlock and fresh CLI approval, governed HLB credential retrieval,
-picture verification and login succeeded. An observed menu fragment exposed an
-overstrict origin check: URL fragments do not change the exact HTTPS origin. The
-check now allows same-origin fragments while still rejecting wrong host/scheme,
-ports and URL credentials; picture and transfer evidence checks are unchanged.
-The actual DuitNow-to-account/IBG transfer-entry and View History pages were reached
-without entering an amount or submitting a transfer. The observed favourites were
-Casaman Management and Sean SCB; no Tropicana beneficiary was verified. The owner
-was asked for its existing label. No favourite creation/modification is authorized.
-Amount/review, complete history/scheduled inventory and original bank-receipt
-matching remain unvalidated. No guessed production selector profile or live payment
-factory is installed. Casaman was not selected or acted on.
+Live reconnaissance crossed an unsafe bank boundary: opening review initiated
+AppAuthorise, and the owner approved in HLB's app before any Telegram card. Payment
+completed without a final Submit click. Independent history and transaction detail
+matched recipient bank/account, amount, date, all invoice references and the exact
+tracking reference. A durable occurrence hold and incident audit prevent repayment;
+no retrospective Telegram approval or supervised acceptance is claimed. See the
+[boundary correction](decisions.md#adr-053-live-boundary-correction-24-october-2026).
 
-The production Notion Payment History mapping is now pinned to the existing
-property IDs and both relation targets. Its operational classification, database
-parent and property types passed the real adapter's read-only gate. It uses the
-existing Reference Number, Notes, Paid Date, Bill and Provider Account fields,
-with a reviewed fixed MYR currency because there is no currency column.
-`NativeNotionPaymentHistory` attaches the retained original PDF to Receipt files,
-then downloads the saved attachment through a separate unauthenticated client
-and compares its SHA-256. No schema changes or fictitious payment records were
-made. File uploads use private exclusive claims; uncertain creates/sends cannot
-repeat POST. Unknown download hosts fail closed. Simulated tests cover original
-bytes, readback, relation drift, currency mismatch and lost upload responses;
-production upload/download remains unproven until a real verified receipt exists.
+The original native HLB PDF was downloaded in a fresh authenticated history-only
+session. Its successful status, bank reference, amount, date, recipient and invoice
+references matched the independent detail. Default browser downloads stay disabled;
+receipt export requires an explicitly origin-scoped read context. No authentication
+state, screenshot, trace or HAR is retained.
 
-The local Gmail refresh failed with Google's `invalid_grant`. The repaired
-`scripts/google_auth.py` opens local browser consent using configured client
-credentials, verifies refresh and granted scopes, and atomically saves only the
-replacement refresh token in the ignored `.env`. It never accepts client secrets
-on the command line or prints tokens/callback URLs; sensitive OAuth library logs
-are suppressed. Existing configuration and tokens survive incomplete consent.
-The initial consent attempt timed out; a fresh attended consent completed and the
-replacement token refreshed successfully with the required granted scopes. The
-runtime mailbox matched the owner's existing Gmail connection. Self-addressed
-transport diagnostics demonstrated that Gmail rewrites supplied Message-ID even
-with complete headers. Receipt recovery therefore searches a unique bank-reference
-binding carried in the exact email body, checks one SENT result, exact recipient,
-subject/body and original attachment SHA-256, and retains Gmail's actual IDs as
-send evidence. Successful send responses are persisted before readback. Lost
-responses remain claimed and recover by reads without sending again. Legacy claims
-retain their original Message-ID matching. A self-addressed synthetic PDF passed
-the production matcher including attachment download/hash. No property-manager
-email or actual invoice export occurred.
+The live Bill Account's provider relation and confirmation settings were reread.
+Under the owner's direct instruction to email the actual receipt after verified
+payment, recovery reserved a private exclusive claim keyed by bank namespace and
+reference, sent one receipt email through the existing Gmail connection, and saved
+its returned ID before independent verification. Gmail SENT status, exact recipient,
+subject/body and original attachment SHA-256 all matched. No transfer was retried.
+This recovery does not fabricate the missing Telegram authorization or grant a new
+payment capability to Codex.
 
-The new native receipt mapping does not install a production payment factory or
-validate live HLB selectors. No live submission, payment card, payment-confirmation
-email or settlement write occurred. Submission remains disabled until the exact transaction receives
-its authenticated Telegram approval.
+The actual payment was recorded in the existing Payment History with amount, bank
+date/reference, recurring bill/account/property relations and the authorization
+incident. The original receipt was attached without schema changes or fictitious
+records. Independent readback downloaded the saved file without forwarding Notion
+credentials to storage and matched the original SHA-256. Confirmation recipient,
+Gmail send evidence and confirmation status/date were then recorded. The general
+opening baseline remains intact; the occurrence hold is retained.
+
+The prior Gmail OAuth repair remains in use: attended local Google consent restored
+refresh and send scopes without printing credentials. Its unique body reference
+survives Gmail's Message-ID rewriting. The pinned native Notion mapping passed the
+production schema/classification/relation gates. Recovery established actual receipt
+upload/download and Gmail send/readback, rather than only fixture coverage.
+
+The real Telegram-to-bank path remains unaccepted. There is no production payment
+factory or enabled live selector profile. Disabled HLB submission now also blocks
+entry/review before any bank action; review dispatch is retained as an uncertain
+attempt before its click. Reconnaissance must never open review or press Next.
+The synthetic final-Submit sequence must not be installed as a live route.
 
 Implementation follows Google's [desktop OAuth flow](https://developers.google.com/identity/protocols/oauth2/native-app)
 and Notion's [native file upload flow](https://developers.notion.com/guides/data-apis/uploading-small-files).

@@ -417,3 +417,22 @@ authorization is required and the owner completes it; every payment still
 needs its exact Telegram approval. The [local security-picture gate](hlb-security-picture.md)
 is implemented with synthetic acceptance; owner enrollment and live acceptance remain.
 This supersedes earlier bank-selection and investigation notes.
+
+### D16 update, 24 October: review initiates bank authorization
+
+Live HLB review initiated AppAuthorise during reconnaissance; owner bank-app
+approval completed a real transfer before any Telegram card and without a final
+Submit click. Independent bank history/detail and the original receipt verified
+the actual outcome. Recovery retained the duplicate hold and authorization incident,
+sent the matched receipt once with independently verified Gmail evidence, and
+recorded actual payment/receipt/confirmation in the existing Notion history.
+This is not supervised acceptance. See the
+[ADR-053 correction](decisions.md#adr-053-live-boundary-correction-24-october-2026).
+
+Disabled submission now blocks entry/review before bank actions; review dispatch
+is claimed before its click, including lost/mismatched responses. Remaining:
+production composition that treats review as consequential, mandatory challenge
+handling at that boundary, complete inventory and exact Telegram-to-bank acceptance.
+No live factory or transfer profile is installed. Do not open review to map it in
+read-only reconnaissance. Never release the paid occurrence's duplicate hold or
+manufacture a retrospective approval.

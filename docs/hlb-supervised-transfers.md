@@ -1,10 +1,19 @@
 # HLB supervised transfers — v0.19
 
-**23 October 2026:** HLB security-picture verification, automated login and framed
-dashboard detection are complete. This work reuses them. The transfer workflow is
-implemented and exercised in an offline Chrome bank simulation. Actual transfer
-forms, bank-app handling and bank-history evidence have **not** been validated
-against a real HLB transaction. No live payment route is installed or enabled.
+**24 October 2026:** live reconnaissance exposed an authorization-boundary failure:
+opening HLB's transfer review initiated AppAuthorise. The owner approved in the
+bank app and payment completed before any Telegram card, without a final Submit
+click. Independent history/detail and the original receipt verified settlement.
+This is an incident, **not successful supervised-payment acceptance**. No live
+payment factory is installed or enabled. The synthetic submit sequence below
+does not establish the real bank's action boundary.
+
+Do not open transfer review during reconnaissance. `submission_enabled=False`
+now blocks `enter_review` and `submit` before any bank form action. Review dispatch
+also claims the adapter's transaction before its click, preventing another review
+after a lost response or mismatched result. A later Back click does not establish
+cancellation. Uncertain outcomes require independent history reads, never another
+authorization request. See [the incident decision](decisions.md#adr-053-live-boundary-correction-24-october-2026).
 
 The implementation is [the HLB adapter](../src/wally/adapters/browser/hlb_transfer.py),
 [certified transfer source](../src/wally/finance/transfers.py), the existing
@@ -129,13 +138,14 @@ replaying a card or successful login cannot activate a production route. No serv
 was restarted, no credentials changed, no beneficiary altered and no actual
 payment approval requested.
 
-The exact next development step is one attended, read-only HLB session to map the
-existing-beneficiary entry/review and complete transaction/scheduled/mandate history
-views. Exercise `enter_review` with the inspected profile and its submission lock
-held false, and stop before the submit control. No real transfer is permitted by
-this iteration. Then bind the eligible bill/receiving account from retained evidence
-and the existing Notion receipt schema into the trusted payment factory. Any live
-submission enablement and first transaction are a later separately authorized step.
+Read-only reconnaissance is limited to beneficiary/history inspection and receipt
+retrieval. Never exercise `enter_review` or the form's Next control before the exact
+Telegram authorization: bank-app approval can complete payment from that review.
+Before a live factory can be installed, the worker must durably treat review dispatch
+as a potentially submitted payment, support its mandatory challenge there and recover
+by independent history without a later debit click. The existing synthetic final-Submit
+sequence is not an accepted production sequence. Complete history/scheduled/mandate
+inventory, live selector composition and exact Telegram acceptance remain open.
 
 There is no new bank enrollment, credential setup or infrastructure requirement
 introduced here. Existing 1Password authorization can still require local unlock.
@@ -146,7 +156,10 @@ identifying one particular old bill as unpaid can lift its block, and that still
 requires a separate payment card. Tenant-water exclusions remain in the certified
 responsibility gate. January 2027 starts clean tracking.
 
-Unproven with a real transaction: actual transfer/review/history selectors and field
-formatting, bank-app timing/rejection/expiry, fresh authenticated history access,
-real receipt matching and the production Notion schema/readback. The simulation
-proves the application behavior, not these bank/provider acceptance points.
+The recovery verified a fresh authenticated history session, exact transaction
+detail, native HLB PDF download, Gmail SENT/body/attachment matching and the existing
+Notion record/receipt readback. Receipt downloads require an explicit scoped read
+context and remain disabled by default; authentication state is never persisted.
+These observations do not validate Telegram-to-bank execution, bank-app rejection/
+expiry or the complete production inventory. The duplicate hold and incident audit
+remain; no retrospective Telegram approval is recorded. Casaman stays on hold.

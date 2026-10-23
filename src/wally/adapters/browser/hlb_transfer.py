@@ -65,7 +65,7 @@ class HLBTransferProfile:
     frame_selector: str = ""  # Entry/review frame; read pages may have their own document.
     app_timeout_seconds: int = 120
     sandbox: bool = False
-    submission_enabled: bool = False  # Attended inspection cannot submit, even with a valid card.
+    submission_enabled: bool = False  # Also blocks entry/review: review can initiate AppAuthorise.
 
     @property
     def fingerprint(self):
@@ -301,8 +301,14 @@ class HLBTransferProvider:
         return page
 
     def enter_review(self, bill, quote, *, guard):
-        """Fill only existing-beneficiary controls. Stops before the debit control."""
+        """Opening real HLB review can initiate AppAuthorise and money movement.
+
+        A disabled submission lock must stop BEFORE entry/review, not merely the
+        button labelled Submit. Read-only reconnaissance must never call this.
+        """
         p = self.profile
+        if not p.submission_enabled:
+            raise FinanceError("HLB authorization/review is disabled before any bank form action.")
         if quote.transaction in self._submitted or self.inspect(bill, quote) != quote:
             raise FinanceError("HLB review changed or this adapter has already submitted.")
         guard()
@@ -319,6 +325,9 @@ class HLBTransferProvider:
         form.locator(p.reference_selector).fill(bill.reference, timeout=5000)
         form.locator(p.tracking_selector).fill(quote.transaction, timeout=5000)
         guard()
+        # Real HLB review can initiate an executable AppAuthorise request. A lost
+        # response or later review mismatch must never permit this action again.
+        self._submitted.add(quote.transaction)
         form.locator(p.review_selector).click(timeout=5000)
         self._check_review(bill, quote)
 
@@ -338,12 +347,11 @@ class HLBTransferProvider:
         check_hlb_origin(page)
 
     def submit(self, bill, quote, *, guard):
-        self.enter_review(bill, quote, guard=guard)
         if not self.profile.submission_enabled:
-            raise FinanceError("HLB attended inspection stops before transfer submission.")
+            raise FinanceError("HLB authorization/review is disabled before any bank form action.")
+        self.enter_review(bill, quote, guard=guard)
         guard()
         self._check_review(bill, quote)  # Re-read AFTER the final authorization check.
-        self._submitted.add(quote.transaction)  # Includes a lost response; never repeat the click.
         self._form(self._page()).locator(self.profile.submit_selector).click(timeout=5000)
         # Bank-app authorization is always expected; completion still needs ledger evidence.
         raise MandatoryChallenge("Complete this exact HLB transfer in the bank app.")

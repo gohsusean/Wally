@@ -2279,3 +2279,28 @@ administrative coverage and never authorizes a transfer. Exact Telegram approval
 bank-app authorization, source/recipient verification, duplicate protection and
 independent settlement remain mandatory. See the [implementation and live
 blockers](bill-account-and-receipt-checks.md).
+
+### ADR-053 live boundary correction, 24 October 2026
+
+Observed on 23 October: opening the real HLB review initiated AppAuthorise. The
+owner approved in the bank app and the transfer completed without a final Submit
+click, before any Telegram card. This violated ADR-051; it is an authorization
+incident, not supervised-payment acceptance. Back did not establish cancellation.
+Independent bank history/detail and the original bank PDF verified the exact
+payment. Recovery retained a duplicate hold and the incident audit without
+inventing a Telegram decision, worker execution or retrospective authorization.
+
+The submission lock must stop before any transfer form action, including
+`enter_review`, and review dispatch must be claimed before its click. A lost
+response or mismatched review cannot permit another authorization request. Read-only
+reconnaissance may inspect beneficiaries/history and retrieve receipts; it must
+never press transfer Next or open review. Receipt downloads are opt-in within an
+explicitly origin-scoped ephemeral read context and remain disabled by default.
+
+The owner's direct post-payment instructions authorized recovery of the actual
+receipt, one confirmation email to the live related provider and truthful Notion
+bookkeeping after independent bank verification. Separate durable email claims and
+SENT/body/attachment matching prevent resend; none of this retroactively approves
+the transfer. The existing baseline and Casaman hold remain. Live route composition
+and exact Telegram-to-bank acceptance remain blocked until the real review/action
+boundary is supported safely; the synthetic final-Submit sequence is insufficient.

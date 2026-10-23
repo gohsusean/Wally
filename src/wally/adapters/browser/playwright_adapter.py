@@ -75,13 +75,24 @@ class PlaywrightBrowserAdapter:
             ) from None
 
     def open_session(
-        self, *, url: str, allowed_origins: tuple[str, ...] = (), allow_read_pages: bool = False
+        self,
+        *,
+        url: str,
+        allowed_origins: tuple[str, ...] = (),
+        allow_read_pages: bool = False,
+        allow_receipt_downloads: bool = False,
     ) -> BrowserSession:
+        if type(allow_receipt_downloads) is not bool or (
+            allow_receipt_downloads and (not allow_read_pages or not allowed_origins)
+        ):
+            raise ValueError("Receipt downloads require an explicitly scoped read context.")
         self._ensure_browser()
         assert self._browser is not None
         # new_page owns a separate non-persistent context, closed with the page.
         if allow_read_pages:
-            context = self._browser.new_context(service_workers="block", accept_downloads=False)
+            context = self._browser.new_context(
+                service_workers="block", accept_downloads=allow_receipt_downloads
+            )
             page = context.new_page()
         else:
             page = self._browser.new_page(service_workers="block", accept_downloads=False)
