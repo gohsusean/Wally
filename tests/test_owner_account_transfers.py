@@ -220,12 +220,17 @@ def test_interbank_entry_uses_exact_menu_context_not_bare_shared_endpoint(world,
     anchors = Mock()
     anchors.all.return_value = [link]
     anchors.filter.return_value.count.return_value = 1
+    anchors.filter.return_value.is_visible.return_value = True
+    anchors.filter.return_value.get_attribute.return_value = "#"
     frame = SimpleNamespace(
         url="https://s.hongleongconnect.my/rib/app/fo/main", locator=lambda _: anchors
     )
     page = SimpleNamespace(frames=[frame], wait_for_load_state=Mock())
     if target == ENTRY + "?o=1":
         provider._enter_transfer(page)
+        anchors.filter.return_value.click.assert_called_once()
+        anchors.filter.return_value.hover.assert_not_called()
+        link.wait_for.assert_called_once_with(state="visible", timeout=5000)
         link.click.assert_called_once()
     else:
         with pytest.raises(FinanceError, match="menu destination changed"):

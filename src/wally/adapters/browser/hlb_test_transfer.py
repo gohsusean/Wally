@@ -247,6 +247,13 @@ class HLBTestTransferProvider(HLBTransferProvider):
             return True
         except Exception as error:
             self._test_request_blocked = True
+            fields = (
+                dict(parse_qsl(request.post_data or ""))
+                if request.method == "POST"
+                and path not in {"/rib/app/fo/login", "/rib/app/fo/doLogin"}
+                else {}
+            )
+            source = fields.get("javax.faces.source", "")
             # Never retain request values, cookies, CSRF state or credential errors.
             self.event(
                 "test_bank_request_blocked",
@@ -269,10 +276,13 @@ class HLBTestTransferProvider(HLBTransferProvider):
                         "Prepared transaction, duplicate check or exact debit is unsafe.",
                     }
                     else "unclassified",
-                    "field_names": sorted(dict(parse_qsl(request.post_data or "")).keys())
-                    if request.method == "POST"
-                    and path not in {"/rib/app/fo/login", "/rib/app/fo/doLogin"}
-                    else [],
+                    "field_names": sorted(fields),
+                    "jsf_source": source
+                    if re.fullmatch(r"(?:id[A-Za-z0-9_:.-]{1,70}|j_idt[0-9_:.-]{1,70})", source)
+                    else "unmapped",
+                    "jsf_event": fields.get("javax.faces.behavior.event")
+                    if fields.get("javax.faces.behavior.event") in {"change", "click", "blur"}
+                    else "unmapped",
                 },
             )
             return False
@@ -392,28 +402,34 @@ class HLBTestTransferProvider(HLBTransferProvider):
 
     def _enter_transfer(self, page):
         """Use the bank's interbank menu context, never the bare shared endpoint."""
+        menus = []
         for frame in page.frames:
             if frame.url == "about:blank":
                 continue
             check_hlb_origin(frame)
             menu = frame.locator("a").filter(has_text=re.compile(r"^PAY\s*&\s*TRANSACT$"))
-            if menu.count() == 1:
-                menu.hover(timeout=5000)
+            if menu.count() == 1 and menu.is_visible():
+                menus.append(menu)
+        if len(menus) != 1:
+            raise FinanceError("The PAY & TRANSACT menu is unavailable or ambiguous.")
+        menu = menus[0]
+        toggle = urlsplit(menu.get_attribute("href") or "")
+        if toggle.scheme or toggle.netloc or toggle.path or toggle.query:
+            raise FinanceError("The PAY & TRANSACT toggle has an unexpected navigation target.")
+        menu.click(timeout=5000)
         links = []
         for frame in page.frames:
             if frame.url == "about:blank":
                 continue
             for link in frame.locator("a").all():
-                if (
-                    re.fullmatch(r"DuitNow to Account/\s*IBG", " ".join(link.inner_text().split()))
-                    and link.is_visible()
-                ):
+                if re.fullmatch(r"DuitNow to Account/\s*IBG", " ".join(link.inner_text().split())):
                     links.append(link)
         if len(links) != 1:
             raise FinanceError(
                 "The exact PAY & TRANSACT DuitNow to Account/IBG menu is unavailable."
             )
         link = links[0]
+        link.wait_for(state="visible", timeout=5000)
         target = link.evaluate("e => e.href")
         url = urlsplit(target)
         parameters = parse_qsl(url.query, keep_blank_values=True)
