@@ -14,6 +14,7 @@ from wally.adapters.google.receipts import GmailReceiptMailer
 from wally.finance.models import FinanceError, digest
 from wally.finance.payments import BillPayment, SupervisedPayments
 from wally.finance.receipts import ConfirmationTarget, ReceiptConfirmations
+from wally.models.principal import Capability
 
 APPROVED_TEST = {
     "schema_version": 1,
@@ -80,6 +81,7 @@ class OwnerAccountTestSource:
 
 
 class LocalTestHistory:
+    records_in_notion = False
     fingerprint = digest(["owner_account_test_local_history", 1])
 
     def __init__(self, store):
@@ -235,7 +237,23 @@ class OwnerAccountTestPayments(SupervisedPayments):
     def prepare_new(self, *, context):
         return self.prepare("test_" + uuid4().hex, context=context)
 
+    def reconcile(self, proposal_id, *, context):
+        self.authority.authorize(context, Capability.VERIFY_PAYMENT)
+        self.load(proposal_id)  # Validate the immutable test specification before using evidence.
+        with self.store._connect() as c:
+            names = {
+                json.loads(row[0]).get("name") for row in c.execute(
+                    "SELECT details FROM payment_events "
+                    "WHERE proposal_id=? AND event='test_recipient_verified'", (proposal_id,)
+                )
+            }
+        if len(names) != 1 or not next(iter(names)):
+            raise FinanceError("Retained test recipient identity is missing or ambiguous.")
+        # Retained identity evidence enables read-only recovery, never another submission.
+        self.provider._recipient_name = next(iter(names))
+        return super().reconcile(proposal_id, context=context)
+
     def _event(self, proposal_id, event, details):
-        if event.startswith("notion_"):
+        if event.startswith("notion_") and type(self.history) is LocalTestHistory:
             event = "test_local_" + event.removeprefix("notion_")
         return super()._event(proposal_id, event, details)

@@ -192,7 +192,9 @@ class TelegramPaymentApprovals:
                 "Test transfer\n\nRM1.00\nSean UOB\n2203062747\nBank: UOB\n"
                 + escape("From: " + quote.funding)
                 + "\n"
-                + "Owner-account acceptance test; no bill or Notion obligation.\n"
+                + "Owner-account acceptance test; no bill obligation.\n"
+                + escape("Transfer tracking reference: " + quote.transaction)
+                + "\n"
                 + "Approve this one real transfer and email its original HLB receipt to "
                 + escape(spec["confirmation"]["recipient"])
                 + ".\n"
@@ -233,6 +235,7 @@ class TelegramPaymentApprovals:
             status += (
                 " Test result recorded locally."
                 if spec.get("kind") == "owner_account_test"
+                and not getattr(self.payments.history, "records_in_notion", False)
                 else (
                     " Notion updated."
                     if row["reconciliation"] == "verified"

@@ -2304,3 +2304,16 @@ SENT/body/attachment matching prevent resend; none of this retroactively approve
 the transfer. The existing baseline and Casaman hold remain. Live route composition
 and exact Telegram-to-bank acceptance remain blocked until the real review/action
 boundary is supported safely; the synthetic final-Submit sequence is insufficient.
+
+## ADR-055: Exact owner-account test transfers
+
+See [the owner-account test decision](adr-055-owner-account-tests.md) for the narrow
+RM1 route. It omits bill matching, retains exact payment authorization, and does
+not establish live acceptance from automated tests.
+
+## ADR-056: Nonfinancial HLB inspection before payment approval
+
+See [the nonfinancial inspection decision](adr-056-nonfinancial-hlb-inspection.md).
+Owner-requested adapter debugging may inspect empty-form setup and the exact saved
+favourite through a separate command that cannot initiate a payment. The payment
+worker's exact Telegram boundary remains intact.

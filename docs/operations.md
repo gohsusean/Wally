@@ -378,3 +378,10 @@ authorization is required and the owner completes it; every payment still
 needs its exact Telegram approval. The [local security-picture gate](hlb-security-picture.md)
 is implemented with synthetic acceptance; owner enrollment and live acceptance remain.
 This supersedes earlier bank-selection and investigation notes.
+
+For explicitly requested nonfinancial adapter diagnostics, use
+`python -B -m wally.runtime.hlb_diagnostics` after reviewing
+[ADR-056](adr-056-nonfinancial-hlb-inspection.md). It uses the existing governed
+credentials and ephemeral browser. Its separate request guard permits empty setup
+and one exact existing-favourite lookup, and rejects payment initiation. It never
+issues a Telegram card. It is an operator action, not a default health/test gate.

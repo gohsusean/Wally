@@ -156,6 +156,14 @@ def build_production_payments(settings, store, authority):
 
         test_source = OwnerAccountTestSource(test_path)
         _ = test_source.policy
+        test_history = LocalTestHistory(store)
+        if settings.notion_api_key:
+            from wally.adapters.notion.test_transfer_history import OwnerAccountNotionHistory
+
+            test_history = OwnerAccountNotionHistory(
+                history.target, reader, registry, write_client=notion_client,
+                evidence_directory=evidence_directory, store=store, source=test_source,
+            )
         test_provider = HLBTestTransferProvider(
             PlaywrightBrowserAdapter(
                 headless=settings.browser_headless,
@@ -169,7 +177,7 @@ def build_production_payments(settings, store, authority):
             authority,
             test_source,
             test_provider,
-            LocalTestHistory(store),
+            test_history,
             resolver,
             enabled=lambda: not settings.dry_run,
             confirmations=TestReceiptConfirmations(
@@ -218,6 +226,9 @@ def runtime_status(payments):
             getattr(payments, "test_payments", None) and payments.test_payments.enabled()
         ),
         "owner_test_route": payments.test_payments.provider.fingerprint
+        if getattr(payments, "test_payments", None)
+        else "",
+        "owner_test_history": type(payments.test_payments.history).__name__
         if getattr(payments, "test_payments", None)
         else "",
     }

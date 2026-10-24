@@ -103,12 +103,14 @@ class HLBTestTransferProvider(HLBTransferProvider):
                         "submit",
                         "_request_allowed",
                         "_command",
+                        "_command_data",
                         "verify",
                         "receipt",
                         "_check_recipient",
                         "_select",
                         "_rows",
                         "_detail",
+                        "_history_candidates",
                         "_validate",
                         "inspect",
                         "prepare",
@@ -117,6 +119,7 @@ class HLBTestTransferProvider(HLBTransferProvider):
                         "_enter_transfer",
                         "_form",
                         "_allow_initialization",
+                        "_initialization_shape",
                     )
                 ],
             ]
@@ -231,6 +234,8 @@ class HLBTestTransferProvider(HLBTransferProvider):
             if len(body) != len(pairs):
                 raise FinanceError("Ambiguous repeated bank fields.")
             expected, control = pending["fields"], pending["control"]
+            if body.get("javax.faces.partial.ajax") == "true":
+                expected = {**expected, **pending.get("jsf_buttons", {})}
             if any(k not in expected and k not in JSF_METADATA and k != control for k in body):
                 raise FinanceError("Unknown bank command field.")
             if any(body.get(k) != v for k, v in expected.items()):
@@ -312,7 +317,32 @@ class HLBTestTransferProvider(HLBTransferProvider):
         self._validate(bill)
         if self._test_request_blocked or self._initialization_dispatched:
             raise FinanceError("Repeated or previously blocked bank initialization.")
-        if request.url not in {ENTRY, pending["url"]} or (
+        self._initialization_shape(request, pending)
+        self._initialization_dispatched = True
+        self._initialization_request = request
+        self.event(
+            "test_bank_initialization_dispatched", {"control": "mobileDeviceFlagUpdateBtn2"}
+        )
+        return True
+
+    @staticmethod
+    def _initialization_shape(request, pending):
+        """Validate the observed setup contract independently of payment authority."""
+        destination_matches = request.url in {ENTRY, pending["url"]}
+        if not destination_matches:
+            url = urlsplit(request.url)
+            query = parse_qsl(url.query, keep_blank_values=True)
+            # HLB redirects entry into a server-owned Spring execution. Pin its
+            # current native form action; never invent or retain the flow token.
+            destination_matches = (
+                request.url.split("?", 1)[0] == ENTRY
+                and len(query) == 1 and query[0][0] == "execution"
+                and bool(re.fullmatch(r"[A-Za-z0-9_-]{1,100}", query[0][1]))
+                and not url.fragment
+                and request.frame.locator("form#idFormEntry").evaluate("e => e.action")
+                == request.url
+            )
+        if not destination_matches or (
             "application/x-www-form-urlencoded" not in request.headers.get("content-type", "")
         ):
             raise FinanceError("Unexpected bank initialization destination or encoding.")
@@ -337,31 +367,51 @@ class HLBTestTransferProvider(HLBTransferProvider):
             "idSOMTransferFrom",
             "javax.faces.ViewState",
         }
-        generated = set(fields) - standard - set(metadata)
-        if (
-            len(fields) != len(pairs)
-            or len(generated) != 1
-            or not re.fullmatch(r"j_idt\d+", next(iter(generated)))
-            or set(fields) != standard | set(metadata) | generated
-            or any(fields.get(key) != value for key, value in metadata.items())
-            or not fields.get("javax.faces.ViewState")
-            or not fields.get("idFormEntry")
+        # JSF serializes empty entry controls too; earlier diagnostics discarded
+        # blank values. They must stay empty and cannot carry a debit/beneficiary.
+        empty_controls = {
+            "idAcctNo", "idAmt", "idOthInfo", "idSms", "idEmail", "idDesc",
+        } & set(fields)
+        if any(fields[key] for key in empty_controls):
+            raise FinanceError("Bank initialization contains nonempty payment fields.")
+        selectors = {"idAcctTyp", "idBnk", "idRR"} & set(fields)
+        if any(
+            request.frame.locator("#" + key).input_value() != fields[key] for key in selectors
         ):
-            raise FinanceError("Bank initialization differs from the observed nonpayment command.")
-        self._initialization_dispatched = True
-        self._initialization_request = request
-        self.event(
-            "test_bank_initialization_dispatched", {"control": metadata["javax.faces.source"]}
-        )
-        return True
+            raise FinanceError("Bank initialization differs from its current selector defaults.")
+        generated = set(fields) - standard - set(metadata) - empty_controls - selectors
+        if len(fields) != len(pairs):
+            raise FinanceError("Bank initialization repeats form fields.")
+        if (
+            len(generated) != 1
+            or not re.fullmatch(r"j_idt\d+", next(iter(generated)))
+            or set(fields) != standard | set(metadata) | generated | empty_controls | selectors
+        ):
+            raise FinanceError("Bank initialization field set differs from the observed command.")
+        if any(fields.get(key) != value for key, value in metadata.items()):
+            raise FinanceError("Bank initialization command metadata changed.")
+        if not fields.get("javax.faces.ViewState") or not fields.get("idFormEntry"):
+            raise FinanceError("Bank initialization lacks nonempty form or CSRF markers.")
 
-    def _command(self, element, action, *, phase="edit", updates=None, material=None):
-        data = element.evaluate("""e => {
+    @staticmethod
+    def _command_data(element):
+        return element.evaluate("""e => {
             const f = e.form || e.closest('form');
             if (!f) throw Error();
+            const fields = Array.from(new FormData(f).entries());
+            const jsf_buttons = {};
+            // Mojarra includes named input[type=button]; browser FormData omits them.
+            for (const c of f.elements) {
+                if (c.tagName === 'INPUT' && c.type === 'button' && c.name && !c.disabled) {
+                    jsf_buttons[c.name] = c.value;
+                }
+            }
             return {url:f.action, control:e.name || e.id, control_value:e.value || e.id,
-                fields:Array.from(new FormData(f).entries())};
+                fields, jsf_buttons};
         }""")
+
+    def _command(self, element, action, *, phase="edit", updates=None, material=None):
+        data = self._command_data(element)
         if data["url"].split(";", 1)[0].split("?", 1)[0] not in {ENTRY, HISTORY}:
             raise FinanceError("Unreviewed bank form action.")
         fields = dict(data["fields"])
@@ -739,56 +789,39 @@ class HLBTestTransferProvider(HLBTransferProvider):
             ) from None
         raise MandatoryChallenge("Authorize this exact RM1 transfer in the HLB app.")
 
+    def _history_candidates(self, page):
+        candidates = {}
+        for link in page.locator('a[id$=":test"]').all():
+            if not re.fullmatch(r"j_idt\d+:\d+:test", link.get_attribute("id") or ""):
+                continue
+            cells = link.locator("xpath=ancestor::tr[1]").locator("td")
+            if cells.count() != 8:
+                raise FinanceError("HLB history row mapping changed.")
+            dest = re.sub(r"\D", "", cells.nth(3).inner_text())
+            amount = re.sub(r"[^0-9.]", "", cells.nth(4).inner_text())
+            funding = re.sub(r"\D", "", cells.nth(2).inner_text())
+            if (
+                dest == self.source.policy["destination_account"] and amount == "1.00"
+                and funding.endswith(self.source.policy["funding_last4"])
+            ):
+                reference = link.inner_text().strip()
+                if not reference or reference in candidates:
+                    raise FinanceError("Ambiguous bank history references.")
+                candidates[reference] = link
+        if len(candidates) > 20:
+            raise FinanceError("Test history requires a complete narrower read.")
+        return candidates
+
     def _detail(self, bill, quote):
         with self._read_page(HISTORY) as page:
-            candidates = []
-            for link in page.locator('a[id$=":test"]').all():
-                if not re.fullmatch(r"j_idt\d+:\d+:test", link.get_attribute("id") or ""):
-                    continue
-                cells = link.locator("xpath=ancestor::tr[1]").locator("td")
-                if cells.count() != 8:
-                    raise FinanceError("HLB history row mapping changed.")
-                dest = re.sub(r"\D", "", cells.nth(3).inner_text())
-                amount = re.sub(r"[^0-9.]", "", cells.nth(4).inner_text())
-                if self.source.policy["destination_account"] in dest and amount == "1.00":
-                    funding = re.sub(r"\D", "", cells.nth(2).inner_text())
-                    if not funding.endswith(self.source.policy["funding_last4"]):
-                        continue
-                    candidates.append(link)
-            if not candidates:
-                raise FinanceError("No independently matching test history row yet.")
-            # Never confuse a prior RM1 test with this unique approved tracking reference.
-            # A fresh history document per candidate avoids stale row locators.
-            for index in range(min(len(candidates), 20)):
-                if index:
-                    page.goto(HISTORY, wait_until="domcontentloaded")
-                    links = page.locator('a[id$=":test"]').all()
-                    candidates = [
-                        a
-                        for a in links
-                        if (
-                            a.locator("xpath=ancestor::tr[1]").locator("td").count() == 8
-                            and self.source.policy["destination_account"]
-                            in re.sub(
-                                r"\D",
-                                "",
-                                a.locator("xpath=ancestor::tr[1]")
-                                .locator("td")
-                                .nth(3)
-                                .inner_text(),
-                            )
-                            and re.sub(
-                                r"[^0-9.]",
-                                "",
-                                a.locator("xpath=ancestor::tr[1]")
-                                .locator("td")
-                                .nth(4)
-                                .inner_text(),
-                            )
-                            == "1.00"
-                        )
-                    ]
-                link = candidates[index]
+            references = list(self._history_candidates(page))
+        # Bind each fresh row to its bank reference, never an index that can drift.
+        for reference in references:
+            with self._read_page(HISTORY) as page:
+                candidates = self._history_candidates(page)
+                if reference not in candidates:
+                    raise FinanceError("Bank history changed during independent verification.")
+                link = candidates[reference]
                 self._command(
                     link, lambda link=link: link.click(timeout=10000), phase="history_read"
                 )
@@ -803,11 +836,14 @@ class HLBTestTransferProvider(HLBTransferProvider):
                     or "UNITED OVERSEAS"
                     not in fields.get("Recipient Bank / Wallet Name", "").upper()
                     or fields.get("Recipient Name") != self._recipient_name
+                    or not self._recipient_name
+                    or fields.get("Reference Number") != reference
+                    or datetime.strptime(fields.get("When to Transfer", ""), "%d-%b-%Y").date()
+                    != datetime.fromtimestamp(
+                        quote.expires_at - 900, ZoneInfo("Asia/Kuala_Lumpur")
+                    ).date()
                 ):
                     raise FinanceError("Independent bank detail contradicts the exact test.")
-                reference = fields.get("Reference Number", "")
-                if not reference:
-                    raise FinanceError("Bank-issued transaction reference is missing.")
                 return fields
         raise FinanceError("This exact test has no independently verified bank detail.")
 

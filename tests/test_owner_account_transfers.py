@@ -79,7 +79,8 @@ def test_real_test_card_is_local_and_bill_route_remains_disabled(world):
     assert "Typical Amount" not in text
     assert "Period:" not in text
     assert "Billing account" not in text
-    _, spec, bill, _ = world.payments.load(proposal.id)
+    _, spec, bill, quote = world.payments.load(proposal.id)
+    assert quote.transaction in text
     assert spec["kind"] == "owner_account_test"
     assert not bill.period_start and not bill.invoice_account_reference
     assert spec["typical_amount_review"] is None
@@ -296,6 +297,41 @@ def test_observed_nonpayment_initialization_requires_exact_live_scope_once(world
     assert "CSRF-SECRET-CANARY" not in str(events)
 
 
+@pytest.mark.parametrize("drift", [None, "token", "extra_query", "origin"])
+def test_setup_pins_the_current_native_bank_execution_url(world, drift):
+    provider = world.payments.provider
+    _, _, request = initialization_request(provider)
+    current_action = ENTRY + "?execution=PRIVATE-FLOW-CANARY"
+    request.url = current_action
+    request.frame = Mock()
+    request.frame.locator.return_value.evaluate.return_value = current_action
+    if drift == "token":
+        request.url = ENTRY + "?execution=DIFFERENT-FLOW"
+    elif drift == "extra_query":
+        request.url += "&o=2"
+    elif drift == "origin":
+        request.url = request.url.replace("s.hongleongconnect.my", "untrusted.invalid")
+    assert provider._request_allowed(request) is (drift is None)
+
+
+@pytest.mark.parametrize("drift", [None, "amount", "account", "selector"])
+def test_setup_keeps_empty_payment_fields_and_native_selector_defaults(world, drift):
+    provider = world.payments.provider
+    _, fields, request = initialization_request(provider)
+    fields.update({"idAmt": "", "idAcctNo": "", "idEmail": "", "idSms": "",
+                   "idOthInfo": "", "idBnk": "", "idAcctTyp": "", "idRR": ""})
+    request.frame = Mock()
+    request.frame.locator.return_value.input_value.return_value = ""
+    if drift == "amount":
+        fields["idAmt"] = "1.00"
+    elif drift == "account":
+        fields["idAcctNo"] = "2203062747"
+    elif drift == "selector":
+        fields["idBnk"] = "CHANGED"
+    request.post_data = urlencode(fields)
+    assert provider._request_allowed(request) is (drift is None)
+
+
 @pytest.mark.parametrize(
     "change",
     [
@@ -355,7 +391,8 @@ def test_unknown_entry_and_jsf_requests_fail_closed_without_approval(world):
     assert provider._request_allowed(request) is False
 
 
-def test_jsf_request_exactness_replay_and_secret_redaction(world):
+@pytest.mark.parametrize("encoding", ["native", "ajax"])
+def test_jsf_request_exactness_replay_and_secret_redaction(world, encoding):
     provider = world.payments.provider
     bill = provider.source.read("test_" + uuid4().hex)
     quote = provider.prepare(bill)
@@ -376,12 +413,17 @@ def test_jsf_request_exactness_replay_and_secret_redaction(world):
         "control": "idBtnSubmit",
         "control_value": "Next",
         "material": fields,
+        "jsf_buttons": {"idBtnCancel": "Cancel", "j_idt601": ""},
     }
+    body = {**fields, "idBtnSubmit": "Next"}
+    if encoding == "ajax":
+        body.update({"idBtnCancel": "Cancel", "j_idt601": "",
+                     "javax.faces.partial.ajax": "true", "javax.faces.source": "idBtnSubmit"})
     request = SimpleNamespace(
         url=ENTRY,
         method="POST",
         headers={"content-type": "application/x-www-form-urlencoded"},
-        post_data=urlencode({**fields, "idBtnSubmit": "Next"}),
+        post_data=urlencode(body),
     )
     events = []
     provider.event = lambda name, details: events.append((name, details))
@@ -471,3 +513,87 @@ def test_repeat_test_emails_match_original_pdf_not_shared_subject(monkeypatch):
     assert len(calls) == 1
     with pytest.raises(FinanceError, match="PDF hash differs"):
         mailer.verify_receipt_email({**details, "message_id": "previous-test"})
+
+
+@pytest.mark.parametrize("bad_source", [False, True])
+def test_independent_history_requires_exact_destination_and_source_each_read(world, bad_source):
+    provider = world.payments.provider
+    cells = Mock()
+    cells.count.return_value = 8
+    values = {2: "HLB ****" + ("0000" if bad_source else "4394"),
+              3: "UOB 2203062747", 4: "MYR 1.00"}
+    cells.nth.side_effect = lambda index: SimpleNamespace(inner_text=lambda: values[index])
+    link = Mock()
+    link.get_attribute.return_value = "j_idt100:0:test"
+    link.inner_text.return_value = "BANK-REFERENCE"
+    link.locator.return_value.locator.return_value = cells
+    page = Mock()
+    page.locator.return_value.all.return_value = [link]
+    assert list(provider._history_candidates(page)) == ([] if bad_source else ["BANK-REFERENCE"])
+
+
+@pytest.mark.parametrize("drift", [None, "date", "reference", "name"])
+def test_history_row_reordering_never_changes_the_selected_bank_reference(world, drift):
+    from contextlib import contextmanager
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    provider = world.payments.provider
+    bill = provider.source.read("test_" + uuid4().hex)
+    quote = provider.prepare(bill)
+    provider._recipient_name = "Verified owner"
+    old, current = Mock(), Mock()
+    fields = {
+        "Other Payment Detail": quote.transaction, "Account Number": "2203062747",
+        "Amount (MYR)": "1.00", "Recipient Reference": bill.reference,
+        "Recipient Bank / Wallet Name": "UNITED OVERSEAS BANK",
+        "Recipient Name": "Verified owner", "Reference Number": "BANK-CURRENT",
+        "When to Transfer": datetime.fromtimestamp(
+            quote.expires_at - 900, ZoneInfo("Asia/Kuala_Lumpur")
+        ).strftime("%d-%b-%Y"),
+    }
+    if drift == "date":
+        fields["When to Transfer"] = "01-Jan-2000"
+    elif drift == "reference":
+        fields["Reference Number"] = "ANOTHER-BANK-REFERENCE"
+    elif drift == "name":
+        fields["Recipient Name"] = "Different owner"
+    pages = iter([
+        SimpleNamespace(links={"BANK-OLD": old, "BANK-CURRENT": current}),
+        SimpleNamespace(links={"BANK-CURRENT": current, "BANK-OLD": old},
+                        fields={"Other Payment Detail": "OLD-TRACKING"}),
+        SimpleNamespace(links={"BANK-CURRENT": current, "BANK-OLD": old}, fields=fields),
+    ])
+
+    @contextmanager
+    def read_page(url):
+        yield next(pages)
+
+    provider._read_page = read_page
+    provider._history_candidates = lambda page: page.links
+    provider._rows = lambda page: page.fields
+    provider._command = lambda element, action, **kwargs: action()
+    if drift:
+        with pytest.raises(FinanceError, match="contradicts"):
+            provider._detail(bill, quote)
+    else:
+        assert provider._detail(bill, quote) == fields
+    old.click.assert_called_once()
+    current.click.assert_called_once()
+
+
+def test_restart_restores_recipient_evidence_for_read_only_recovery(world, monkeypatch):
+    from wally.finance.payments import PAYMENT_WORKER, SupervisedPayments
+
+    payments = world.payments
+    proposal = payments.prepare_new(context=payments.authority.issue("cli"))
+    context = payments.authority.issue(PAYMENT_WORKER)
+    payments._event(proposal.id, "test_recipient_verified", {"name": "Verified owner"})
+    recovered = []
+    monkeypatch.setattr(
+        SupervisedPayments, "reconcile",
+        lambda self, proposal_id, **kwargs: recovered.append(self.provider._recipient_name),
+    )
+    payments.reconcile(proposal.id, context=context)
+    assert recovered == ["Verified owner"]
+    payments.provider.browser.open_session.assert_not_called()

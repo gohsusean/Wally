@@ -94,3 +94,70 @@ before beneficiary selection. Offline tests reject added payment fields, a
 different action, execution target, URL, expiry and replay. These tests do not
 establish complete live acceptance. No further test cards are being issued as
 part of the incremental debugging cycle.
+
+### Nonfinancial adapter completion, 24–25 October 2026
+
+The owner directed no further incremental Telegram approval requests. The separate
+[nonfinancial inspector](adr-056-nonfinancial-hlb-inspection.md) now validates login
+and empty-form setup without a payment scope. Actual HLB setup uses a native
+`execution` URL and includes blank payment fields plus selector defaults; these
+are checked against the current form. Mojarra also serializes named input buttons
+that browser FormData omits. Tokens and credential values are never retained.
+
+History recovery now retains its source-account check on every fresh read, selects
+by bank reference rather than a shifting row index, checks the exact transfer date,
+and restores previously checked recipient identity for read-only recovery after a
+restart. The production test route records a verified test in existing Notion
+Payment History with empty Bill and Provider Account relations. It attaches the
+original receipt and records the independently verified email status through the
+existing native receipt adapter; it never invents a bill obligation.
+
+Live checks verified HLB login and setup, Wally's operational Notion target/schema,
+and Wally's Gmail account matching the configured receipt address. HLB rejected
+the saved-favourite lookup with a scheduled-maintenance notice asking to return
+after 12:10am. No Next/Review, test payment, receipt email, Notion write or additional
+Telegram card occurred. Destination confirmation and actual acceptance remain open.
+
+At 00:10 MYT on 25 October, a fresh guarded session still received the same HLB
+maintenance page after the exact native favourite lookup. Separately,
+[UOB's official downtime notice](https://www.uob.com.my/default/service-interruption-notice.page)
+lists DuitNow unavailable from 22:00 on 24 October until 08:00 on 25 October.
+This is consistent with the failed UOB destination lookup; it does not prove the
+cause of HLB's generic error redirect. No alternate destination or bank was used.
+
+An independent HLB history navigation succeeded without a blocked request and
+confirmed the existing eight-cell reference-row mapping. The latest isolated
+repository run passed 1,305 tests, excluding the three documented real `.env` and
+Keychain mutations. The subsequent 67 receipt/Notion checks also passed after the
+test record was changed to use a unique title and leave Billing Period empty.
+These are development/read-only results; no real RM1 workflow is certified complete.
+
+The historical detail read also matched the selected bank reference and exposed
+the expected recipient/amount/date/reference labels and original-receipt control,
+without downloading a receipt or changing records. All diagnostic contexts closed.
+
+Automatic approval review initially rejected the poller reload as an unrequested
+live-service mutation under AGENTS.md. That rejected action did not execute, and
+no workaround was attempted. The owner then explicitly approved one reload.
+
+At 00:22 MYT on 25 October, launchd reported the reloaded process as PID 24338.
+Its new startup diagnostic matched the checked-out HLB test adapter fingerprint
+and reported `OwnerAccountNotionHistory`. Ordinary payment submission stayed off.
+The previous lease expired naturally and a new current holder was observed;
+no lease was cleared. All payment claims matched the pre-reload hash, the ten
+existing attempts remained unchanged, and there were no active payment cards.
+No new card, transfer, bank session, email or Notion write was initiated by reload.
+
+Successful live destination validation, explicit destination confirmation and the
+single transaction-specific Telegram card remain outstanding. Runtime deployment
+does not establish live RM1 acceptance.
+
+At 02:09 MYT, the owner-directed continuation recovered this checkpoint before
+the UOB window ended. A one-time task continuation was scheduled for 08:05 MYT
+on 25 October. No bank lookup was attempted early. Explicit confirmation of
+Sean UOB ending 2747, HLB funding ending 4394 and the configured receipt address
+was requested; it remains a prerequisite to the single new payment proposal.
+Previously passing automated tests and Telegram approval validation were not
+repeated. The pending diagnostic, independent-history recovery and Notion test
+receipt changes are being committed separately from unrelated workspace changes.
+Scheduling a continuation is not evidence of a bank lookup or transaction.

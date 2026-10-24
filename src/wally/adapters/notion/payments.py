@@ -76,6 +76,8 @@ def rich(value):
 
 
 class NotionPaymentHistory:
+    records_in_notion = True
+
     def __init__(self, target, reader, registry, *, write_client):
         self.target, self.reader, self.registry = target, reader, registry
         self.write_client = write_client
