@@ -282,8 +282,19 @@ class HLBTestTransferProvider(HLBTransferProvider):
                     if re.fullmatch(r"(?:id[A-Za-z0-9_:.-]{1,70}|j_idt[0-9_:.-]{1,70})", source)
                     else "unmapped",
                     "jsf_event": fields.get("javax.faces.behavior.event")
-                    if fields.get("javax.faces.behavior.event") in {"change", "click", "blur"}
+                    if fields.get("javax.faces.behavior.event")
+                    in {"action", "change", "click", "blur"}
                     else "unmapped",
+                    "jsf_metadata": {
+                        key: value
+                        if re.fullmatch(r"[@A-Za-z0-9_:.\s-]{0,300}", value)
+                        else "unmapped"
+                        for key, value in fields.items()
+                        if key in JSF_METADATA
+                    },
+                    "material_fields_present": sorted(
+                        set(fields) & {"idAmt", "idAcctNo", "idBnk", "idDesc", "idOthInfo"}
+                    ),
                 },
             )
             return False
@@ -412,6 +423,42 @@ class HLBTestTransferProvider(HLBTransferProvider):
         )
         self.event("test_transfer_control_mapping", {"controls": controls})
 
+        def command_metadata(element):
+            script = element.get_attribute("onclick") or ""
+            literals = re.findall(r"['\"]([^'\"]*)['\"]", script)
+            return {
+                "functions": re.findall(r"([A-Za-z_$][\w.$]*)\s*\(", script),
+                "ui_literals": [
+                    literal
+                    for literal in literals
+                    if re.fullmatch(
+                        r"(?:(?:id[A-Za-z0-9_:.-]+|j_idt[0-9_:.-]+|@this|@form|@all|"
+                        r"action|click|change|blur)\s*)*",
+                        literal,
+                    )
+                ],
+            }
+
+        setup = [
+            {
+                "id": button.get_attribute("id"),
+                "name": button.get_attribute("name"),
+                **command_metadata(button),
+            }
+            for button in form.locator('input[type="button"]').all()
+        ]
+        favourites = []
+        for link in form.locator("a").all():
+            label = " ".join(link.inner_text().split())
+            if (
+                "sean uob" in label.casefold()
+                and "".join(re.findall(r"\d", label)) == self.source.policy["destination_account"]
+            ):
+                favourites.append({"visible": link.is_visible(), **command_metadata(link)})
+        self.event(
+            "test_transfer_setup_mapping", {"setup_controls": setup, "favourites": favourites}
+        )
+
     def _enter_transfer(self, page):
         """Use the bank's interbank menu context, never the bare shared endpoint."""
         menus = []
@@ -479,6 +526,10 @@ class HLBTestTransferProvider(HLBTransferProvider):
             self._enter_transfer(page)
             form = self._form(page)
             self._mapping(form)
+            if self._test_request_blocked:
+                raise FinanceError(
+                    "Unmapped bank initialization was blocked before beneficiary selection."
+                )
             favourites = []
             for link in form.locator("a").all():
                 label = " ".join(link.inner_text().split())
