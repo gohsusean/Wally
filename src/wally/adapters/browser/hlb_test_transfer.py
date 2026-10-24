@@ -113,6 +113,7 @@ class HLBTestTransferProvider(HLBTransferProvider):
                         "authenticate",
                         "await_authorization",
                         "_enter_transfer",
+                        "_form",
                     )
                 ],
             ]
@@ -352,15 +353,26 @@ class HLBTestTransferProvider(HLBTransferProvider):
         return result
 
     def _form(self, page):
-        frames = [
-            f
-            for f in page.frames
-            if urlsplit(f.url).path.split(";")[0] == "/rib/app/fo/trx/3rdpartytrsf"
-        ]
-        if len(frames) != 1:
-            raise FinanceError("HLB transfer document is missing or ambiguous.")
-        check_hlb_origin(frames[0])
-        return frames[0]
+        deadline = time.monotonic() + 15
+        while True:
+            frames = [
+                f
+                for f in page.frames
+                if urlsplit(f.url).path.split(";")[0] == "/rib/app/fo/trx/3rdpartytrsf"
+            ]
+            if len(frames) == 1:
+                check_hlb_origin(frames[0])
+                frames[0].wait_for_load_state("domcontentloaded", timeout=15000)
+                return frames[0]
+            if frames or time.monotonic() >= deadline:
+                self.event(
+                    "test_transfer_frame_unavailable",
+                    {
+                        "paths": [urlsplit(f.url).path.split(";")[0] for f in page.frames],
+                    },
+                )
+                raise FinanceError("HLB transfer document is missing or ambiguous.")
+            page.wait_for_timeout(100)
 
     def _check_recipient(self, form):
         fields = self._rows(form)
@@ -445,7 +457,9 @@ class HLBTestTransferProvider(HLBTransferProvider):
         self._pending = {"phase": "entry", "url": target}
         try:
             link.click(timeout=15000)
-            page.wait_for_load_state("domcontentloaded", timeout=15000)
+            # The dashboard is already loaded; the menu navigates its child frame.
+            # Keep the exact entry request scope alive until that document loads.
+            self._form(page)
         finally:
             self._pending = None
 
