@@ -112,6 +112,7 @@ class HLBTestTransferProvider(HLBTransferProvider):
                         "prepare",
                         "authenticate",
                         "await_authorization",
+                        "_enter_transfer",
                     )
                 ],
             ]
@@ -389,6 +390,47 @@ class HLBTestTransferProvider(HLBTransferProvider):
         )
         self.event("test_transfer_control_mapping", {"controls": controls})
 
+    def _enter_transfer(self, page):
+        """Use the bank's interbank menu context, never the bare shared endpoint."""
+        for frame in page.frames:
+            if frame.url == "about:blank":
+                continue
+            check_hlb_origin(frame)
+            menu = frame.locator("a").filter(has_text=re.compile(r"^PAY\s*&\s*TRANSACT$"))
+            if menu.count() == 1:
+                menu.hover(timeout=5000)
+        links = []
+        for frame in page.frames:
+            if frame.url == "about:blank":
+                continue
+            for link in frame.locator("a").all():
+                if re.fullmatch(r"DuitNow to Account/\s*IBG", " ".join(link.inner_text().split())):
+                    if link.is_visible():
+                        links.append(link)
+        if len(links) != 1:
+            raise FinanceError(
+                "The exact PAY & TRANSACT DuitNow to Account/IBG menu is unavailable."
+            )
+        link = links[0]
+        target = link.evaluate("e => e.href")
+        url = urlsplit(target)
+        parameters = parse_qsl(url.query, keep_blank_values=True)
+        if (
+            target.split("?", 1)[0] != ENTRY
+            or len(parameters) != 1
+            or parameters[0][0] != "o"
+            or not re.fullmatch(r"[0-9]", parameters[0][1])
+            or url.fragment
+        ):
+            raise FinanceError("The bank's reviewed interbank menu destination changed.")
+        self.event("test_interbank_menu_selected", {"label": "DuitNow to Account/IBG"})
+        self._pending = {"phase": "entry", "url": target}
+        try:
+            link.click(timeout=15000)
+            page.wait_for_load_state("domcontentloaded", timeout=15000)
+        finally:
+            self._pending = None
+
     def submit(self, bill, quote, *, guard):
         self._validate(bill)
         authorization = require_payment_submission(bill, quote)
@@ -402,11 +444,7 @@ class HLBTestTransferProvider(HLBTransferProvider):
         try:
             guard()
             page = self._page()
-            self._pending = {"phase": "entry", "url": ENTRY}
-            try:
-                page.goto(ENTRY, wait_until="domcontentloaded", timeout=30000)
-            finally:
-                self._pending = None
+            self._enter_transfer(page)
             form = self._form(page)
             self._mapping(form)
             favourites = []

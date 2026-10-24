@@ -198,13 +198,39 @@ def test_real_submit_keeps_route_identity_stable_during_entry_callback(world):
     def entry(*args, **kwargs):
         _, spec, _, _ = world.payments.load(proposal.id)
         assert provider.fingerprint == spec["route"], "Loaded route identity changed during submit"
+        provider._pending = {"phase": "entry", "url": ENTRY}
         request = SimpleNamespace(url=ENTRY, method="GET", resource_type="document")
         allowed.append(greenlet(lambda: provider._request_allowed(request)).switch())
         raise FinanceError("Offline entry complete")
 
-    provider._page = lambda: SimpleNamespace(goto=entry)
+    # Keep the real submit frame active while the bank callback revalidates it.
+    provider._enter_transfer = entry
+    provider._page = lambda: SimpleNamespace()
     world.service.handle_update(callback)
     assert allowed == [True], events
+
+
+@pytest.mark.parametrize("target", [ENTRY, ENTRY + "?o=1", ENTRY + "?o=1&o=2"])
+def test_interbank_entry_uses_exact_menu_context_not_bare_shared_endpoint(world, target):
+    provider = world.payments.provider
+    link = Mock()
+    link.inner_text.return_value = "DuitNow to Account/ IBG"
+    link.is_visible.return_value = True
+    link.evaluate.return_value = target
+    anchors = Mock()
+    anchors.all.return_value = [link]
+    anchors.filter.return_value.count.return_value = 1
+    frame = SimpleNamespace(
+        url="https://s.hongleongconnect.my/rib/app/fo/main", locator=lambda _: anchors
+    )
+    page = SimpleNamespace(frames=[frame], wait_for_load_state=Mock())
+    if target == ENTRY + "?o=1":
+        provider._enter_transfer(page)
+        link.click.assert_called_once()
+    else:
+        with pytest.raises(FinanceError, match="menu destination changed"):
+            provider._enter_transfer(page)
+        link.click.assert_not_called()
 
 
 def test_distinct_preparations_get_distinct_attempt_and_tracking(world):
