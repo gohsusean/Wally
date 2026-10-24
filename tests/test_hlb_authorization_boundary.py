@@ -1,6 +1,7 @@
 """No bank form action while the HLB submission lock is disabled."""
 
 from dataclasses import replace
+from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pytest
@@ -9,6 +10,10 @@ from wally.adapters.browser.hlb_transfer import HLBTransferProvider
 from wally.adapters.browser.playwright_adapter import PlaywrightBrowserAdapter
 from wally.finance.hlb_transfer_demo import fixture_profile
 from wally.finance.models import FinanceError
+from wally.finance.payments import PAYMENT_WORKER
+from wally.models.principal import Capability
+from wally.telegram.poll import build_service
+from wally.telegram.service import TelegramConfig
 
 
 @pytest.mark.parametrize("entry", ["enter_review", "submit"])
@@ -64,3 +69,40 @@ def test_downloads_refused_without_both_read_scope_and_reviewed_origin(options):
             url="https://bank.example.test/history", allow_receipt_downloads=True, **options
         )
     adapter._ensure_browser.assert_not_called()
+
+
+@pytest.mark.parametrize("method", ["GET", "POST", "PUT"])
+def test_unmapped_hlb_payment_request_is_blocked_without_any_approval(method):
+    browser = Mock(offline_simulation=True)
+    provider = HLBTransferProvider(browser, fixture_profile(), Mock())
+    request = SimpleNamespace(
+        method=method, url="https://s.hongleongconnect.my/unmapped-payment-boundary"
+    )
+    assert provider._request_allowed(request) is False
+    assert provider._request_allowed(request) is False  # A retry cannot create authority.
+    assert browser.mock_calls == []
+    assert provider._request_allowed(
+        SimpleNamespace(method="GET", url=provider.profile.history_url)
+    ) is True  # Independent history reads remain possible.
+
+
+def test_production_default_composition_has_no_payment_worker_or_execution_grant(tmp_path):
+    settings = SimpleNamespace(
+        project_root=tmp_path,
+        ops_database=tmp_path / "operations.db",
+        knowledge_registry_database=tmp_path / "registry.db",
+        audit_directory=tmp_path / "audit",
+        dry_run=False,
+    )
+    service = build_service(settings, TelegramConfig("test", "42", "test", "42"), Mock())
+    assert service._payment_approvals is None
+    authority = service.runtime._authority
+    assert PAYMENT_WORKER not in authority.channels()
+    for channel in ("telegram", "cli", "repl"):
+        context = authority.issue(channel)
+        assert authority.check(context, Capability.EXECUTE_PAYMENT) is not None
+        assert authority.check(context, Capability.VERIFY_PAYMENT) is not None
+    with service._store._connect() as connection:
+        assert connection.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='payment_attempts'"
+        ).fetchone() is None
