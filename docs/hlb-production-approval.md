@@ -62,7 +62,36 @@ there were zero supervised payment attempts. No transfer or confirmation email
 was initiated. The prior poller's lease is allowed to expire normally; it is not
 deleted to accelerate takeover.
 
-The bounded 1Password vault metadata probe did not succeed. Computer access
-reported the Mac locked; the owner must unlock the Mac/1Password and approve the
-existing CLI prompt before an attended bank mapping can continue. No security
-setting, credential or bank-app authorization was bypassed.
+The initial bounded 1Password probe failed while the Mac was locked. After the
+owner unlocked the Mac and 1Password, vault metadata access succeeded. The scoped
+HLB login-pair read still required the separate **1Password Access Requested →
+Allow ChatGPT to get CLI access → Authorize** prompt. Authorizing that existing
+request restored the governed pair read. No security setting or credential changed.
+
+The subsequent isolated HLB session passed the existing username, enrolled
+security-picture and password checks and verified the authenticated dashboard.
+Its network guard denied transfer paths and unreviewed POSTs. No transfer form,
+Next/Review, bank-app authorization, payment, email or Notion write occurred. All
+owned browser contexts were closed. A history-menu lookup was ambiguous and
+stopped without clicking or dispatching another request; it is not live history
+acceptance.
+
+The retained 23 October session supplies transfer field IDs, but no captured
+payment request body/contract. Its favourite flow exposes recipient display
+fields, whereas the current adapter expects a recipient select control. Thus
+unlocking 1Password does not complete the missing live bank adapter contract.
+Production remains blocked at `profile: null`; the owner does not need another
+unlock operation to resolve this engineering gap. Mapping cannot be inferred
+from successful login or simulated HTML, and an unapproved live transfer form
+cannot be opened to discover it.
+
+Telegram preparation now reports 1Password CLI authorization failures explicitly
+instead of incorrectly asking the owner to check bill evidence. The response
+uses fixed text, closes the bank context and never includes provider error text.
+
+Follow-up verification: **58 focused tests passed** for production wiring,
+authorization boundaries, Telegram and secrets, with Ruff, whitespace and document
+checks passing. The actual poller was reloaded to **PID 8288**; imported hashes for
+entry/review, outgoing-request policy, the approval callback and preparation all
+matched the checkout. Both submission gates remained false, there were zero
+supervised attempts, and the original two duplicate holds were unchanged.

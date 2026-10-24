@@ -9,6 +9,7 @@ import pytest
 import yaml
 
 from wally.adapters.browser.hlb_transfer import HLBTransferProvider
+from wally.exceptions import ProviderUnavailableError
 from wally.finance.hlb_transfer_demo import build_hlb_demo, fixture_profile
 from wally.finance.models import FinanceError
 from wally.finance.payment_demo import DemoTelegram, prepare_card
@@ -72,6 +73,8 @@ def test_production_builder_registers_hlb_but_no_surface_can_execute(settings, m
     assert status["profile_configured"] is False
     assert status["live_submission_enabled"] is False
     assert len(status["review_code_sha256"]) == 64
+    assert len(status["approval_code_sha256"]) == 64
+    assert len(status["preparation_code_sha256"]) == 64
 
 
 def test_actual_serve_supplies_production_factory_and_reports_imported_policy(
@@ -125,6 +128,22 @@ def test_preparation_command_reports_missing_route_without_opening_bank(settings
     update["update_id"] += 1
     update["message"]["forward_date"] = 1
     assert service.handle_update(update) == "ignored"
+
+
+def test_preparation_reports_1password_authorization_without_leaking_error(settings):
+    service = build(settings)
+    approvals = service._payment_approvals
+    payments = approvals.payments
+    payments.prepare = Mock(side_effect=ProviderUnavailableError("secrets", "SECRET-CANARY"))
+    payments.provider.close = Mock()
+    message = approvals.prepare("exact-issued-bill", 1, "42")
+    assert "CLI access request (Authorize)" in message
+    assert "No transfer form was opened" in message
+    assert "SECRET-CANARY" not in message
+    assert "bill evidence" not in message
+    payments.provider.close.assert_called_once_with()
+    assert service._store.list_proposals() == []
+    assert not payments.enabled()
 
 
 def test_production_composition_with_offline_bank_obeys_telegram_before_entry(settings):

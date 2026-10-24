@@ -121,6 +121,8 @@ def build_production_payments(settings, store, authority):
 
 def runtime_status(payments):
     """Evidence emitted by the running process from its imported implementations."""
+    from wally.telegram.payment_approvals import TelegramPaymentApprovals
+
     provider = payments.provider
     return {
         "pid": os.getpid(),
@@ -136,5 +138,11 @@ def runtime_status(payments):
         ).hexdigest(),
         "request_code_sha256": hashlib.sha256(
             marshal.dumps(type(provider)._request_allowed.__code__)
+        ).hexdigest(),
+        "approval_code_sha256": hashlib.sha256(
+            marshal.dumps(TelegramPaymentApprovals.handle.__code__)
+        ).hexdigest(),
+        "preparation_code_sha256": hashlib.sha256(
+            marshal.dumps(TelegramPaymentApprovals.prepare.__code__)
         ).hexdigest(),
     }

@@ -8,6 +8,7 @@ from contextlib import suppress
 from datetime import UTC, datetime
 from html import escape
 
+from wally.exceptions import ProviderUnavailableError
 from wally.finance.bill_identity import BillingAccountError
 from wally.finance.payments import PAYMENT_WORKER
 from wally.models.ops import ExecutionStatus, ProposalIntent, ProposalStatus
@@ -50,9 +51,15 @@ class TelegramPaymentApprovals:
         )
         try:
             self.payments.prepare(instance_id, context=context)
-        except Exception:
+        except Exception as error:
             with suppress(Exception):
                 self.payments.provider.close()
+            if isinstance(error, ProviderUnavailableError) and error.provider == "secrets":
+                return (
+                    "1Password access is unavailable. On the Mac, open 1Password and "
+                    "approve its CLI access request (Authorize); unlock it if needed. "
+                    "Then request preparation again. No transfer form was opened."
+                )
             if (
                 getattr(self.payments.provider, "requires_bank_app", False)
                 and self.payments.provider.profile is None
