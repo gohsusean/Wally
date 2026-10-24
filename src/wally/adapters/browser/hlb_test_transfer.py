@@ -6,13 +6,12 @@ Only Next initiates this transfer; no subsequent Submit control is ever clicked.
 """
 
 import hashlib
-import marshal
 import re
 import time
 from dataclasses import asdict
 from datetime import datetime
 from pathlib import Path
-from types import SimpleNamespace
+from types import CodeType, SimpleNamespace
 from urllib.parse import parse_qsl, urlsplit
 from zoneinfo import ZoneInfo
 
@@ -39,6 +38,30 @@ JSF_METADATA = {
     "javax.faces.partial.event",
     "javax.faces.source",
 }
+
+
+def _loaded_code(value):
+    """Stable semantic material; marshal bytes vary with active constant references."""
+    if isinstance(value, CodeType):
+        return [
+            "code",
+            value.co_code.hex(),
+            value.co_exceptiontable.hex(),
+            value.co_argcount,
+            value.co_posonlyargcount,
+            value.co_kwonlyargcount,
+            value.co_flags,
+            value.co_names,
+            value.co_varnames,
+            value.co_freevars,
+            value.co_cellvars,
+            _loaded_code(value.co_consts),
+        ]
+    if isinstance(value, tuple):
+        return ["tuple", [_loaded_code(item) for item in value]]
+    if isinstance(value, frozenset):
+        return ["frozenset", sorted((_loaded_code(item) for item in value), key=repr)]
+    return [type(value).__name__, repr(value)]
 
 
 class HLBTestTransferProvider(HLBTransferProvider):
@@ -73,7 +96,7 @@ class HLBTestTransferProvider(HLBTransferProvider):
                 ENTRY,
                 HISTORY,
                 *[
-                    hashlib.sha256(marshal.dumps(getattr(type(self), method).__code__)).hexdigest()
+                    digest(_loaded_code(getattr(type(self), method).__code__))
                     for method in (
                         "submit",
                         "_request_allowed",
@@ -235,7 +258,8 @@ class HLBTestTransferProvider(HLBTransferProvider):
                     "reason": str(error)
                     if stage == "authorization"
                     and type(error) is FinanceError
-                    and str(error) in {
+                    and str(error)
+                    in {
                         "A fresh exact Telegram payment authorization is required.",
                         "Execution authorization expired or lease lost.",
                         "Payment changed before submission.",

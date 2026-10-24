@@ -186,6 +186,27 @@ def test_worker_scope_revalidates_exact_entry_request(world):
     assert allowed == [True], events
 
 
+def test_real_submit_keeps_route_identity_stable_during_entry_callback(world):
+    from greenlet import greenlet
+
+    proposal, _, callback = prepare(world)
+    provider = world.payments.provider
+    provider.authenticate = Mock(side_effect=lambda r, guard, session_id: guard())
+    events, allowed = [], []
+    provider.event = lambda name, details: events.append((name, details))
+
+    def entry(*args, **kwargs):
+        _, spec, _, _ = world.payments.load(proposal.id)
+        assert provider.fingerprint == spec["route"], "Loaded route identity changed during submit"
+        request = SimpleNamespace(url=ENTRY, method="GET", resource_type="document")
+        allowed.append(greenlet(lambda: provider._request_allowed(request)).switch())
+        raise FinanceError("Offline entry complete")
+
+    provider._page = lambda: SimpleNamespace(goto=entry)
+    world.service.handle_update(callback)
+    assert allowed == [True], events
+
+
 def test_distinct_preparations_get_distinct_attempt_and_tracking(world):
     a = world.payments.prepare_new(context=world.payments.authority.issue("cli"))
     b = world.payments.prepare_new(context=world.payments.authority.issue("cli"))
