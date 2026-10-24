@@ -37,7 +37,7 @@ from wally.telegram.notion_approvals import (
     TelegramNotionApprovals,
 )
 from wally.telegram.outbox import OUTBOUND_SEMANTICS
-from wally.telegram.payment_approvals import TelegramPaymentApprovals
+from wally.telegram.payment_approvals import TelegramPaymentApprovalRoutes, TelegramPaymentApprovals
 from wally.telegram.service import TelegramConfig, TelegramService, telegram_policy
 
 
@@ -143,6 +143,13 @@ def build_service(
             payment_confirmation,
             config.owner_user_id,
         )
+        if getattr(payments, "test_payments", None) is not None:
+            payment_approvals = TelegramPaymentApprovalRoutes(
+                payment_approvals,
+                TelegramPaymentApprovals(
+                    payments.test_payments, payment_confirmation, config.owner_user_id,
+                ),
+            )
     audit = AuditLogger(settings.audit_directory)
     ops = ObserveBriefService(
         store, audit=audit, authority=authority, financial_attention=FinancialBaseline(store).allows

@@ -216,6 +216,7 @@ class HLBTransferProvider:
         try:
             self._session = self.browser.open_session(
                 url=HLB_ORIGIN + "/", allowed_origins=(HLB_ORIGIN,), allow_read_pages=True,
+                allow_receipt_downloads=getattr(self, "allow_receipt_downloads", False),
                 request_guard=self._request_allowed,
             )
             sid = self._session.session_id

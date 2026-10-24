@@ -1,0 +1,10 @@
+# Owner-approved reusable acceptance destination. This never approves an attempt.
+schema_version: 1
+source_bank: HLB
+funding_last4: '4394'
+destination_bank: UOB
+favourite: Sean UOB
+destination_account: '2203062747'
+currency: MYR
+amount: '1.00'
+receipt_email: gohsusean@gmail.com

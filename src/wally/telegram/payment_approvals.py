@@ -10,6 +10,7 @@ from html import escape
 
 from wally.exceptions import ProviderUnavailableError
 from wally.finance.bill_identity import BillingAccountError
+from wally.finance.models import FinanceError
 from wally.finance.payments import PAYMENT_WORKER
 from wally.models.ops import ExecutionStatus, ProposalIntent, ProposalStatus
 from wally.presentation import TelegramHTML, human_time
@@ -47,10 +48,15 @@ class TelegramPaymentApprovals:
 
     def prepare(self, instance_id, update_id, chat_id):
         context = self.payments.authority.issue(
-            "telegram", external_request_ref=f"tg-{update_id}", external_session_ref=chat_id,
+            "telegram",
+            external_request_ref=f"tg-{update_id}",
+            external_session_ref=chat_id,
         )
         try:
-            self.payments.prepare(instance_id, context=context)
+            if instance_id == "test" and self.payments.payment_kind == "owner_account_test":
+                self.payments.prepare_new(context=context)
+            else:
+                self.payments.prepare(instance_id, context=context)
         except Exception as error:
             with suppress(Exception):
                 self.payments.provider.close()
@@ -65,8 +71,7 @@ class TelegramPaymentApprovals:
                 and self.payments.provider.profile is None
             ):
                 return (
-                    "HLB has no reviewed live payment route installed. "
-                    "No transfer form was opened."
+                    "HLB has no reviewed live payment route installed. No transfer form was opened."
                 )
             return (
                 "Payment preparation stopped. No transfer was initiated; "
@@ -79,6 +84,10 @@ class TelegramPaymentApprovals:
             return
         for proposal in self.store.list_proposals():
             if proposal.intent != ProposalIntent.PAY_BILL:
+                continue
+            try:
+                self.payments.load(proposal.id)
+            except FinanceError:
                 continue
             with self.store._connect() as c:
                 attempt = c.execute(
@@ -136,8 +145,12 @@ class TelegramPaymentApprovals:
             + "Destination: "
             + escape(bill.destination)
             + "\n"
-            + "Billing account (Notion): " + escape(bill.account_reference) + "\n"
-            + "Invoice billing account: " + escape(bill.invoice_account_reference) + " · matched\n"
+            + "Billing account (Notion): "
+            + escape(bill.account_reference)
+            + "\n"
+            + "Invoice billing account: "
+            + escape(bill.invoice_account_reference)
+            + " · matched\n"
             + "Bill reference: "
             + escape(bill.reference)
             + "\n"
@@ -148,27 +161,45 @@ class TelegramPaymentApprovals:
             + "\n"
             + (
                 escape(spec["typical_amount_review"]["notice"]) + "\n"
-                if spec.get("typical_amount_review", {}).get("notice") else ""
+                if (spec.get("typical_amount_review") or {}).get("notice")
+                else ""
             )
             + "Approve this one payment, then verify and record its receipt.\n"
             + (
                 "After verified payment, email the bank receipt to "
-                + escape(spec["confirmation"]["recipient"]) + ".\n"
+                + escape(spec["confirmation"]["recipient"])
+                + ".\n"
                 if (spec.get("confirmation") or {}).get("required")
                 else ""
             )
             + (
-                escape("Transfer tracking reference: " + quote.transaction) + "\n"
+                escape("Transfer tracking reference: " + quote.transaction)
+                + "\n"
                 + "Then authorize this exact transfer in the HLB bank app when prompted.\n"
-                if getattr(self.payments.provider, "requires_bank_app", False) else ""
+                if getattr(self.payments.provider, "requires_bank_app", False)
+                else ""
             )
             + "Expires "
             + human_time(datetime.fromisoformat(proposal.expires_at), now=datetime.now(UTC))
             + (
                 "\nLive submission is disabled. Approval cannot open the bank transfer form."
-                if not spec["sandbox"] and not self.payments.enabled() else ""
+                if not spec["sandbox"] and not self.payments.enabled()
+                else ""
             )
         )
+        if spec.get("kind") == "owner_account_test":
+            body = (
+                "Test transfer\n\nRM1.00\nSean UOB\n2203062747\nBank: UOB\n"
+                + escape("From: " + quote.funding)
+                + "\n"
+                + "Owner-account acceptance test; no bill or Notion obligation.\n"
+                + "Approve this one real transfer and email its original HLB receipt to "
+                + escape(spec["confirmation"]["recipient"])
+                + ".\n"
+                + "HLB app authorization is also required. Standard DuitNow transfer terms apply.\n"
+                + "Fee: MYR 0.00\nExpires "
+                + human_time(datetime.fromisoformat(proposal.expires_at), now=datetime.now(UTC))
+            )
         with self.store._connect() as c:
             review = c.execute(
                 "SELECT * FROM telegram_payment_reviews WHERE notification_id=?", (row.id,)
@@ -200,9 +231,13 @@ class TelegramPaymentApprovals:
         if execution and execution.status == ExecutionStatus.VERIFIED_SUCCESS:
             status = "Payment verified."
             status += (
-                " Notion updated."
-                if row["reconciliation"] == "verified"
-                else " Notion update is unconfirmed; do not pay again."
+                " Test result recorded locally."
+                if spec.get("kind") == "owner_account_test"
+                else (
+                    " Notion updated."
+                    if row["reconciliation"] == "verified"
+                    else " Notion update is unconfirmed; do not pay again."
+                )
             )
             if spec.get("confirmation") and spec["confirmation"]["required"]:
                 email = json.loads(row["confirmation"]) if row["confirmation"] else {}
@@ -211,7 +246,10 @@ class TelegramPaymentApprovals:
                     if email.get("state") == "sent"
                     else " Receipt email needs follow-up; do not pay again."
                 )
-                if row["confirmation_reconciliation"] != "verified":
+                if (
+                    row["confirmation_reconciliation"] != "verified"
+                    and spec.get("kind") != "owner_account_test"
+                ):
                     status += " Email status in Notion is unconfirmed."
         elif execution and execution.outcome == "challenge_pending":
             status = (
@@ -314,7 +352,9 @@ class TelegramPaymentApprovals:
                     external_request_ref=str(callback["id"]),
                 )
                 self.payments.execute(
-                    proposal.id, context=worker, guard=self.confirmation.dispatch_allowed,
+                    proposal.id,
+                    context=worker,
+                    guard=self.confirmation.dispatch_allowed,
                     on_pending=lambda: self.notify_progress(proposal.id),
                 )
         except BillingAccountError as error:
@@ -328,3 +368,55 @@ class TelegramPaymentApprovals:
             with suppress(Exception):
                 self.payments.provider.close()
         return "Payment processed. Check the result message."
+
+
+class TelegramPaymentApprovalRoutes:
+    """Two trusted compositions share the existing outbox/worker, never bill gates."""
+
+    def __init__(self, bills, tests):
+        self.bills, self.tests = bills, tests
+        self.payments = bills.payments  # Existing bill runtime diagnostics stay truthful.
+        self.test_payments = tests.payments
+
+    def _handler(self, proposal_id):
+        try:
+            self.tests.payments.load(proposal_id)
+            return self.tests
+        except FinanceError:
+            return self.bills
+
+    @property
+    def dispatch_guard(self):
+        return self.tests.dispatch_guard
+
+    @dispatch_guard.setter
+    def dispatch_guard(self, guard):
+        self.bills.dispatch_guard = self.tests.dispatch_guard = guard
+
+    @property
+    def notify_progress(self):
+        return self.tests.notify_progress
+
+    @notify_progress.setter
+    def notify_progress(self, notify):
+        self.bills.notify_progress = self.tests.notify_progress = notify
+
+    def sync(self, *args, **kwargs):
+        self.bills.sync(*args, **kwargs)
+        self.tests.sync(*args, **kwargs)
+
+    def render(self, row):
+        return self._handler(row.proposal_id).render(row)
+
+    def result(self, proposal_id):
+        return self._handler(proposal_id).result(proposal_id)
+
+    def handle(self, row, action, callback):
+        return self._handler(row.proposal_id).handle(row, action, callback)
+
+    def prepare(self, instance_id, update_id, chat_id):
+        handler = self.tests if instance_id == "test" else self.bills
+        return handler.prepare(instance_id, update_id, chat_id)
+
+    def identify_unpaid(self, *args):
+        return self.bills.identify_unpaid(*args)

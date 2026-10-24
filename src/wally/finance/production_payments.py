@@ -55,8 +55,12 @@ def load_hlb_route(path):
         if profile is not None:
             profile = dict(profile)
             for name in (
-                "review_fields", "beneficiary_fields", "history_fields",
-                "read_requests", "payment_requests", "payment_fields",
+                "review_fields",
+                "beneficiary_fields",
+                "history_fields",
+                "read_requests",
+                "payment_requests",
+                "payment_fields",
             ):
                 profile[name] = tuple(tuple(pair) for pair in profile[name])
             profile = HLBTransferProfile(**profile)
@@ -81,42 +85,107 @@ def build_production_payments(settings, store, authority):
                 "Authorization": "Bearer " + (settings.notion_api_key or ""),
                 "Notion-Version": VERSION,
             },
-            timeout=30, follow_redirects=False,
+            timeout=30,
+            follow_redirects=False,
         )
 
     reader = notion_client()
     finance_path = settings.project_root / "config" / "finance.yaml"
     catalog = FinanceService(
-        FinanceStore(settings.ops_database), authority=authority,
-        approval=NoFinancialConfirmation(), registry=registry,
-        reader=NotionFinanceReader(reader), sources=lambda: load_sources(finance_path),
-        profiles=lambda: load_profiles(finance_path), dry_run=settings.dry_run,
+        FinanceStore(settings.ops_database),
+        authority=authority,
+        approval=NoFinancialConfirmation(),
+        registry=registry,
+        reader=NotionFinanceReader(reader),
+        sources=lambda: load_sources(finance_path),
+        profiles=lambda: load_profiles(finance_path),
+        dry_run=settings.dry_run,
     )
     source = CertifiedTransferSource(
-        catalog, recipients, invoice_accounts=RetainedInvoiceAccounts({}),
+        catalog,
+        recipients,
+        invoice_accounts=RetainedInvoiceAccounts({}),
     )
     evidence_directory = settings.project_root / "data" / "supervised-payment"
     history = NativeNotionPaymentHistory(
-        production_payment_history_target(), reader, registry,
-        write_client=notion_client, evidence_directory=evidence_directory,
+        production_payment_history_target(),
+        reader,
+        registry,
+        write_client=notion_client,
+        evidence_directory=evidence_directory,
     )
     resolver = GovernedSecretsResolver(
-        create_secrets_provider(settings), audit=AuditLogger(settings.audit_directory),
+        create_secrets_provider(settings),
+        audit=AuditLogger(settings.audit_directory),
     )
     provider = HLBTransferProvider(
         PlaywrightBrowserAdapter(
-            headless=settings.browser_headless, channel=settings.browser_channel,
+            headless=settings.browser_headless,
+            channel=settings.browser_channel,
         ),
-        profile, resolver,
+        profile,
+        resolver,
     )
     confirmations = ReceiptConfirmations(
-        source, GmailReceiptMailer(create_communications_provider(settings)), evidence_directory,
+        source,
+        GmailReceiptMailer(create_communications_provider(settings)),
+        evidence_directory,
     )
-    return SupervisedPayments(
-        store, authority, source, provider, history, resolver,
-        enabled=lambda: False, live_validated=False, preparation_enabled=lambda: True,
+    payments = SupervisedPayments(
+        store,
+        authority,
+        source,
+        provider,
+        history,
+        resolver,
+        enabled=lambda: False,
+        live_validated=False,
+        preparation_enabled=lambda: True,
         confirmations=confirmations,
     )
+    test_path = settings.project_root / "config" / "test-transfer.yaml"
+    if test_path.exists():
+        from wally.adapters.browser.hlb_test_transfer import HLBTestTransferProvider
+        from wally.finance.test_transfers import (
+            LocalTestHistory,
+            OwnerAccountTestPayments,
+            OwnerAccountTestSource,
+            TestReceiptConfirmations,
+            TestReceiptMailer,
+        )
+
+        test_source = OwnerAccountTestSource(test_path)
+        _ = test_source.policy
+        test_provider = HLBTestTransferProvider(
+            PlaywrightBrowserAdapter(
+                headless=settings.browser_headless,
+                channel=settings.browser_channel,
+            ),
+            resolver,
+            test_source,
+        )
+        tests = OwnerAccountTestPayments(
+            store,
+            authority,
+            test_source,
+            test_provider,
+            LocalTestHistory(store),
+            resolver,
+            enabled=lambda: not settings.dry_run,
+            confirmations=TestReceiptConfirmations(
+                test_source,
+                TestReceiptMailer(create_communications_provider(settings)),
+                evidence_directory,
+            ),
+        )
+
+        def test_event(name, details):
+            execution = store.get_execution(test_provider.execution_id)
+            tests._event(execution.proposal_id if execution else "", name, details)
+
+        test_provider.event = test_event
+        payments.test_payments = tests
+    return payments
 
 
 def runtime_status(payments):
@@ -145,4 +214,10 @@ def runtime_status(payments):
         "preparation_code_sha256": hashlib.sha256(
             marshal.dumps(TelegramPaymentApprovals.prepare.__code__)
         ).hexdigest(),
+        "owner_test_enabled": bool(
+            getattr(payments, "test_payments", None) and payments.test_payments.enabled()
+        ),
+        "owner_test_route": payments.test_payments.provider.fingerprint
+        if getattr(payments, "test_payments", None)
+        else "",
     }

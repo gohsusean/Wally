@@ -283,7 +283,12 @@ class MandatoryChallenge(FinanceError):
     """App/biometric/hardware authentication cannot be replaced with stored TOTP."""
 
 
+class PaymentNotSubmitted(FinanceError):
+    """Trusted adapter proved its initiating request was never dispatched."""
+
+
 class SupervisedPayments:
+    payment_kind = "bill"
     def __init__(
         self,
         store: OperationsStore,
@@ -456,6 +461,7 @@ class SupervisedPayments:
         self._validate_quote(bill, quote)
         now = datetime.now(UTC).isoformat()
         spec = {
+            "kind": self.payment_kind,
             "bill": asdict(bill),
             "quote": asdict(quote),
             "route": self.provider.fingerprint,
@@ -473,12 +479,14 @@ class SupervisedPayments:
                 Matter(
                     matter_id,
                     matter_id,
-                    "Bill payment",
+                    "Owner-account test transfer" if self.payment_kind == "owner_account_test"
+                    else "Bill payment",
                     MatterDomain.FINANCE,
                     MatterStatus.OPEN,
                     now,
                     now,
-                    "Prepared bill",
+                    "Prepared owner-account test" if self.payment_kind == "owner_account_test"
+                    else "Prepared bill",
                     "Owner-requested supervised payment",
                     "Prepared",
                     knowledge_ids=(bill.instance_id,),
@@ -528,6 +536,8 @@ class SupervisedPayments:
         spec = json.loads(row[0])
         if digest(spec) != proposal.fingerprint:
             raise FinanceError("Payment review was modified.")
+        if spec.get("kind", "bill") != self.payment_kind:
+            raise FinanceError("This payment belongs to a different trusted route.")
         return proposal, spec, BillPayment(**spec["bill"]), PaymentQuote(**spec["quote"])
 
     def _current(self, proposal_id, *, approved=False, dispatched=False):
@@ -755,6 +765,8 @@ class SupervisedPayments:
                 return self.reconcile(proposal_id, context=context)
             except Exception:
                 return pending
+        except PaymentNotSubmitted:
+            return self._outcome(execution, "not_submitted")
         except BillingAccountError:
             return self._outcome(execution, "uncertain" if submitted else "billing_account_changed")
         except Exception:

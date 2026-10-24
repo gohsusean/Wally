@@ -127,6 +127,9 @@ class ReceiptConfirmations:
         require_billing_account_match(bill.account_reference, target.account_reference)
         return asdict(target)
 
+    def render(self, bill, target, receipt):
+        return render_confirmation(bill, target, receipt)
+
     def finish(self, payments, proposal, spec, bill, quote, settlement, *, guard):
         store = payments.store
         reviewed = spec.get("confirmation")
@@ -181,7 +184,7 @@ class ReceiptConfirmations:
                 },
             )
         key = digest([payments.provider.transaction_namespace, settlement.reference])
-        subject, body = render_confirmation(bill, reviewed, receipt)
+        subject, body = self.render(bill, reviewed, receipt)
         details = {
             "state": "sending",
             "recipient": reviewed["recipient"],

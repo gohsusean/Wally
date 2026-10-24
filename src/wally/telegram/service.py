@@ -226,8 +226,13 @@ class TelegramService:
             if self._payment_approvals is None:
                 self._answer(callback, "Payment execution is unavailable.")
                 return "ignored"
+            # Bank login/AppAuthorise can outlive Telegram's callback-answer window.
+            # This acknowledgement grants no authority; the exact handler still
+            # validates and claims the delivered review before the worker runs.
+            self._answer(callback, "Checking this exact payment approval.")
             result = self._payment_approvals.handle(row, action, callback)
-            self._answer(callback, result[:180])
+            if result != "Payment processed. Check the result message.":
+                self._transport.send_message(chat_id, result)
             self.sync(now)
             self.deliver_pending(now)
             return "payment_review"
