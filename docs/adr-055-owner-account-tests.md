@@ -62,11 +62,19 @@ its separate callback greenlet without contacting the bank.
 
 The bank dashboard confirms **PAY & TRANSACT → DuitNow to Account/ IBG** uses
 the shared transfer endpoint with a menu parameter. Navigating to its bare URL
-selected the internal HLB-account variant. The worker now hovers PAY & TRANSACT
-and clicks the exact visible DuitNow/IBG link, pinning its complete destination
+selected the internal HLB-account variant. The worker now clicks PAY & TRANSACT
+and waits for the exact visible DuitNow/IBG link, pinning its complete destination
 before navigation. It refuses the bare endpoint and ambiguous menu destinations.
 
 As of 09:45 UTC, the corrected-menu attempt awaits a new Telegram approval.
 No RM1 transfer, original test receipt or test confirmation email has yet been
 verified. End-to-end bank acceptance remains pending that approved execution.
 The original Tropicana claims and confirmation evidence remain unchanged.
+
+At 22:19 MYT, another fresh owner Telegram callback preceded successful HLB
+login. The worker stopped before transfer entry because hovering did not expose
+the submenu. An isolated read-only session then verified that clicking the
+PAY & TRANSACT toggle exposes DuitNow to Account/ IBG (`o=1`); it opened no
+transfer form. Commit `89dc812` deploys that verified click and visibility wait.
+As of 22:28 MYT, its fresh Telegram review remains unapproved; no bank session
+has started for that attempt. Ordinary bill submission remains disabled.
