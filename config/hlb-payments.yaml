@@ -1,0 +1,7 @@
+# Trusted production composition is installed, with live submission locked off
+# in code. No guessed transfer/history selectors or request-body contracts.
+# A reviewed route must also bind the issued bill, certified receiving account
+# and original invoice extraction before a genuine payment can be prepared.
+schema_version: 1
+profile: null
+recipients: {}

@@ -296,11 +296,13 @@ class SupervisedPayments:
         enabled=lambda: False,
         live_validated=False,
         confirmations=None,
+        preparation_enabled=None,
     ):
         self.store, self.authority, self.source = store, authority, source
         self.provider, self.history, self.resolver = provider, history, resolver
         self.enabled, self.live_validated = enabled, live_validated
         self.confirmations = confirmations
+        self.preparation_enabled = preparation_enabled
         with store._connect() as c:
             c.executescript("""
                 CREATE TABLE IF NOT EXISTS payment_specs (
@@ -353,7 +355,17 @@ class SupervisedPayments:
                 "ON payment_attempts(prepared_key) WHERE prepared_key!=''"
             )
 
-    def _gate(self):
+    def _gate(self, *, preparation=False):
+        if preparation and self.preparation_enabled is not None:
+            if not self.preparation_enabled():
+                raise FinanceError("Read-only payment preparation is disabled.")
+            # Read-only preparation may produce a card while execution stays off.
+            # It still requires an explicit reviewed route, never guessed selectors.
+            _ = self.provider.fingerprint
+            required = getattr(self.source, "required_transaction_namespace", "")
+            if required and self.provider.transaction_namespace != required:
+                raise FinanceError("The certified transfer source requires its exact bank route.")
+            return
         if not self.enabled() or (not self.provider.sandbox and not self.live_validated):
             raise FinanceError("Payment execution is disabled or this live route is unvalidated.")
         if not self.provider.sandbox and (
@@ -435,7 +447,7 @@ class SupervisedPayments:
 
     def prepare(self, instance_id: str, *, context: RequestContext):
         self.authority.authorize(context, Capability.SUBMIT_REQUEST)
-        self._gate()
+        self._gate(preparation=True)
         bill = self.source.read(instance_id)
         self._validate_bill(bill)
         self.history.check(bill)

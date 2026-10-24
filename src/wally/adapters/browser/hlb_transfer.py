@@ -137,7 +137,10 @@ class HLBTransferProvider:
 
     def __init__(self, browser, profile, resolver, *, picture_reference=REFERENCE):
         self.browser, self.profile, self.resolver = browser, profile, resolver
-        if profile.sandbox and not getattr(browser, "offline_simulation", False):
+        if (
+            profile is not None and profile.sandbox
+            and not getattr(browser, "offline_simulation", False)
+        ):
             raise FinanceError("HLB simulation requires a browser that intercepts all requests.")
         self.picture_reference = Path(picture_reference)
         self._session = None
@@ -150,6 +153,8 @@ class HLBTransferProvider:
     def _request_allowed(self, request):
         """Deny unknown routes and repeated consequential requests BEFORE dispatch."""
         p = self.profile
+        if p is None:
+            return False
         key = (request.method, request.url)
         reads = {("GET", HLB_ORIGIN + "/"), ("GET", p.history_url),
                  ("GET", p.beneficiary_url), *p.read_requests}
@@ -185,12 +190,16 @@ class HLBTransferProvider:
 
     @property
     def sandbox(self):
+        if self.profile is None:
+            return False
         if self.profile.sandbox and not getattr(self.browser, "offline_simulation", False):
             raise FinanceError("HLB simulation requires a browser that intercepts all requests.")
         return self.profile.sandbox
 
     @property
     def fingerprint(self):
+        if self.profile is None:
+            raise FinanceError("HLB has no reviewed live payment route installed.")
         return self.profile.fingerprint
 
     def _login(self):
@@ -333,6 +342,7 @@ class HLBTransferProvider:
         return digest({"recipient": recipient, "history": rows, "funding": expected["funding"]})
 
     def prepare(self, bill):
+        _ = self.fingerprint
         try:
             evidence = self._inventory(bill)
         except Exception:
@@ -372,7 +382,7 @@ class HLBTransferProvider:
         button labelled Submit. Read-only reconnaissance must never call this.
         """
         p = self.profile
-        if not p.submission_enabled:
+        if p is None or not p.submission_enabled:
             raise FinanceError("HLB authorization/review is disabled before any bank form action.")
         authorization = require_payment_submission(bill, quote)
         if quote.transaction in self._submitted or self.inspect(bill, quote) != quote:
@@ -433,7 +443,7 @@ class HLBTransferProvider:
             raise MandatoryChallenge("Complete this exact HLB transfer in the bank app.")
 
     def submit(self, bill, quote, *, guard):
-        if not self.profile.submission_enabled:
+        if self.profile is None or not self.profile.submission_enabled:
             raise FinanceError("HLB authorization/review is disabled before any bank form action.")
         self.enter_review(bill, quote, guard=guard)
         # Review/Next already initiates AppAuthorise. Never click another debit

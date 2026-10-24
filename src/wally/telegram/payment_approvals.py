@@ -44,6 +44,29 @@ class TelegramPaymentApprovals:
             return "That exact obligation could not be identified. No payment was authorized."
         return "Recorded that specific bill as unpaid. Its payment still needs a separate approval."
 
+    def prepare(self, instance_id, update_id, chat_id):
+        context = self.payments.authority.issue(
+            "telegram", external_request_ref=f"tg-{update_id}", external_session_ref=chat_id,
+        )
+        try:
+            self.payments.prepare(instance_id, context=context)
+        except Exception:
+            with suppress(Exception):
+                self.payments.provider.close()
+            if (
+                getattr(self.payments.provider, "requires_bank_app", False)
+                and self.payments.provider.profile is None
+            ):
+                return (
+                    "HLB has no reviewed live payment route installed. "
+                    "No transfer form was opened."
+                )
+            return (
+                "Payment preparation stopped. No transfer was initiated; "
+                "check the exact bill evidence."
+            )
+        return "Prepared for the separate payment approval card. No transfer was initiated."
+
     def sync(self, chat_id, now, **_):
         if not chat_id or not self.owner_user_id:
             return
@@ -134,6 +157,10 @@ class TelegramPaymentApprovals:
             )
             + "Expires "
             + human_time(datetime.fromisoformat(proposal.expires_at), now=datetime.now(UTC))
+            + (
+                "\nLive submission is disabled. Approval cannot open the bank transfer form."
+                if not spec["sandbox"] and not self.payments.enabled() else ""
+            )
         )
         with self.store._connect() as c:
             review = c.execute(

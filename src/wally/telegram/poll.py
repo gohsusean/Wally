@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import secrets
@@ -20,6 +21,7 @@ from wally.config.loader import Settings
 from wally.exceptions import ProviderUnavailableError
 from wally.finance.baseline import FinancialBaseline
 from wally.finance.payments import PAYMENT_POLICY, PAYMENT_WORKER
+from wally.finance.production_payments import build_production_payments, runtime_status
 from wally.gateway.service import TELEGRAM_CHANNEL, AdapterRegistration, GatewayRuntime
 from wally.models.principal import Capability
 from wally.ops.service import ObserveBriefService
@@ -264,7 +266,12 @@ def serve(
         chat_id=env.get("WALLY_TELEGRAM_CHAT_ID", "").strip(),
     )
     client = BotClient(config.bot_token)
-    service = build_service(settings, config, client)
+    service = build_service(settings, config, client, payment_factory=build_production_payments)
+    print(
+        "Telegram payment runtime: "
+        + json.dumps(runtime_status(service._payment_approvals.payments), sort_keys=True),
+        flush=True,
+    )
     poll_forever(service, client)
     return 0
 

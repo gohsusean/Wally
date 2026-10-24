@@ -293,6 +293,20 @@ class TelegramService:
             return "ignored"
         self._ingress.remember_chat(chat_id)
         text = str(message.get("text") or "")
+        if text.startswith("/pay ") and self._payment_approvals is not None:
+            if any(message.get(k) for k in ("forward_origin", "forward_from", "forward_date")):
+                return "ignored"
+            instance_id = text.removeprefix("/pay ")
+            if re.fullmatch(r"[A-Za-z0-9_-]{1,80}", instance_id) is None:
+                return "ignored"
+            if not self._allow(now):
+                self._transport.send_message(chat_id, _RATE)
+                return "rejected"
+            result = self._payment_approvals.prepare(instance_id, update_id, chat_id)
+            self._transport.send_message(chat_id, result)
+            self.sync(now)
+            self.deliver_pending(now)
+            return "payment_preparation"
         if text.startswith("/unpaid ") and self._payment_approvals is not None:
             if any(message.get(k) for k in ("forward_origin", "forward_from", "forward_date")):
                 return "ignored"
