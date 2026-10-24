@@ -144,13 +144,14 @@ def test_payment_approval_covers_exact_receipt_email_and_replays_do_not_resend(w
     assert result["subject"] == "Payment Receipt – CSM 020 – January 2027"
     assert result["body"] == (
         "Hi team,\n\n"
-        "Please find attached the bank payment receipt\nfor account CSM 020.\n\n"
+        "Please find attached the bank payment receipt\nfor account CSM 020.\n"
+        "Invoice number: SANDBOX-INV-2027-01\n\n"
         "Amount paid: RM100.00\nPayment date: 23 October 2026\n\nThank you.\n"
     )
     outgoing = result["subject"] + result["body"]
     for internal in (
         "WALLY", proposal.id, world.source.bill.instance_id, world.source.bill.payee,
-        world.source.bill.reference, world.browser.receipt,
+        world.browser.receipt,
     ):
         assert internal not in outgoing
     attachment = world.gmail.sent[0]["payload"]["parts"][1]
@@ -441,7 +442,7 @@ def test_ambiguous_period_keeps_settlement_and_holds_email_for_follow_up(world):
     assert path.read_bytes() == PDF
 
 
-def test_tropicana_example_renders_without_property_or_invoice_names(world):
+def test_tropicana_example_renders_verified_invoice_number_after_unit(world):
     bill = replace(
         world.source.bill, amount="960.96", period_start="2026-10-01", period_end="2026-12-31",
         payee="Tropicana Gardens", reference="PRIVATE-INVOICE-123",
@@ -452,11 +453,33 @@ def test_tropicana_example_renders_without_property_or_invoice_names(world):
     assert subject == "Payment Receipt – B2-28-03A – Q4 2026"
     assert body == (
         "Hi team,\n\n"
-        "Please find attached the bank payment receipt\nfor unit B2-28-03A.\n\n"
+        "Please find attached the bank payment receipt\nfor unit B2-28-03A.\n"
+        "Invoice number: PRIVATE-INVOICE-123\n\n"
         "Amount paid: RM960.96\nPayment date: 23 October 2026\n\nThank you.\n"
     )
     assert bill.payee not in subject + body
-    assert bill.reference not in subject + body
+    assert bill.reference not in subject
+
+
+@pytest.mark.parametrize("reference", ["", None])
+def test_missing_invoice_number_omits_entire_line_and_preserves_email(world, reference):
+    bill = replace(world.source.bill, reference=reference)
+    receipt = BankReceipt("", "", "", "2026-10-23", PDF)
+    subject, body = render_confirmation(bill, asdict(world.target), receipt)
+    assert subject == "Payment Receipt – CSM 020 – January 2027"
+    assert body == (
+        "Hi team,\n\n"
+        "Please find attached the bank payment receipt\nfor account CSM 020.\n\n"
+        "Amount paid: RM100.00\nPayment date: 23 October 2026\n\nThank you.\n"
+    )
+
+
+@pytest.mark.parametrize("reference", ["INV-123\nInjected line", "INV-123\rInjected line"])
+def test_invoice_number_rejects_control_characters(world, reference):
+    bill = replace(world.source.bill, reference=reference)
+    receipt = BankReceipt("", "", "", "2026-10-23", PDF)
+    with pytest.raises(FinanceError, match="Control characters"):
+        render_confirmation(bill, asdict(world.target), receipt)
 
 
 @pytest.mark.parametrize(

@@ -49,12 +49,20 @@ def render_confirmation(bill, target, receipt):
     values = {
         "account_number": text(target["account_reference"]),
         "identifier_label": target.get("identifier_label", "account"),
+        # CertifiedPaymentSource binds this reference to the verified invoice.
+        "invoice_number": text(bill.reference, optional=True),
         "period": billing_period(bill.period_start, bill.period_end),
         "amount": money(bill.amount, bill.currency),
         "payment_date": bank_payment_date(receipt.paid_date).strftime("%d %B %Y").lstrip("0"),
     }
     try:
-        rendered = PAYMENT_TEMPLATE.read_text(encoding="utf-8").format(**values)
+        template = PAYMENT_TEMPLATE.read_text(encoding="utf-8")
+        if not values["invoice_number"]:
+            template = "".join(
+                line for line in template.splitlines(keepends=True)
+                if "{invoice_number}" not in line
+            )
+        rendered = template.format(**values)
         subject, separator, body = rendered.partition("\n\n")
         if not subject.startswith("Subject: ") or not separator or not body.strip():
             raise ValueError
