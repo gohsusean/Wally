@@ -78,3 +78,19 @@ PAY & TRANSACT toggle exposes DuitNow to Account/ IBG (`o=1`); it opened no
 transfer form. Commit `89dc812` deploys that verified click and visibility wait.
 As of 22:28 MYT, its fresh Telegram review remains unapproved; no bank session
 has started for that attempt. Ordinary bill submission remains disabled.
+
+At 22:42 and 22:50 MYT, separate fresh approvals reached the correct interbank
+form. Both stopped before beneficiary selection/Next when the request guard
+blocked HLB's automatic `mobileDeviceFlagUpdateBtn2` JSF request. Captured command
+metadata shows that it executes only that setup control, renders `idFormEntry`,
+and carries no amount or beneficiary fields. Credential and ViewState values were
+not retained in the diagnostic records.
+
+The focused adapter fix forwards that bank-generated setup request unchanged,
+once during authorized entry, with the exact observed metadata and field set.
+It does not construct or alter a device flag, approve AppAuthorise, or allow a
+payment command through the setup rule. A bank form-update response must complete
+before beneficiary selection. Offline tests reject added payment fields, a
+different action, execution target, URL, expiry and replay. These tests do not
+establish complete live acceptance. No further test cards are being issued as
+part of the incremental debugging cycle.

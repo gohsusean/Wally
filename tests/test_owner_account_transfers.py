@@ -232,6 +232,9 @@ def test_interbank_entry_uses_exact_menu_context_not_bare_shared_endpoint(world,
         assert provider._pending == {"phase": "entry", "url": target}
         assert link.click.call_count == 1
         page.frames.append(transfer)
+        response = Mock(status=200)
+        response.text.return_value = "<partial-response><changes/></partial-response>"
+        provider._initialization_request = Mock(response=lambda: response)
 
     page.wait_for_timeout.side_effect = finish_child_navigation
     if target == ENTRY + "?o=1":
@@ -243,10 +246,89 @@ def test_interbank_entry_uses_exact_menu_context_not_bare_shared_endpoint(world,
         transfer.wait_for_load_state.assert_called_once_with("domcontentloaded", timeout=15000)
         page.wait_for_load_state.assert_not_called()
         assert provider._pending is None
+        assert provider._initialization_request is None
     else:
         with pytest.raises(FinanceError, match="menu destination changed"):
             provider._enter_transfer(page)
         link.click.assert_not_called()
+
+
+def initialization_request(provider):
+    bill = provider.source.read("test_" + uuid4().hex)
+    quote = provider.prepare(bill)
+    authorization = Mock()
+    provider._authorization = (authorization, bill, quote)
+    provider._pending = {"phase": "entry", "url": ENTRY + "?o=1"}
+    fields = {
+        "idBtnCancel": "Cancel",
+        "idFormEntry": "idFormEntry",
+        "idOneTimeDate": "24-Oct-2026",
+        "idRecur": "0",
+        "idSOMTransferFrom": "SOURCE-SECRET-CANARY",
+        "javax.faces.ViewState": "CSRF-SECRET-CANARY",
+        "j_idt601": "",
+        "javax.faces.source": "mobileDeviceFlagUpdateBtn2",
+        "javax.faces.partial.event": "click",
+        "javax.faces.partial.execute": "mobileDeviceFlagUpdateBtn2 mobileDeviceFlagUpdateBtn2",
+        "javax.faces.partial.render": "idFormEntry",
+        "javax.faces.behavior.event": "action",
+        "javax.faces.partial.ajax": "true",
+    }
+    request = SimpleNamespace(
+        url=ENTRY,
+        method="POST",
+        headers={"content-type": "application/x-www-form-urlencoded"},
+        post_data=urlencode(fields),
+    )
+    return authorization, fields, request
+
+
+def test_observed_nonpayment_initialization_requires_exact_live_scope_once(world):
+    provider = world.payments.provider
+    authorization, _, request = initialization_request(provider)
+    events = []
+    provider.event = lambda name, details: events.append((name, details))
+    assert provider._request_allowed(request) is True
+    authorization.check.assert_called_once()
+    assert provider._initialization_dispatched and not provider._review_dispatched
+    assert provider._request_allowed(request) is False
+    assert "SOURCE-SECRET-CANARY" not in str(events)
+    assert "CSRF-SECRET-CANARY" not in str(events)
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        "amount",
+        "beneficiary",
+        "source",
+        "execute",
+        "duplicate",
+        "expiry",
+        "phase",
+        "endpoint",
+    ],
+)
+def test_initialization_cannot_become_a_payment_or_bypass_approval(world, change):
+    provider = world.payments.provider
+    authorization, fields, request = initialization_request(provider)
+    if change == "amount":
+        fields["idAmt"] = "1.00"
+    elif change == "beneficiary":
+        fields["idAcctNo"] = "2203062747"
+    elif change == "source":
+        fields["javax.faces.source"] = "idBtnSubmit"
+    elif change == "execute":
+        fields["javax.faces.partial.execute"] = "idBtnSubmit"
+    elif change == "expiry":
+        authorization.check.side_effect = FinanceError("Expired")
+    elif change == "phase":
+        provider._pending = None
+    elif change == "endpoint":
+        request.url = ENTRY + "?o=2"
+    request.post_data = urlencode(fields) + ("&idRecur=0" if change == "duplicate" else "")
+    assert provider._request_allowed(request) is False
+    assert not provider._initialization_dispatched and not provider._review_dispatched
 
 
 def test_distinct_preparations_get_distinct_attempt_and_tracking(world):

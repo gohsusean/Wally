@@ -86,6 +86,8 @@ class HLBTestTransferProvider(HLBTransferProvider):
         self._receipt_content = None
         self.execution_id = ""
         self._test_request_blocked = False
+        self._initialization_dispatched = False
+        self._initialization_request = None
 
     @property
     def fingerprint(self):
@@ -114,6 +116,7 @@ class HLBTestTransferProvider(HLBTransferProvider):
                         "await_authorization",
                         "_enter_transfer",
                         "_form",
+                        "_allow_initialization",
                     )
                 ],
             ]
@@ -197,6 +200,9 @@ class HLBTestTransferProvider(HLBTransferProvider):
                 return True
             stage = "command"
             pending = self._pending
+            if pending and pending["phase"] == "entry" and request.method == "POST":
+                stage = "initialization"
+                return self._allow_initialization(request, pending)
             if pending is None or request.url != pending["url"]:
                 raise FinanceError("Unknown HLB bank request.")
             if self._test_request_blocked and pending["phase"] != "history_read":
@@ -298,6 +304,56 @@ class HLBTestTransferProvider(HLBTransferProvider):
                 },
             )
             return False
+
+    def _allow_initialization(self, request, pending):
+        """Forward one observed bank-generated device setup, never construct it."""
+        authorization, bill, quote = self._authorization
+        authorization.check(bill, quote)
+        self._validate(bill)
+        if self._test_request_blocked or self._initialization_dispatched:
+            raise FinanceError("Repeated or previously blocked bank initialization.")
+        if request.url not in {ENTRY, pending["url"]} or (
+            "application/x-www-form-urlencoded" not in request.headers.get("content-type", "")
+        ):
+            raise FinanceError("Unexpected bank initialization destination or encoding.")
+        raw = request.post_data or ""
+        if len(raw) > 200_000:
+            raise FinanceError("Oversized bank initialization.")
+        pairs = parse_qsl(raw, keep_blank_values=True, strict_parsing=True)
+        fields = dict(pairs)
+        metadata = {
+            "javax.faces.source": "mobileDeviceFlagUpdateBtn2",
+            "javax.faces.partial.event": "click",
+            "javax.faces.partial.execute": "mobileDeviceFlagUpdateBtn2 mobileDeviceFlagUpdateBtn2",
+            "javax.faces.partial.render": "idFormEntry",
+            "javax.faces.behavior.event": "action",
+            "javax.faces.partial.ajax": "true",
+        }
+        standard = {
+            "idBtnCancel",
+            "idFormEntry",
+            "idOneTimeDate",
+            "idRecur",
+            "idSOMTransferFrom",
+            "javax.faces.ViewState",
+        }
+        generated = set(fields) - standard - set(metadata)
+        if (
+            len(fields) != len(pairs)
+            or len(generated) != 1
+            or not re.fullmatch(r"j_idt\d+", next(iter(generated)))
+            or set(fields) != standard | set(metadata) | generated
+            or any(fields.get(key) != value for key, value in metadata.items())
+            or not fields.get("javax.faces.ViewState")
+            or not fields.get("idFormEntry")
+        ):
+            raise FinanceError("Bank initialization differs from the observed nonpayment command.")
+        self._initialization_dispatched = True
+        self._initialization_request = request
+        self.event(
+            "test_bank_initialization_dispatched", {"control": metadata["javax.faces.source"]}
+        )
+        return True
 
     def _command(self, element, action, *, phase="edit", updates=None, material=None):
         data = element.evaluate("""e => {
@@ -507,7 +563,22 @@ class HLBTestTransferProvider(HLBTransferProvider):
             # The dashboard is already loaded; the menu navigates its child frame.
             # Keep the exact entry request scope alive until that document loads.
             self._form(page)
+            deadline = time.monotonic() + 5
+            while self._initialization_request is None:
+                if self._test_request_blocked or time.monotonic() >= deadline:
+                    raise FinanceError("The bank's expected initialization did not complete.")
+                page.wait_for_timeout(100)
+            response = self._initialization_request.response()
+            if response is None or response.status != 200:
+                raise FinanceError("Bank initialization response is unconfirmed.")
+            response.finished()
+            body = response.text()
+            if "<partial-response" not in body or "<error" in body or "<redirect" in body:
+                raise FinanceError("Bank initialization did not return its expected form update.")
+            page.wait_for_timeout(700)  # Let the native JSF response update the form.
+            self.event("test_bank_initialization_completed", {})
         finally:
+            self._initialization_request = None
             self._pending = None
 
     def submit(self, bill, quote, *, guard):
@@ -517,6 +588,8 @@ class HLBTestTransferProvider(HLBTransferProvider):
             raise FinanceError("This test attempt has already entered the bank flow.")
         self._submitted.add(quote.transaction)
         self._review_dispatched = self._review_claimed = False
+        self._initialization_dispatched = False
+        self._initialization_request = None
         self._recipient_name = ""
         self._verified_detail = self._receipt_content = None
         self._authorization = (authorization, bill, quote)
