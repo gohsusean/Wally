@@ -232,6 +232,18 @@ class HLBTestTransferProvider(HLBTransferProvider):
                     "phase": self._pending["phase"] if self._pending else "unmapped",
                     "stage": stage,
                     "category": type(error).__name__,
+                    "reason": str(error)
+                    if stage == "authorization"
+                    and type(error) is FinanceError
+                    and str(error) in {
+                        "A fresh exact Telegram payment authorization is required.",
+                        "Execution authorization expired or lease lost.",
+                        "Payment changed before submission.",
+                        "Payment facts, policy, decision or Matter changed.",
+                        "Payment authorization changed during current-evidence reads.",
+                        "Prepared transaction, duplicate check or exact debit is unsafe.",
+                    }
+                    else "unclassified",
                     "field_names": sorted(dict(parse_qsl(request.post_data or "")).keys())
                     if request.method == "POST"
                     and path not in {"/rib/app/fo/login", "/rib/app/fo/doLogin"}
