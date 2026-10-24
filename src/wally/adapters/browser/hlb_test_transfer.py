@@ -133,6 +133,7 @@ class HLBTestTransferProvider(HLBTransferProvider):
 
     def _request_allowed(self, request):
         path = ""
+        stage = "origin"
         try:
             u = urlsplit(request.url)
             if u.scheme != "https" or u.netloc != "s.hongleongconnect.my":
@@ -169,15 +170,19 @@ class HLBTestTransferProvider(HLBTransferProvider):
                 and self._session is not None
             ):
                 return True
+            stage = "command"
             pending = self._pending
             if pending is None or request.url != pending["url"]:
                 raise FinanceError("Unknown HLB bank request.")
             if self._test_request_blocked and pending["phase"] != "history_read":
                 raise FinanceError("An earlier unknown bank request requires a fresh review.")
             if pending["phase"] != "history_read":
+                stage = "authorization"
                 authorization, bill, quote = self._authorization
                 authorization.check(bill, quote)
+                stage = "beneficiary_policy"
                 self._validate(bill)
+            stage = "request_shape"
             if request.method == "GET" and pending["phase"] == "entry":
                 if pending.get("used"):
                     raise FinanceError("Repeated entry request.")
@@ -216,7 +221,7 @@ class HLBTestTransferProvider(HLBTransferProvider):
                 raise FinanceError("Repeated bank form request.")
             pending["used"] = True
             return True
-        except Exception:
+        except Exception as error:
             self._test_request_blocked = True
             # Never retain request values, cookies, CSRF state or credential errors.
             self.event(
@@ -225,6 +230,8 @@ class HLBTestTransferProvider(HLBTransferProvider):
                     "method": request.method,
                     "path": urlsplit(request.url).path.split(";")[0],
                     "phase": self._pending["phase"] if self._pending else "unmapped",
+                    "stage": stage,
+                    "category": type(error).__name__,
                     "field_names": sorted(dict(parse_qsl(request.post_data or "")).keys())
                     if request.method == "POST"
                     and path not in {"/rib/app/fo/login", "/rib/app/fo/doLogin"}

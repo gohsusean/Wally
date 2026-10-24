@@ -164,6 +164,28 @@ def test_fresh_callback_binds_worker_once_and_unknown_outcome_blocks_new_attempt
         world.payments.prepare_new(context=world.payments.authority.issue("cli"))
 
 
+def test_worker_scope_revalidates_exact_entry_request(world):
+    from greenlet import greenlet
+
+    prepare_result = prepare(world)
+    provider = world.payments.provider
+    provider.authenticate = Mock(side_effect=lambda r, guard, session_id: guard())
+    events = []
+    provider.event = lambda name, details: events.append((name, details))
+    allowed = []
+
+    def submit(bill, quote, *, guard):
+        provider._authorization = (require_payment_submission(bill, quote), bill, quote)
+        provider._pending = {"phase": "entry", "url": ENTRY}
+        request = SimpleNamespace(url=ENTRY, method="GET", resource_type="document")
+        allowed.append(greenlet(lambda: provider._request_allowed(request)).switch())
+        raise FinanceError("Offline boundary only")
+
+    provider.submit = submit
+    world.service.handle_update(prepare_result[2])
+    assert allowed == [True], events
+
+
 def test_distinct_preparations_get_distinct_attempt_and_tracking(world):
     a = world.payments.prepare_new(context=world.payments.authority.issue("cli"))
     b = world.payments.prepare_new(context=world.payments.authority.issue("cli"))
