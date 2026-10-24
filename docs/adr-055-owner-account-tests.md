@@ -46,3 +46,27 @@ management framework is introduced.
 registers this narrow route alongside the disabled ordinary bill composition.
 Startup never creates or executes a test. Synthetic unit tests check the boundary;
 they do not establish real HLB acceptance.
+
+## Live evidence, 24 October 2026
+
+Real Telegram owner callbacks were recorded before worker authorization and HLB
+login. The running LaunchAgent retrieved the HLB login through 1Password after
+the owner authorized its Python CLI prompt, and verified the authenticated bank
+dashboard. No earlier test reached Next/Review or dispatched an initiating request;
+each stopped attempt remains durably recorded as `not_submitted`.
+
+Execution exposed an unstable implementation fingerprint: Python marshal output
+changed while the actual submit method was active. Stable loaded-code semantic
+material now binds the route; a regression exercises the real submit frame and
+its separate callback greenlet without contacting the bank.
+
+The bank dashboard confirms **PAY & TRANSACT → DuitNow to Account/ IBG** uses
+the shared transfer endpoint with a menu parameter. Navigating to its bare URL
+selected the internal HLB-account variant. The worker now hovers PAY & TRANSACT
+and clicks the exact visible DuitNow/IBG link, pinning its complete destination
+before navigation. It refuses the bare endpoint and ambiguous menu destinations.
+
+As of 09:45 UTC, the corrected-menu attempt awaits a new Telegram approval.
+No RM1 transfer, original test receipt or test confirmation email has yet been
+verified. End-to-end bank acceptance remains pending that approved execution.
+The original Tropicana claims and confirmation evidence remain unchanged.

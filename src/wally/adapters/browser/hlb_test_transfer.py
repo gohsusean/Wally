@@ -404,9 +404,11 @@ class HLBTestTransferProvider(HLBTransferProvider):
             if frame.url == "about:blank":
                 continue
             for link in frame.locator("a").all():
-                if re.fullmatch(r"DuitNow to Account/\s*IBG", " ".join(link.inner_text().split())):
-                    if link.is_visible():
-                        links.append(link)
+                if (
+                    re.fullmatch(r"DuitNow to Account/\s*IBG", " ".join(link.inner_text().split()))
+                    and link.is_visible()
+                ):
+                    links.append(link)
         if len(links) != 1:
             raise FinanceError(
                 "The exact PAY & TRANSACT DuitNow to Account/IBG menu is unavailable."
