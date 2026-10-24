@@ -18,6 +18,7 @@ from zoneinfo import ZoneInfo
 
 from wally.adapters.browser.hlb import HLB_ORIGIN, check_hlb_origin
 from wally.adapters.browser.hlb_transfer import HLBTransferProvider
+from wally.exceptions import ProviderUnavailableError
 from wally.finance.models import FinanceError, digest
 from wally.finance.payments import (
     MandatoryChallenge,
@@ -119,7 +120,14 @@ class HLBTestTransferProvider(HLBTransferProvider):
         self._test_request_blocked = False
         guard()
         self.event("test_bank_login_started", {})
-        self._login()
+        try:
+            self._login()
+        except ProviderUnavailableError as error:
+            self.event("test_login_provider_unavailable", {"provider": error.provider})
+            raise
+        except FinanceError:
+            self.event("test_bank_login_unverified", {})
+            raise
         guard()
         self.event("test_bank_login_verified", {})
 
