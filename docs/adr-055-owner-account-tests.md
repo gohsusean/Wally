@@ -216,3 +216,15 @@ The owner's standing instruction is recorded in the
 [internal-blocker project rule](../.cursor/rules/pause-on-internal-blockers.mdc):
 pause and check before another live attempt when an internal expectation,
 self-imposed constraint or uncertain bank action blocks progress.
+
+An owner-requested attended retry subsequently completed the read-only inspection:
+the selected favourite alias, UOB account ending 2747, current transfer date and
+checked one-time mode matched. Independent history showed no matching RM1 row.
+The temporary bank window was retained for guidance. HLB labels its one-time mode
+`One Time Transfer`; Wally's accepted labels had omitted that exact wording.
+The owner was informed of this internal blocker and explicitly approved adding
+the label. Four focused real-submit-frame checks passed without bank requests or
+amount entry, including rejection of recurring and unchecked modes. Lint passed.
+The standing project rule now explicitly requires prompt, concrete reporting of
+internal blockers and safe retention of an attended window. These are adapter
+and read-only results, not a completed test transfer or payment approval.

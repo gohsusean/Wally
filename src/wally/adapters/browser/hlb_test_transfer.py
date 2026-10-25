@@ -706,6 +706,7 @@ class HLBTestTransferProvider(HLBTransferProvider):
                 once_label.inner_text().casefold().split()
             ) not in {
                 "one time",
+                "one time transfer",
                 "one-time",
                 "now",
                 "immediate",

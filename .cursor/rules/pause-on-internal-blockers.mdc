@@ -9,6 +9,9 @@ alwaysApply: true
 - If an expected field, inferred requirement, uncertain bank action, or other
   self-imposed constraint blocks progress, pause before another live attempt.
   Explain the observed fact and the internal expectation, then check with the owner.
+- Never report only a generic stop or silently abandon a workflow over an internal
+  mismatch. State the concrete blocker promptly, and retain the attended bank
+  window at the blocked step for owner guidance when safe and available.
 - Do not repeatedly probe a live provider or revise assumptions in a debugging
   loop without that check. After the owner authorizes a specific fix and verification,
   complete that scope; pause again if a new mismatch or constraint appears.

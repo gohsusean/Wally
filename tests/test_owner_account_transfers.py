@@ -654,3 +654,54 @@ def test_restart_restores_exact_favourite_separately_from_bank_name(world, monke
         payments.reconcile(proposal.id, context=context)
         assert recovered == [("", "Sean UOB")]
     payments.provider.browser.open_session.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "label,checked,accepted",
+    [("One Time Transfer", True, True), ("One Time", True, True),
+     ("Recurring Transfer", True, False), ("One Time Transfer", False, False)],
+)
+def test_observed_one_time_label_keeps_mode_gate_before_amount_entry(
+    world, monkeypatch, label, checked, accepted
+):
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from wally.adapters.browser import hlb_test_transfer
+    from wally.finance.payments import PaymentNotSubmitted
+
+    provider = world.payments.provider
+    bill = provider.source.read("test_" + uuid4().hex)
+    quote = provider.prepare(bill)
+    monkeypatch.setattr(hlb_test_transfer, "require_payment_submission", lambda *args: Mock())
+    provider._page = Mock()
+    provider._enter_transfer = Mock()
+    provider._mapping = Mock()
+    provider._check_recipient = Mock()
+    provider._command = Mock()  # No bank action or request is dispatched.
+    link = Mock()
+    link.inner_text.return_value = "Transfer > Sean UOB 2203062747"
+    anchors, once, once_label, when = Mock(), Mock(), Mock(), Mock()
+    anchors.all.return_value = [link]
+    once.count.return_value = once_label.count.return_value = 1
+    once.is_checked.return_value = checked
+    once_label.inner_text.return_value = label
+    when.input_value.return_value = datetime.now(ZoneInfo("Asia/Kuala_Lumpur")).strftime("%d-%b-%Y")
+    controls = {"a": anchors, '[id="idRecur:0"]': once,
+                'label[for="idRecur:0"]': once_label, "#idOneTimeDate": when}
+    form = SimpleNamespace(locator=lambda selector: controls[selector])
+    provider._form = lambda page: form
+    reached = []
+
+    def select(form, selector, predicate):
+        if selector == "#idRR":
+            reached.append("past_one_time_checks")
+            raise FinanceError("Offline check complete before amount entry.")
+        return "source"
+
+    provider._select = select
+    with pytest.raises(PaymentNotSubmitted):
+        provider.submit(bill, quote, guard=lambda: None)
+    assert reached == (["past_one_time_checks"] if accepted else [])
+    assert not provider._review_dispatched
+    provider.browser.open_session.assert_not_called()
