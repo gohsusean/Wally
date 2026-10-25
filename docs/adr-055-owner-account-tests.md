@@ -161,3 +161,20 @@ Previously passing automated tests and Telegram approval validation were not
 repeated. The pending diagnostic, independent-history recovery and Notion test
 receipt changes are being committed separately from unrelated workspace changes.
 Scheduling a continuation is not evidence of a bank lookup or transaction.
+
+At 08:05 MYT on 25 October, the scheduled continuation verified the actual clock
+and invoked the guarded nonfinancial diagnostic. Credential retrieval stopped with
+`ProviderUnavailableError` before the browser was opened. The existing 1Password
+desktop app was opened and one recovery invocation also stopped at credential
+retrieval; a separate permitted executable-name inspection confirmed the desktop
+process was running. An earlier sandboxed process check could not establish app
+absence. No secret values were exposed and no additional credential probe was run.
+
+Neither invocation reached HLB login or dispatched a saved-favourite lookup, so
+post-maintenance bank availability and destination validation remain unknown.
+The local payment ledger still contained ten `not_submitted` attempts and no
+stored settlements or active payment cards. No new proposal/card, transfer,
+receipt email, Notion write, service reload or automated-test rerun occurred.
+Local 1Password unlock/CLI authorization and explicit destination confirmation
+were requested from the owner. No further bank attempt was scheduled. Ordinary
+bill payment submission remains disabled; no live RM1 acceptance is claimed.
