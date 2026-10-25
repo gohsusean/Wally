@@ -228,3 +228,16 @@ amount entry, including rejection of recurring and unchecked modes. Lint passed.
 The standing project rule now explicitly requires prompt, concrete reporting of
 internal blockers and safe retention of an attended window. These are adapter
 and read-only results, not a completed test transfer or payment approval.
+
+The subsequent exact Telegram-approved attempt stopped as `not_submitted` before
+Next/Review: changing `idRR` correctly updated the expected form field, but the
+request guard still compared that control with its old selection. Captured
+non-sensitive request metadata reproduced this locally. `_command` now binds
+the control value to the intended update as well as the exact form snapshot;
+old values, added payment fields, changed commands, expired authority and replay
+remain blocked. Six focused request-guard cases and repository lint passed;
+previously proven Telegram approval checks were not repeated. The live worker was
+not reloaded and no new bank attempt or card was created during this repair.
+This is implementation evidence, not completed RM1 acceptance; continuation
+requires the repaired worker, a fresh exact Telegram card and required HLB app
+authorization. No settlement, receipt email or Notion payment record is claimed.

@@ -434,6 +434,57 @@ def test_jsf_request_exactness_replay_and_secret_redaction(world, encoding):
     assert "TOKEN-CANARY" not in str(events)
 
 
+@pytest.mark.parametrize("drift", [None, "old_value", "amount", "source", "expiry", "replay"])
+def test_reference_selection_binds_new_value_in_observed_native_request(world, drift):
+    provider = world.payments.provider
+    bill = provider.source.read("test_" + uuid4().hex)
+    quote = provider.prepare(bill)
+    authorization = Mock()
+    provider._authorization = (authorization, bill, quote)
+    fields = {"idFormEntry": "idFormEntry", "idRR": "old-option",
+              "javax.faces.ViewState": "TOKEN-CANARY"}
+    element = Mock()
+    element.evaluate.return_value = {
+        "url": ENTRY, "control": "idRR", "control_value": "old-option",
+        "fields": list(fields.items()), "jsf_buttons": {"idBtnCancel": "Cancel", "j_idt605": ""},
+    }
+    body = {
+        **fields, "idRR": "other-option", "idBtnCancel": "Cancel", "j_idt605": "",
+        "javax.faces.source": "idRR", "javax.faces.partial.event": "change",
+        "javax.faces.partial.execute": "idRR idRR", "javax.faces.partial.render": "idOPDesc",
+        "javax.faces.behavior.event": "valueChange", "javax.faces.partial.ajax": "true",
+    }
+    if drift == "old_value":
+        body["idRR"] = "old-option"
+    elif drift == "amount":
+        body["idAmt"] = "1.00"
+    elif drift == "source":
+        body["javax.faces.source"] = "idBtnSubmit"
+    elif drift == "expiry":
+        authorization.check.side_effect = FinanceError("Authorization expired")
+    request = SimpleNamespace(
+        url=ENTRY, method="POST", headers={"content-type": "application/x-www-form-urlencoded"},
+        post_data=urlencode(body),
+    )
+    allowed, events = [], []
+    provider.event = lambda name, details: events.append((name, details))
+
+    def select():
+        allowed.append(provider._request_allowed(request))
+        if drift == "replay":
+            allowed.append(provider._request_allowed(request))
+
+    if drift:
+        with pytest.raises(FinanceError, match="blocked; no automatic retry"):
+            provider._command(element, select, updates={"idRR": "other-option"})
+    else:
+        provider._command(element, select, updates={"idRR": "other-option"})
+    assert allowed == ([True] if drift is None else [True, False] if drift == "replay" else [False])
+    assert not provider._review_dispatched
+    assert "TOKEN-CANARY" not in str(events)
+    provider.browser.open_session.assert_not_called()
+
+
 @pytest.mark.parametrize("change", ["amount", "source", "duplicate", "expiry", "command"])
 def test_jsf_drift_or_expiry_blocks_before_dispatch(world, change):
     provider = world.payments.provider

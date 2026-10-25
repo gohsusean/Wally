@@ -422,6 +422,9 @@ class HLBTestTransferProvider(HLBTransferProvider):
         self._pending = {
             **data,
             "fields": fields,
+            # Selection/fill changes this control after the snapshot. Bind both
+            # checks to the intended new value, never the stale pre-action value.
+            "control_value": (updates or {}).get(data["control"], data["control_value"]),
             "phase": phase,
             "material": material or {},
         }
