@@ -1,0 +1,16 @@
+---
+description: Pause for the owner when an internal expectation or self-imposed constraint blocks Wally operations.
+alwaysApply: true
+---
+
+# Owner-directed handling of internal blockers
+
+- Continue authorized work without routine confirmation requests.
+- If an expected field, inferred requirement, uncertain bank action, or other
+  self-imposed constraint blocks progress, pause before another live attempt.
+  Explain the observed fact and the internal expectation, then check with the owner.
+- Do not repeatedly probe a live provider or revise assumptions in a debugging
+  loop without that check. After the owner authorizes a specific fix and verification,
+  complete that scope; pause again if a new mismatch or constraint appears.
+- Mandatory transaction-specific Telegram approval, required bank-app authorization,
+  exact destination checks and uncertain-outcome protections remain compulsory.

@@ -241,16 +241,23 @@ class OwnerAccountTestPayments(SupervisedPayments):
         self.authority.authorize(context, Capability.VERIFY_PAYMENT)
         self.load(proposal_id)  # Validate the immutable test specification before using evidence.
         with self.store._connect() as c:
-            names = {
-                json.loads(row[0]).get("name") for row in c.execute(
+            evidence = [
+                json.loads(row[0]) for row in c.execute(
                     "SELECT details FROM payment_events "
                     "WHERE proposal_id=? AND event='test_recipient_verified'", (proposal_id,)
                 )
-            }
-        if len(names) != 1 or not next(iter(names)):
+            ]
+        names = {row["name"] for row in evidence if row.get("name")}
+        favourites = {row["favourite"] for row in evidence if row.get("favourite")}
+        if (
+            len(names) > 1 or len(favourites) > 1
+            or (favourites and favourites != {self.source.policy["favourite"]})
+            or not (names or favourites)
+        ):
             raise FinanceError("Retained test recipient identity is missing or ambiguous.")
         # Retained identity evidence enables read-only recovery, never another submission.
-        self.provider._recipient_name = next(iter(names))
+        self.provider._recipient_name = next(iter(names), "")
+        self.provider._recipient_favourite = next(iter(favourites), "")
         return super().reconcile(proposal_id, context=context)
 
     def _event(self, proposal_id, event, details):

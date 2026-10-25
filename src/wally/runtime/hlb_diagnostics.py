@@ -28,6 +28,7 @@ class HLBNonfinancialInspection(HLBTestTransferProvider):
         self._lookup = None
         self._lookup_used = False
         self._lookup_error = False
+        self._lookup_request = None
         self.inspection_stage = "not_started"
 
     def submit(self, *args, **kwargs):
@@ -99,6 +100,7 @@ class HLBNonfinancialInspection(HLBTestTransferProvider):
                 })
                 raise FinanceError("Favourite lookup differs from the observed nonpayment shape.")
             self._lookup_used = True
+            self._lookup_request = request
             return True
         except Exception as error:
             self._test_request_blocked = True
@@ -171,7 +173,7 @@ class HLBNonfinancialInspection(HLBTestTransferProvider):
         self.inspection_stage = "favourite_lookup"
         try:
             link.click(timeout=10000)
-            page.wait_for_timeout(1000)
+            self._finish_lookup(page)
         finally:
             self._lookup = None
         if self._lookup_error:
@@ -194,8 +196,17 @@ class HLBNonfinancialInspection(HLBTestTransferProvider):
         if self._test_request_blocked or not self._lookup_used:
             raise FinanceError("Favourite lookup was not verified; stopped without retry.")
         form = self._form(page)
-        self._check_recipient(form)
         self._mapping(form)
+        fields = self._rows(form)
+        self.event("inspection_recipient_shape", {
+            "recognized_labels": sorted(fields),
+            "account_row_matches": re.sub(r"[\s-]", "", fields.get("Account Number", ""))
+            == self.source.policy["destination_account"],
+            "favourite_label_matches": fields.get("Favourite Account Name")
+            == self.source.policy["favourite"],
+            "recipient_name_label_present": bool(fields.get("Recipient Name")),
+        })
+        self._check_recipient(form)
         # Expose fixed labels/control shapes, never form values, ViewState or credentials.
         self.event("inspection_recipient_verified", {"destination_suffix": "2747"})
         options = {}
@@ -232,6 +243,20 @@ class HLBNonfinancialInspection(HLBTestTransferProvider):
                 "reference_links": history.locator('a[id$=":test"]').count(),
                 "matching_rm1_rows": len(self._history_candidates(history)),
             })
+
+    def _finish_lookup(self, page):
+        request = self._lookup_request
+        if request is None:
+            raise FinanceError("Favourite lookup request was not observed; stopped without retry.")
+        response = request.response()
+        if response is None or response.status != 200:
+            raise FinanceError("Favourite lookup response is unconfirmed; stopped without retry.")
+        response.finished()
+        body = response.text()
+        if "<partial-response" not in body or "<error" in body:
+            raise FinanceError("Favourite lookup did not return the expected form update.")
+        # Yield to Mojarra's native response handler after the complete response.
+        page.wait_for_timeout(100)
 
 
 def main():

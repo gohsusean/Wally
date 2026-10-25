@@ -178,3 +178,41 @@ receipt email, Notion write, service reload or automated-test rerun occurred.
 Local 1Password unlock/CLI authorization and explicit destination confirmation
 were requested from the owner. No further bank attempt was scheduled. Ordinary
 bill payment submission remains disabled; no live RM1 acceptance is claimed.
+
+### Saved-favourite name mapping, 25 October 2026
+
+The owner explicitly confirmed UOB account 2203062747, the RM1 amount and
+gohsusean@gmail.com, and unlocked 1Password. Subsequent nonfinancial inspection
+verified HLB login, empty-form setup and a returned bank/account matching the
+configured UOB destination. The selected saved-payee form exposes `Favourite
+Account Name`, not `Recipient Name`. Treating the missing latter field as a wrong
+destination was an adapter error; the favourite alias value itself had not yet
+passed the corrected check.
+
+The corrected entry parser reads the observed favourite label and validates it
+against the fixed owner-approved alias, alongside the unchanged exact bank/account
+checks. It retains the alias separately from any actual bank recipient name. This
+is not legal-name certification and grants no additional payment authority.
+Independent history still requires the exact funding account, destination bank and
+account, amount, date, tracking and recipient references, bank reference, outcome
+and a nonempty bank recipient name. Any bank name observed before submission must
+also match. The independently read detail hash binds the later original receipt;
+an alias is never substituted for the bank's recipient name. Read-only recovery
+restores the two evidence fields separately and rejects conflicting aliases/names.
+
+The nonfinancial inspector now waits for the complete native favourite-response
+before reading the updated form. Five focused response-completion cases and 16
+affected recipient/history/recovery cases passed; no Telegram approval tests or
+broad suites were repeated. These checks validate code, not a bank transaction.
+
+After reviewing this specific fix, the owner authorized one read-only verification.
+That session verified login but timed out during navigation to the empty transfer
+form, before reaching the corrected favourite check. Bank attempts were paused
+and the owner was asked before further inspection. No new card, initiating action,
+receipt email, Notion write or service reload occurred. The fix remains pending
+live verification. Ordinary bill payment submission stays disabled.
+
+The owner's standing instruction is recorded in the
+[internal-blocker project rule](../.cursor/rules/pause-on-internal-blockers.mdc):
+pause and check before another live attempt when an internal expectation,
+self-imposed constraint or uncertain bank action blocks progress.

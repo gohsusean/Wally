@@ -82,6 +82,7 @@ class HLBTestTransferProvider(HLBTransferProvider):
         self._review_dispatched = False
         self._review_claimed = False
         self._recipient_name = ""
+        self._recipient_favourite = ""
         self._verified_detail = None
         self._receipt_content = None
         self.execution_id = ""
@@ -440,6 +441,7 @@ class HLBTestTransferProvider(HLBTransferProvider):
             "Recipient Bank / Wallet Name",
             "Account Number",
             "Recipient Name",
+            "Favourite Account Name",
             "Amount (MYR)",
             "Recipient Reference",
             "Other Payment Detail",
@@ -495,16 +497,23 @@ class HLBTestTransferProvider(HLBTransferProvider):
         fields = self._rows(form)
         account = re.sub(r"[\s-]", "", fields.get("Account Number", ""))
         bank = " ".join(fields.get("Recipient Bank / Wallet Name", "").upper().split())
+        # The saved-payee entry form exposes an alias, not a bank recipient name.
+        # Both paths still require the exact approved bank/account in this form.
         name = fields.get("Recipient Name", "")
+        favourite = fields.get("Favourite Account Name", "")
         if (
             account != self.source.policy["destination_account"]
             or not ("UNITED OVERSEAS" in bank or bank in {"UOB", "UOB BANK"})
-            or not name
+            or (favourite and favourite != self.source.policy["favourite"])
+            or not (name or favourite == self.source.policy["favourite"])
         ):
             raise FinanceError("Selected HLB recipient does not match the owner UOB allowlist.")
-        if self._recipient_name and name != self._recipient_name:
+        if self._recipient_name and name and name != self._recipient_name:
             raise FinanceError("HLB recipient name changed.")
-        self._recipient_name = name
+        if name:
+            self._recipient_name = name
+        if favourite:
+            self._recipient_favourite = favourite
 
     def _select(self, form, selector, predicate):
         field = form.locator(selector)
@@ -641,6 +650,7 @@ class HLBTestTransferProvider(HLBTransferProvider):
         self._initialization_dispatched = False
         self._initialization_request = None
         self._recipient_name = ""
+        self._recipient_favourite = ""
         self._verified_detail = self._receipt_content = None
         self._authorization = (authorization, bill, quote)
         try:
@@ -671,7 +681,9 @@ class HLBTestTransferProvider(HLBTransferProvider):
             self._command(favourites[0], lambda: favourites[0].click(timeout=5000))
             form = self._form(page)
             self._check_recipient(form)
-            self.event("test_recipient_verified", {"name": self._recipient_name})
+            self.event("test_recipient_verified", {
+                "name": self._recipient_name, "favourite": self._recipient_favourite,
+            })
             self._mapping(form)
             source_value = self._select(
                 form,
@@ -835,8 +847,12 @@ class HLBTestTransferProvider(HLBTransferProvider):
                     or fields.get("Recipient Reference") != bill.reference
                     or "UNITED OVERSEAS"
                     not in fields.get("Recipient Bank / Wallet Name", "").upper()
-                    or fields.get("Recipient Name") != self._recipient_name
-                    or not self._recipient_name
+                    or not fields.get("Recipient Name")
+                    or (self._recipient_name and fields["Recipient Name"] != self._recipient_name)
+                    or not (
+                        self._recipient_name
+                        or self._recipient_favourite == self.source.policy["favourite"]
+                    )
                     or fields.get("Reference Number") != reference
                     or datetime.strptime(fields.get("When to Transfer", ""), "%d-%b-%Y").date()
                     != datetime.fromtimestamp(

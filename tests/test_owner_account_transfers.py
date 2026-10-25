@@ -532,7 +532,10 @@ def test_independent_history_requires_exact_destination_and_source_each_read(wor
     assert list(provider._history_candidates(page)) == ([] if bad_source else ["BANK-REFERENCE"])
 
 
-@pytest.mark.parametrize("drift", [None, "date", "reference", "name"])
+@pytest.mark.parametrize(
+    "drift",
+    [None, "date", "reference", "name", "favourite_only", "missing_name", "missing_identity"],
+)
 def test_history_row_reordering_never_changes_the_selected_bank_reference(world, drift):
     from contextlib import contextmanager
     from datetime import datetime
@@ -558,6 +561,11 @@ def test_history_row_reordering_never_changes_the_selected_bank_reference(world,
         fields["Reference Number"] = "ANOTHER-BANK-REFERENCE"
     elif drift == "name":
         fields["Recipient Name"] = "Different owner"
+    elif drift in {"favourite_only", "missing_name", "missing_identity"}:
+        provider._recipient_name = ""
+        provider._recipient_favourite = "Sean UOB" if drift != "missing_identity" else ""
+        if drift == "missing_name":
+            fields["Recipient Name"] = ""
     pages = iter([
         SimpleNamespace(links={"BANK-OLD": old, "BANK-CURRENT": current}),
         SimpleNamespace(links={"BANK-CURRENT": current, "BANK-OLD": old},
@@ -573,7 +581,7 @@ def test_history_row_reordering_never_changes_the_selected_bank_reference(world,
     provider._history_candidates = lambda page: page.links
     provider._rows = lambda page: page.fields
     provider._command = lambda element, action, **kwargs: action()
-    if drift:
+    if drift and drift != "favourite_only":
         with pytest.raises(FinanceError, match="contradicts"):
             provider._detail(bill, quote)
     else:
@@ -596,4 +604,53 @@ def test_restart_restores_recipient_evidence_for_read_only_recovery(world, monke
     )
     payments.reconcile(proposal.id, context=context)
     assert recovered == ["Verified owner"]
+    payments.provider.browser.open_session.assert_not_called()
+
+
+@pytest.mark.parametrize("drift", [None, "account", "bank", "favourite", "missing"])
+def test_saved_favourite_identity_never_claims_a_bank_recipient_name(world, drift):
+    provider = world.payments.provider
+    fields = {
+        "Account Number": "2203062747",
+        "Recipient Bank / Wallet Name": "UNITED OVERSEAS BANK (MALAYSIA) BERHAD",
+        "Favourite Account Name": "Sean UOB",
+    }
+    if drift == "account":
+        fields["Account Number"] = "2203062748"
+    elif drift == "bank":
+        fields["Recipient Bank / Wallet Name"] = "Different bank"
+    elif drift == "favourite":
+        fields["Favourite Account Name"] = "Another favourite"
+    elif drift == "missing":
+        fields.pop("Favourite Account Name")
+    provider._rows = lambda form: fields
+    if drift:
+        with pytest.raises(FinanceError, match="allowlist"):
+            provider._check_recipient(Mock())
+        assert provider._recipient_favourite == ""
+    else:
+        provider._check_recipient(Mock())
+        assert provider._recipient_favourite == "Sean UOB"
+    assert provider._recipient_name == ""
+
+
+@pytest.mark.parametrize("favourite", ["Sean UOB", "Another favourite", ""])
+def test_restart_restores_exact_favourite_separately_from_bank_name(world, monkeypatch, favourite):
+    from wally.finance.payments import PAYMENT_WORKER, SupervisedPayments
+
+    payments = world.payments
+    proposal = payments.prepare_new(context=payments.authority.issue("cli"))
+    payments._event(proposal.id, "test_recipient_verified", {"name": "", "favourite": favourite})
+    recovered = []
+    monkeypatch.setattr(SupervisedPayments, "reconcile", lambda self, *args, **kwargs:
+                        recovered.append((self.provider._recipient_name,
+                                          self.provider._recipient_favourite)))
+    context = payments.authority.issue(PAYMENT_WORKER)
+    if favourite != "Sean UOB":
+        with pytest.raises(FinanceError, match="missing or ambiguous"):
+            payments.reconcile(proposal.id, context=context)
+        assert recovered == []
+    else:
+        payments.reconcile(proposal.id, context=context)
+        assert recovered == [("", "Sean UOB")]
     payments.provider.browser.open_session.assert_not_called()

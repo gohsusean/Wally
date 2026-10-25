@@ -90,3 +90,30 @@ def test_native_command_snapshot_matches_observed_mojarra_button_serialization(i
             assert "idBtnSubmit" not in dict(data["fields"])
         finally:
             browser.close()
+
+
+@pytest.mark.parametrize(
+    "failure", [None, "missing_request", "missing_response", "status", "error"]
+)
+def test_inspection_waits_for_complete_native_lookup_before_reading_form(inspector, failure):
+    response = Mock(status=200)
+    response.text.return_value = (
+        "<partial-response><error/></partial-response>" if failure == "error"
+        else "<partial-response><changes/></partial-response>"
+    )
+    if failure == "status":
+        response.status = 503
+    request = Mock()
+    request.response.return_value = None if failure == "missing_response" else response
+    inspector._lookup_request = None if failure == "missing_request" else request
+    page = Mock()
+    if failure:
+        with pytest.raises(FinanceError):
+            inspector._finish_lookup(page)
+        page.wait_for_timeout.assert_not_called()
+    else:
+        inspector._finish_lookup(page)
+        response.finished.assert_called_once()
+        response.text.assert_called_once()
+        page.wait_for_timeout.assert_called_once_with(100)
+    inspector.browser.open_session.assert_not_called()
